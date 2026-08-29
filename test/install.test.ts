@@ -30,9 +30,20 @@ const ENTRY = { command: "node", args: ["/opt/cam/dist/mcp/server.js"] };
 let home: string;
 let cwd: string;
 
+/**
+ * Resolved, because the installer writes resolved paths on purpose: a
+ * scheduled task pointing at a symlink breaks the day the link moves. The
+ * temp root is a symlink on macOS (`/var` → `/private/var`) and a short 8.3
+ * name on some Windows setups, so a fixture path that skipped this would
+ * differ from the installer's output for reasons that have nothing to do with
+ * what the test is checking.
+ */
+const tmpdir = (prefix: string): string =>
+  fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+
 beforeEach(() => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), "cam-install-"));
-  cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cam-project-"));
+  home = tmpdir("cam-install-");
+  cwd = tmpdir("cam-project-");
 });
 
 afterEach(() => {

@@ -47,6 +47,27 @@ mutat útvonalakat és valódi projektneveket — pláne nem tesztfixtúraként,
   **linkel**, nem másol, tehát a checkout elmozdítása vinné magával a bekötött klienseket. A README
   most tarballt ajánl, és megmondja, miért.
 
+**Amit az első CI-futás talált — három hiba, mindhárom olyan platformon, amit fejlesztés közben nem
+tudtam futtatni:**
+
+- **`better-sqlite3` 11 → 13.** Node 24-en a folyamat `SIGABRT`-tel elszállt a leálláskor
+  (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`), a `Statement`
+  destruktorából. A 12-es és alatti kiadások a nyers V8 `node::ObjectWrap`-re épülnek, amihez a Node
+  24.19 cleanup hookot adott; a hook eltávolítása a már megszűnt `Environment`-en hasal el. A 13.0.0
+  N-API-ra váltott, ezzel a hibaosztály nem javítva, hanem **megszüntetve** lett. Nekünk ez azon
+  túl is nyereség, hogy a CI zöld: az N-API build nincs Node ABI-hoz kötve, márpedig ezt az eszközt
+  tetszőleges Node-verzió alá telepítik globálisan.
+- **A frissesség-figyelmeztetés tesztje a platformot nézte, nem a beállítást.** A „másik
+  útvonal-hajtással írt index" esetét úgy állította elő, hogy Windowson `0`-t írt, máshol `1`-et —
+  csakhogy a macOS is hajt, mint a Windows, tehát ott nem az ellenkezőjét írta, és a figyelmeztetés
+  jogosan maradt el. Most a tényleges `CASE_INSENSITIVE_FS` ellenkezőjét írja, ami a `CAM_CASE_FOLD`
+  megfordított futásában is helyes marad.
+- **A telepítő-tesztek fixtúrája feloldatlan tempkönyvtárat használt.** macOS-en a `/var` a
+  `/private/var`-ra mutat, és a `locate` — helyesen — feloldott útvonalat ad vissza. Nem az
+  elvárást igazítottam a kimenethez: a fixtúra gyökere lett feloldott, mert az installer is
+  szándékosan feloldott útvonalat ír (egy symlinkre mutató ütemezett feladat a link elmozdulásának
+  napján törik el).
+
 ---
 
 ### Telepítés — egy parancs, ami beköti magát mindenhova

@@ -8,6 +8,7 @@ import { claudeCodeCollector } from "../src/collectors/claude-code.js";
 import { collectCwdEvidence, learnRoots, reattribute } from "../src/attribution/resolve.js";
 import { consolidate } from "../src/memory/consolidate.js";
 import { parseCitation, recall } from "../src/query/recall.js";
+import { CASE_INSENSITIVE_FS } from "../src/paths.js";
 import { makeHarness, realisticRecords, writeTranscript, type Harness } from "./helpers/fixtures.js";
 
 let h: Harness;
@@ -340,9 +341,12 @@ describe("cam_status", () => {
   });
 
   it("warns about an index written with the other path-folding convention", async () => {
+    // The opposite of whatever this run folds by, not of a platform: macOS
+    // folds like Windows, and the suite runs a second time with the setting
+    // inverted, so naming a platform here would test nothing half the time.
     h.hub
       .prepare("insert or replace into meta(key, value) values ('path_case_fold', ?)")
-      .run(process.platform === "win32" ? "0" : "1");
+      .run(CASE_INSENSITIVE_FS ? "0" : "1");
     h.hub.prepare("insert or replace into meta(key, value) values ('written_on','freebsd')").run();
     await reconnect({ nowMs: () => NOW });
     expect(textOf(await client.callTool({ name: "cam_status", arguments: {} }))).toContain("CAM_CASE_FOLD");

@@ -327,6 +327,11 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
 - **Az `npm link` nem telepítés.** A globális teszt tarballból telepít, mert a `link` és az
   `install -g .` is visszalinkel a checkoutra; egy ilyen „telepítés" arról semmit nem mond, hogy a
   csomag megáll-e a maga lábán.
+- **Az első futás három hibát talált, és mind a három olyan platformon volt, amit fejlesztés
+  közben nem tudtam futtatni.** Egy Node 24-es natív összeomlás a `better-sqlite3`-ban (11 → 13,
+  N-API), egy teszt, ami platformot nézett a beállítás helyett, és egy fixtúra, ami feloldatlan
+  tempkönyvtárral dolgozott ott, ahol a `/var` symlink. Egyik sem derült volna ki abból, hogy
+  „nálam megy" — ez a mátrix egész indoklása, egyetlen futásban.
 
 ---
 
