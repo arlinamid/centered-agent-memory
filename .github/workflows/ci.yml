@@ -1,0 +1,181 @@
+name: CI
+
+# The suite is the portability claim: it has to pass on all three platforms,
+# not only on the machine it was written on. Everything here therefore runs on
+# Windows, macOS and Linux — including the two jobs that are not about the
+# tests at all, but about whether an installed copy actually starts.
+on:
+  push:
+    branches: [main, master]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: teszt · ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["22", "24"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Típusellenőrzés
+        run: npx tsc --noEmit
+
+      - name: Tesztek
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: A CLI elindul és kiírja a súgót
+        run: node dist/cli.js --help
+
+      # The index is stored with paths folded on Windows and macOS and not on
+      # Linux, and every stored path goes through that decision. Pinning it
+      # both ways here is what keeps a platform-specific assumption from
+      # passing unnoticed on the platform that happens to agree with it.
+      - name: Tesztek a másik útvonal-hajtással
+        run: npm test
+        env:
+          CAM_CASE_FOLD: ${{ (matrix.os == 'ubuntu-latest') && '1' || '0' }}
+
+  install:
+    name: telepítés · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # What a user actually does, not what the repository can do: pack, then
+      # install the tarball globally. `npm link` would link back to the
+      # checkout and prove nothing about a copy that stands on its own.
+      - name: Csomagolás és globális telepítés
+        shell: bash
+        run: |
+          npm pack
+          npm install -g ./centered-agent-memory-*.tgz
+
+      - name: A telepített parancsok elindulnak
+        shell: bash
+        run: |
+          cam --help
+          cam doctor
+
+      # The bug this exists for: the entry-point check compared a resolved path
+      # to an unresolved one, so the installed CLI did nothing and exited zero.
+      # A silent no-op passes `cam --help` too, so the check is that it answers.
+      - name: A telepített CLI nem néma
+        shell: bash
+        run: |
+          out=$(cam status)
+          test -n "$out" || { echo "a telepített cam semmit nem írt ki"; exit 1; }
+          echo "$out"
+
+      - name: Az MCP-szerver válaszol az initialize kérésre
+        shell: bash
+        run: node .github/scripts/mcp-initialize.mjs
+
+      - name: A telepítés próbája végigfut
+        shell: bash
+        run: cam install --dry-run --no-dream --no-schedule
+
+  package:
+    name: csomag
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Source, tests and source maps in a published package are not a style
+      # question: they are the difference between shipping a tool and shipping
+      # a working copy of somebody's machine.
+      - name: A csomag csak azt tartalmazza, amit kell
+        shell: bash
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e '
+            const files = JSON.parse(require("fs").readFileSync("pack.json", "utf8"))[0].files.map((f) => f.path);
+            const banned = files.filter((f) => /^(src|test)\//.test(f) || f.endsWith(".map") || f.endsWith(".ts"));
+            if (banned.length > 0) {
+              console.error("nem való a csomagba:\n  " + banned.join("\n  "));
+              process.exit(1);
+            }
+            for (const want of ["dist/cli.js", "dist/mcp/server.js", "assets/skill.md", "LICENSE"]) {
+              if (!files.includes(want)) {
+                console.error("hiányzik a csomagból: " + want);
+                process.exit(1);
+              }
+            }
+            console.log(files.length + " fájl, rendben");
+          '
+
+      - name: A verzió és a changelog egyet mond
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          grep -q "^## \[$version\]" CHANGELOG.md || {
+            echo "a CHANGELOG.md-ben nincs [$version] szakasz"
+            exit 1
+          }
+          server=$(node -p "require('fs').readFileSync('src/mcp/server.ts','utf8').match(/SERVER_VERSION = \"([^\"]+)\"/)[1]")
+          test "$server" = "$version" || {
+            echo "SERVER_VERSION ($server) != package.json ($version)"
+            exit 1
+          }
+          echo "$version"
+
+  privacy:
+    name: nincs benne gépspecifikus nyom
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # This tool indexes somebody's entire conversation history, so the
+      # repository is the one place where a real path or a real name must
+      # never appear — not even as a test fixture. The check is structural
+      # rather than a denylist of the names to avoid, because such a list
+      # would publish exactly what it is meant to keep out.
+      - name: Csak helyőrző felhasználónév szerepelhet
+        shell: bash
+        run: node .github/scripts/check-privacy.mjs

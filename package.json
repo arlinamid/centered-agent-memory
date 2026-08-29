@@ -1,0 +1,64 @@
+{
+  "name": "centered-agent-memory",
+  "version": "0.5.0",
+  "private": true,
+  "homepage": "https://github.com/arlinamid/centered-agent-memory#readme",
+  "bugs": "https://github.com/arlinamid/centered-agent-memory/issues",
+  "description": "Cross-tool context hub: indexes Claude Code, Claude Desktop/Cowork, Codex and Cursor conversations by project",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "cursor",
+    "mcp",
+    "conversation-history",
+    "sqlite",
+    "fts5",
+    "agent-memory"
+  ],
+  "license": "MIT",
+  "author": "Rózsavölgyi János",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arlinamid/centered-agent-memory.git"
+  },
+  "type": "module",
+  "bin": {
+    "cam": "./dist/cli.js",
+    "cam-mcp": "./dist/mcp/server.js",
+    "centered-agent-memory": "./dist/cli.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "assets/",
+    "docs/",
+    "README.md",
+    "README.hu.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "mcp": "node dist/mcp/server.js",
+    "smoke": "tsx scripts/mcp-smoke.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "better-sqlite3": "^11.10.0",
+    "stopwords-iso": "^1.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

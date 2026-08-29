@@ -1,0 +1,114 @@
+name: Release
+
+# A tag is a promise that the thing behind it works. So the tarball attached
+# to the release is not built and hoped for: it is installed on all three
+# platforms first, and the release only appears if all three came up.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Melyik tag (pl. v0.5.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ellenőrzés · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: node .github/scripts/check-privacy.mjs
+
+      - name: Csomagolás és globális telepítés
+        shell: bash
+        run: |
+          npm pack
+          npm install -g ./centered-agent-memory-*.tgz
+
+      - name: A telepített példány elindul és válaszol
+        shell: bash
+        run: |
+          out=$(cam status)
+          test -n "$out" || { echo "a telepített cam semmit nem írt ki"; exit 1; }
+          cam doctor
+          node .github/scripts/mcp-initialize.mjs
+
+  release:
+    name: kiadás
+    runs-on: ubuntu-latest
+    needs: verify
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # A tag claiming a version the package does not carry would produce a
+      # tarball that installs as something else. Cheap to check, confusing to
+      # debug later.
+      - name: A tag és a package.json verziója egyezik
+        id: meta
+        shell: bash
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          version=$(node -p "require('./package.json').version")
+          test "$tag" = "v$version" || {
+            echo "a tag ($tag) nem egyezik a package.json verziójával ($version)"
+            exit 1
+          }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Csomag építése
+        shell: bash
+        run: |
+          npm pack
+          mv centered-agent-memory-*.tgz "centered-agent-memory-${{ steps.meta.outputs.version }}.tgz"
+
+      - name: Kiadási jegyzet a changelogból
+        shell: bash
+        run: |
+          node .github/scripts/release-notes.mjs \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ github.repository }}" \
+            "${{ steps.meta.outputs.tag }}" > notes.md
+          cat notes.md
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            --title "${{ steps.meta.outputs.tag }}" \
+            --notes-file notes.md \
+            "centered-agent-memory-${{ steps.meta.outputs.version }}.tgz"

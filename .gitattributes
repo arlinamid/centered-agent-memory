@@ -1,0 +1,8 @@
+# Store everything with LF. The CI runs the same bash steps on all three
+# platforms, and a script checked out with CRLF fails on the shebang line in a
+# way that reads like anything but a line-ending problem.
+* text=auto eol=lf
+
+*.png binary
+*.tgz binary
+*.sqlite binary
