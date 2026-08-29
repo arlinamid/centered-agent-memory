@@ -91,11 +91,11 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      # `npm pack` már `<név>-<verzió>.tgz`-t ad, tehát pont azt, amire a
+      # kiadási jegyzet hivatkozik — átnevezni nem kell, és nem is szabad.
       - name: Csomag építése
         shell: bash
-        run: |
-          npm pack
-          mv centered-agent-memory-*.tgz "centered-agent-memory-${{ steps.meta.outputs.version }}.tgz"
+        run: npm pack
 
       - name: Kiadási jegyzet a changelogból
         shell: bash

@@ -100,7 +100,7 @@ A mérföldkő feltételei, mérve:
   válaszol az `initialize` kérésre.
 - Két egymás utáni futás ugyanazt az indexet látja: az alapértelmezett hely a felhasználói adatmappa
   (`LOCALAPPDATA`, illetve `XDG_DATA_HOME`), nem a telepítési mappa.
-- `npm pack`: 62 fájl, 147 kB — dist JS, `docs/`, `assets/skill.md`, README(-ek), CHANGELOG, LICENSE.
+- `npm pack`: 62 fájl, 157,5 kB — dist JS, `docs/`, `assets/skill.md`, README(-ek), CHANGELOG, LICENSE.
   Se forrás, se teszt, se source map. (M2-nél 41 fájl, 76 kB; a különbség az M4 és az M5.)
 - A dokumentációban nincs másolandó gépspecifikus útvonal. Az M5 óta ez erősebb: az abszolút
   útvonalat nem a felhasználó másolja be, hanem a `cam install` írja oda, arról a gépről, ahol fut.
