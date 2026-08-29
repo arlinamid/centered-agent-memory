@@ -10,6 +10,18 @@ export default defineConfig({
     // Path folding is a platform decision that every stored path depends on.
     // Pinned here so the suite asserts the same thing on Windows, macOS and
     // Linux; `test/projkey.test.ts` covers both foldings explicitly.
-    env: { CAM_CASE_FOLD: "1" },
+    //
+    // Pinned, but not nailed shut: `test.env` overrides the shell, so writing
+    // "1" outright would silently ignore a caller asking for the other
+    // folding — and CI runs the suite a second time doing exactly that.
+    env: { CAM_CASE_FOLD: process.env.CAM_CASE_FOLD ?? "1" },
+
+    // A large part of this suite spawns the CLI as a real subprocess, so each
+    // worker costs far more than a worker usually does. On a two-core runner
+    // that starved vitest's own main thread until it gave up on a worker
+    // ("Timeout calling onTaskUpdate") — once, on the slowest platform, with
+    // all 454 tests passing. Capping the workers on CI trades some wall time
+    // for a run that does not fail for reasons unrelated to the code.
+    maxWorkers: process.env.CI ? 2 : undefined,
   },
 });

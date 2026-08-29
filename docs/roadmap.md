@@ -309,6 +309,7 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
   (nem csak elindul).
 - A csomagban nincs forrás, teszt, source map.
 - A verzió a `package.json`-ban, a `SERVER_VERSION`-ben és a changelogban ugyanaz.
+- A telepítés nem igényel C++ fordítót egyetlen platformon sem.
 
 **Amit közben megtudtunk:**
 
@@ -332,6 +333,13 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
   N-API), egy teszt, ami platformot nézett a beállítás helyett, és egy fixtúra, ami feloldatlan
   tempkönyvtárral dolgozott ott, ahol a `/var` symlink. Egyik sem derült volna ki abból, hogy
   „nálam megy" — ez a mátrix egész indoklása, egyetlen futásban.
+- **Egy zöld lépés, ami semmit nem bizonyított.** Betettem a CI-ba egy második tesztfutást
+  megfordított útvonal-hajtással, és zöld volt — mert a `vitest.config.ts` `env`-je felülírta a
+  shellét, tehát kétszer ugyanaz futott. Amikor a felülírás javítása után végre tényleg lefutott,
+  32 teszt bukott el, és egyik sem termékhiba: a suite szándékosan rögzíti a hajtást, hogy
+  platformfüggetlen legyen, tehát szó szerinti kis betűs útvonalakat állít. A lépést kivettem,
+  nem zöldre erőltettem — a hajtás ott van lefedve, ahol értelme van (`normalizePath` paraméterrel,
+  mindkét értékre).
 - **A második futás egy olyan hibát talált, ami a felhasználókat is érte volna.** A natív
   függőség minden platformra hoz prebuildet, az npm mégis lefuttatja rá a beépített
   `node-gyp rebuild`-et; a node-gyp pedig Windowson akkor is Visual Studiót keres, ha a

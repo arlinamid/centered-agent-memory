@@ -29,10 +29,22 @@ mutat útvonalakat és valódi projektneveket — pláne nem tesztfixtúraként,
   annak ellenőrzése, hogy a telepített példány *válaszol is*. A `cam --help` egy néma no-opot is
   átenged, ezért a lépés azt kéri számon, hogy a `cam status` kiír-e bármit; pont ez a hiba
   fordult elő élesben. Az MCP-szervert külön indítja `initialize`-zal, üres indexen.
-- **A tesztek mindkét útvonal-hajtással lefutnak.** Minden tárolt útvonal átmegy azon a döntésen,
-  hogy a platform kis-nagybetűt hajt-e; a CI ezért minden platformon lefuttatja az ellenkezőjével
-  is (`CAM_CASE_FOLD`). Enélkül egy platformspecifikus feltevés észrevétlenül átcsúszik azon a
-  platformon, amelyik történetesen egyetért vele.
+- **A tesztfuttató két workerre korlátozva CI-n.** A suite nagy része valódi alfolyamatként
+  indítja a CLI-t, tehát itt egy worker sokkal többe kerül a szokásosnál; a leglassabb futtatón ez
+  egyszer kiéheztette a vitest saját főszálát („Timeout calling onTaskUpdate"), miközben mind a
+  454 teszt átment. Nem kerül semmibe: mérve a falióra-idő ugyanannyi, a versengés viszont
+  kevesebb (115 s → 55 s tesztidő).
+- **A `vitest.config.ts` nem írja felül némán a hívót.** A `test.env` erősebb a shell környezeti
+  változójánál, tehát a beégetett `CAM_CASE_FOLD: "1"` csendben eldobta, ha valaki a másik hajtást
+  kérte. Most alapértelmezés (`process.env.CAM_CASE_FOLD ?? "1"`), nem parancs.
+- **Nincs második, megfordított hajtású teljes tesztfutás — és ez tudatos.** Írtam egyet, aztán
+  kiderült, hogy a fenti felülírás miatt sosem futott le ténylegesen; amikor végre lefutott, 32
+  teszt bukott el. Egyik sem termékhiba volt: a suite szándékosan **rögzíti** a hajtást, hogy
+  ugyanaz az elvárás álljon mind a három platformon, tehát az állításai kis betűs útvonalakat
+  írnak le szó szerint. Megfordítva futtatva csak azt bizonyítanák, hogy a másik beállításhoz
+  írták őket. Zöldre hozni annyit tenne, hogy az állítások harmadát származtatottra írom át — az a
+  kódot hasonlítaná önmagához. A hajtás ott van lefedve, ahol értelme van: a `normalizePath`
+  paraméterként kapja meg, és a `test/projkey.test.ts` mindkét értékkel meghívja.
 - **A csomag tartalma ellenőrzött:** ha forrás, teszt vagy source map kerülne a tarballba, a CI
   elbukik. A verzió három helyen szerepel (`package.json`, `SERVER_VERSION`, changelog-szakasz), és
   a CI megköveteli, hogy egyezzenek.

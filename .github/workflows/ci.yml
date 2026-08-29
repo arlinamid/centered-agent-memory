@@ -55,14 +55,13 @@ jobs:
       - name: A CLI elindul és kiírja a súgót
         run: node dist/cli.js --help
 
-      # The index is stored with paths folded on Windows and macOS and not on
-      # Linux, and every stored path goes through that decision. Pinning it
-      # both ways here is what keeps a platform-specific assumption from
-      # passing unnoticed on the platform that happens to agree with it.
-      - name: Tesztek a másik útvonal-hajtással
-        run: npm test
-        env:
-          CAM_CASE_FOLD: ${{ (matrix.os == 'ubuntu-latest') && '1' || '0' }}
+      # There is deliberately no second pass with the path folding inverted.
+      # The suite pins the folding so that the same expectations hold on all
+      # three platforms, which means most of its assertions spell out folded
+      # paths; running it inverted would only assert that those literals were
+      # written for the other setting. The folding itself is covered where it
+      # belongs — `normalizePath` takes it as an argument, and
+      # `test/projkey.test.ts` exercises both values directly.
 
   install:
     name: telepítés · ${{ matrix.os }}
