@@ -34,7 +34,9 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      # Ugyanaz, mint a CI-ban: a natív függőség prebuildet hoz, fordítóra
+      # nincs szükség, és a telepítő szkriptek átugrása ezt ki is használja.
+      - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit
       - run: npm test
       - run: node .github/scripts/check-privacy.mjs
@@ -43,7 +45,7 @@ jobs:
         shell: bash
         run: |
           npm pack
-          npm install -g ./centered-agent-memory-*.tgz
+          npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
 
       - name: A telepített példány elindul és válaszol
         shell: bash
@@ -71,7 +73,7 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       # A tag claiming a version the package does not carry would produce a
       # tarball that installs as something else. Cheap to check, confusing to

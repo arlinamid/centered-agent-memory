@@ -39,15 +39,21 @@ Node 22 or newer is required. The package is not on the npm registry, so install
 ```bash
 git clone https://github.com/arlinamid/centered-agent-memory.git
 cd centered-agent-memory
-npm install                                   # the prepare script builds
+npm ci --ignore-scripts                       # the prepare script builds
 npm pack                                      # a self-contained copy
-npm install -g ./centered-agent-memory-*.tgz  # puts `cam` and `cam-mcp` on the PATH
+npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
 cam install                                   # wire it into the agent tools
 ```
 
 The tarball step is not ceremony: `npm link` and `npm install -g .` both link back to the checkout
 instead of copying it, so moving or deleting the checkout would break every client you just wired
 up. Install from the tarball and the checkout becomes disposable.
+
+Nor is `--ignore-scripts`: **nothing in this dependency tree needs an install script.** The SQLite
+binding ships a prebuilt binary for every platform it supports, yet npm would still run its
+implicit `node-gyp rebuild` on it — which on Windows goes looking for Visual Studio in order to
+produce an empty project. On a machine without a compiler that fails, for a build that was never
+needed.
 
 `cam install` registers the server with every agent tool it finds (Claude Code, Claude Desktop,
 Codex, Cursor), writes a skill telling that agent when to consult the index, gives the optional

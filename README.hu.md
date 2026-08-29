@@ -43,15 +43,21 @@ Node 22 vagy újabb kell. A csomag nincs fent az npm registryn, ezért checkoutb
 ```bash
 git clone https://github.com/arlinamid/centered-agent-memory.git
 cd centered-agent-memory
-npm install                                   # a prepare script lefordítja
+npm ci --ignore-scripts                       # a prepare script lefordítja
 npm pack                                      # önálló másolat
-npm install -g ./centered-agent-memory-*.tgz  # a `cam` és a `cam-mcp` felkerül a PATH-ra
+npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
 cam install                                   # bekötés az ágens-eszközökbe
 ```
 
 A tarball nem formaság: az `npm link` és az `npm install -g .` is a checkoutra **linkel**, nem
-másol — a checkout elmozdítása vagy törlése így az imént bekötött klienseket vinné magával.
+másol — a checkout elmozdítása vagy törlése így az imént bekötett klienseket vinné magával.
 Tarballból telepítve a checkout eldobható.
+
+Az `--ignore-scripts` sem az: **ebben a függőségi fában egyetlen telepítő szkriptre sincs
+szükség.** Az SQLite-kötés minden támogatott platformra hoz előre fordított binárist, az npm
+mégis lefuttatná rá a beépített `node-gyp rebuild`-et — ami Windowson Visual Studiót keres, hogy
+aztán egy üres projektet állítson elő. Fordító nélküli gépen ez elbukik, pedig fordítani nem
+kellett volna semmit.
 
 A `cam install` beköti a szervert minden megtalált ágens-eszközbe (Claude Code, Claude Desktop,
 Codex, Cursor), melléteszi a használati utasítást, ad az álom fázisnak modellt a gépen már meglévő

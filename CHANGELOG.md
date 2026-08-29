@@ -67,6 +67,14 @@ tudtam futtatni:**
   elvárást igazítottam a kimenethez: a fixtúra gyökere lett feloldott, mert az installer is
   szándékosan feloldott útvonalat ír (egy symlinkre mutató ütemezett feladat a link elmozdulásának
   napján törik el).
+- **`--ignore-scripts` a telepítésnél, és ez nem CI-kerülőút.** A 13-as `better-sqlite3` minden
+  támogatott platformra hoz előre fordított binárist a csomagban, az npm mégis lefuttatja rá a
+  beépített `node-gyp rebuild`-et. A `binding.gyp` ilyenkor no-oppá teszi magát — csakhogy a
+  node-gyp Windowson *előbb* keres Visual Studiót, hogy aztán egy üres projektet generáljon. A
+  futtatón ez elhasalt (a VS 18-at nem ismerte fel), pedig fordítani nem kellett volna semmit.
+  Fordító nélküli gépen ugyanez a felhasználót érné el, ezért a README és a `docs/install.md` is
+  `--ignore-scripts`-tel telepít. Ellenőrizve: tiszta `npm ci --ignore-scripts` után nem keletkezik
+  `build/` mappa, a kötés a prebuildből töltődik, és mind a 454 teszt zöld.
 
 ---
 

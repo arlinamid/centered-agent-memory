@@ -15,7 +15,7 @@ alább van, az az, amit az a parancs csinál.
 cam-mcp                       # stdio, JSON-RPC a stdout-on
 ```
 
-A `cam-mcp` a csomag második belépéspontja (`npm link` vagy globális telepítés után van a PATH-on).
+A `cam-mcp` a csomag második belépéspontja (globális telepítés után van a PATH-on).
 Checkoutból, telepítés nélkül: `node dist/mcp/server.js`. Fejlesztés közben:
 `node --import tsx src/mcp/server.ts`.
 

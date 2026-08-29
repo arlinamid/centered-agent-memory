@@ -36,7 +36,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      - run: npm ci
+      # Nothing in this tree needs an install script. The SQLite binding ships
+      # a prebuilt binary for every platform it supports, and npm's implicit
+      # `node-gyp rebuild` would still demand a C++ toolchain to produce an
+      # empty project — which is how a runner with an unrecognised Visual
+      # Studio fails an install that never needed a compiler.
+      - run: npm ci --ignore-scripts
 
       - name: Típusellenőrzés
         run: npx tsc --noEmit
@@ -76,16 +81,17 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       # What a user actually does, not what the repository can do: pack, then
       # install the tarball globally. `npm link` would link back to the
       # checkout and prove nothing about a copy that stands on its own.
+      # `npm pack` still runs our own `prepare`, which is the build.
       - name: Csomagolás és globális telepítés
         shell: bash
         run: |
           npm pack
-          npm install -g ./centered-agent-memory-*.tgz
+          npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
 
       - name: A telepített parancsok elindulnak
         shell: bash
@@ -124,7 +130,7 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       # Source, tests and source maps in a published package are not a style
       # question: they are the difference between shipping a tool and shipping

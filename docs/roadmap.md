@@ -332,6 +332,13 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
   N-API), egy teszt, ami platformot nézett a beállítás helyett, és egy fixtúra, ami feloldatlan
   tempkönyvtárral dolgozott ott, ahol a `/var` symlink. Egyik sem derült volna ki abból, hogy
   „nálam megy" — ez a mátrix egész indoklása, egyetlen futásban.
+- **A második futás egy olyan hibát talált, ami a felhasználókat is érte volna.** A natív
+  függőség minden platformra hoz prebuildet, az npm mégis lefuttatja rá a beépített
+  `node-gyp rebuild`-et; a node-gyp pedig Windowson akkor is Visual Studiót keres, ha a
+  `binding.gyp` üres projektet állítana elő. Fordító nélküli gépen ez a telepítést buktatja el egy
+  fordításon, amire nincs is szükség. A CI és a README is `--ignore-scripts`-tel telepít — ez a
+  helyi gépen sosem tűnt volna fel, mert az npm 11 alapból amúgy is blokkolja a telepítő
+  szkripteket.
 
 ---
 

@@ -7,8 +7,9 @@ utasítást, ad az álom fázisnak modellt, és beállítja, hogy magától fris
 cam install
 ```
 
-Ha a `cam` még nincs a PATH-on: `node dist/cli.js install`. Amint a repó ki van tolva egy távoli
-helyre, checkout nélkül is megy: `npx github:arlinamid/centered-agent-memory install`.
+Ha a `cam` még nincs a PATH-on: `node dist/cli.js install`. Előtte a csomagot globálisan kell
+telepíteni; a recept a [README](../README.hu.md#telepítés)-ben van, `npx`-ből pedig szándékosan
+nem megy — [alább](#ideiglenes-csomagmappából-a-telepítő-nem-ír-semmit) az indoklás.
 
 **Nézd meg előbb, mit csinálna.** Ez a parancs mások konfigurációs fájljaiba ír és feladatot vesz
 fel az ütemezőbe, ezért mindennek van próbája:
@@ -83,7 +84,9 @@ ott van a `PATH`-on. A klienst nem a te shelled indítja: egy dockból indított
 nincs bejelentkezési `PATH`-a, tehát amit a telepítő shellje megtalál, az semmit nem mond arról,
 hogy a kliens mit talál meg. Ha a csomag elmozdul, futtasd újra a `cam install`-t.
 
-**Ideiglenes csomagmappából a telepítő nem ír semmit.** Egy `npx github:...` futás az npm
+### Ideiglenes csomagmappából a telepítő nem ír semmit
+
+Egy `npx github:...` futás az npm
 gyorsítótárába csomagol ki (`_npx/<hash>`), és a saját `node_modules/.bin`-jét teszi a `PATH`-ra a
 futás idejére. Onnan mindkét lehetséges bejegyzés hazudik: az abszolút útvonal a gyorsítótár
 kitakarításáig él, a puszta `cam-mcp` pedig a folyamat kilépéséig. A parancs ezért felismeri ezt az
