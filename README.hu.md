@@ -1,92 +1,116 @@
-# centered-agent-memory (`cam`)
+<div align="center">
 
-Közös kontextus négy AI kódoló ágens között: **Claude Code**, **Claude Desktop / Cowork**, **Codex** és
-**Cursor**. Egyik sem látja a másik beszélgetéseit — a `cam` beolvassa mindegyik meglévő, lemezen lévő
-tárolóját, projekthez rendeli a sessionöket, és egyetlen adatbázis-lekérdezéssel megválaszolja, hogy *mi
-történt az X projekten*.
+<img src="docs/cam.svg" width="56" height="56" alt="cam">
 
-CLI-ként és MCP-szerverként is használható.
+# centered-agent-memory
 
-English: [`README.md`](README.md). A termék (CLI, MCP, skill) angolul beszél; a magyar docs
-a `docs/*.hu.md`.
+[![version](https://img.shields.io/github/v/release/arlinamid/centered-agent-memory?style=flat&label=version&color=8B7355&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/releases)
+[![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
+[![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
-## Alapelvek
+Egy index a gép minden AI kódoló eszközéről — Claude Code, Claude Desktop / Cowork, Codex, Cursor — projektenként. CLI és MCP, hogy bármelyik ágens megnézhesse, mit csináltak a többiek.
 
-**Nem duplikálunk.** Az index a beszélgetés *helyét* tárolja (fájl + bájt-offset, vagy SQLite-kulcs), nem a
-szövegét. A találatok szövegét lekérdezéskor olvassuk vissza a forrásból. Kivétel a múlandó anyag — az
-OS temp alatti scratchpad és a Cowork kimenetek —, amit a rendszer bármikor törölhet: ezek másolata a
-melléktermék-táblába (`artifacts`) kerül. A beszélgetés turnjei mindig hivatkozások, kivétel nélkül.
+[English](README.md) · [docs](docs/install.hu.md) · [English docs](docs/install.md)
 
-**Nem tippelünk.** Ha egy session projektje nem állapítható meg biztosan, `unattributed` marad. Minden
-hozzárendelés mellett ott van, milyen jel alapján született és milyen megbízhatósággal.
+<img src="docs/cam-rule.svg" width="220" height="12" alt="">
 
-**Nem írunk a forrásokba.** Minden forrás read-only módon nyílik; a `cam` sosem módosítja egyik ágens
-tárolóját sem.
+</div>
 
-**Semmi nem hagyja el a gépet.** A mag nem hálózik, telemetria nincs. Egyetlen opcionális parancs hív
-modellt — a `cam memory dream` —, az is csak akkor, ha beállítasz neki egyet, és küldés előtt kiírja,
-mi menne ki.
+```
+$ cam dossier demo
 
-**Gyors ott, ahol számít.** A változatlan források egyetlen `stat` hívással kiesnek: mind a hét
-kollektor ellenőrző köre ~330 ms a referenciagépen (1 643 session, 32 054 turn). Egy ismételt `cam
-sync` végig ~4,6 s, aminek a nagyobbik fele a hozzárendelés újraszámolása (lásd a
-[CHANGELOG](CHANGELOG.md) méréseit). A lekérdezések ettől függetlenül gyorsak: a `cam recall` 55 ms,
-a `cam dossier` 8 ms.
+# demo  (D:/work/demo)
 
-**Megmondja, milyen régi.** Minden MCP-válasz utolsó sora az index kora, hogy egy ágens ne idézhessen
-hathetes választ frissként. A felügyelet nélküli üzem — ütemezés, frissesség, megőrzés, mentés —
-külön leírásban: [`docs/operations.hu.md`](docs/operations.hu.md).
+47 session · 1820 turn · 6 subagent thread(s)
+
+## Tools
+  cursor             22 session    980 turn  2026-03-02 → 2026-08-28
+  claude_code        14 session    610 turn  2026-04-11 → 2026-08-27
+  codex              11 session    230 turn  2026-05-01 → 2026-08-20
+
+## Attribution
+  strong:38  medium:7  none:2
+
+## Recent topics
+  2026-08-28  cursor         Docker port 80
+  2026-08-27  claude_code    recall ranking
+
+$ cam recall "docker port"
+
+2026-06-07 14:22  cursor  demo  · Docker port
+  You moved the Docker port from 3000 to 80
+  cursor:9f2a1c…#seq12-18
+
+1 hit(s). Marks: ~ medium, ? weak, ?? unattributed project.
+```
+
+A termék (CLI, MCP, skill) angolul beszél. A fenti kimenet szándékosan az igazi.
+
+Referenciagép: **1 643** session, **32 054** turn — kollektor-ellenőrzés ~**330 ms**, `cam recall` **55 ms**, `cam dossier` **8 ms**, ismételt `cam sync` ~**4,6 s**.
+
+```mermaid
+flowchart LR
+  A[Claude Code] --> H[(hub.sqlite)]
+  B[Codex] --> H
+  C[Cursor] --> H
+  D[Desktop / Cowork] --> H
+  H --> CLI
+  H --> MCP
+```
+
+Az index **hivatkozásokat** tárol, nem másolatot. A források read-onlyak. Semmi nem hagyja el a gépet.
+
+| Szabály | Mit jelent |
+|---|---|
+| Hivatkozás, nem másolat | Egy turn: fájl + bájt-offset, vagy SQLite-kulcs. A szöveget lekérdezéskor olvassuk vissza. Kivétel a múlandó scratchpad (`artifacts`). |
+| Nem tippelünk | Ismeretlen projekt `unattributed` marad. Minden találat megnevezi a jelet és a megbízhatóságot (`strong` / `medium` / `weak` / `none`). |
+| A forrás read-only | Szerkezeti: `openSourceReadonly`. A `cam` sosem ír másik ágens tárolójába. |
+| Semmi nem hagyja el a gépet | Nincs hálózat, nincs telemetria. A `cam memory dream` opt-in, előbb kiírja, mit küldene, és semmi más nem hívja. |
+| Megmondja, milyen régi | Minden MCP-válasz az index korával végződik. A `STALE` azt jelenti: ne idézd frissként. |
+
+---
 
 ## Telepítés
 
-Node 24 vagy újabb kell — ez az aktív LTS. A csomag nincs fent az npm registryn, ezért checkoutból
-telepíts:
+> [!IMPORTANT]
+> Node **24+** (aktív LTS). Nincs fent az npm registryn — checkoutból, aztán a tarballból.
 
 ```bash
 git clone https://github.com/arlinamid/centered-agent-memory.git
 cd centered-agent-memory
-npm ci --ignore-scripts                       # a prepare script lefordítja
-npm pack                                      # önálló másolat
+npm ci --ignore-scripts
+npm pack
 npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
-cam install                                   # bekötés az ágens-eszközökbe
+cam install --dry-run          # a terv
+cam install                    # MCP, skill, ütemezés
 ```
 
-A tarball nem formaság: az `npm link` és az `npm install -g .` is a checkoutra **linkel**, nem
-másol — a checkout elmozdítása vagy törlése így az imént bekötett klienseket vinné magával.
-Tarballból telepítve a checkout eldobható.
+A `cam install` beköti a szervert minden megtalált ágens-eszközbe, melléteszi a skillt, ad az álom fázisnak modellt a gépen már meglévő CLI-k közül, és beállítja az óránkénti frissítést. Kikapcsolók: [`docs/install.hu.md`](docs/install.hu.md).
 
-Az `--ignore-scripts` sem az: **ebben a függőségi fában egyetlen telepítő szkriptre sincs
-szükség.** Az SQLite-kötés minden támogatott platformra hoz előre fordított binárist, az npm
-mégis lefuttatná rá a beépített `node-gyp rebuild`-et — ami Windowson Visual Studiót keres, hogy
-aztán egy üres projektet állítson elő. Fordító nélküli gépen ez elbukik, pedig fordítani nem
-kellett volna semmit.
-
-A `cam install` beköti a szervert minden megtalált ágens-eszközbe (Claude Code, Claude Desktop,
-Codex, Cursor), melléteszi a használati utasítást, ad az álom fázisnak modellt a gépen már meglévő
-ágens-CLI-k közül, és beállítja az óránkénti frissítést. Előbb nézd meg, mit csinálna: `--dry-run`.
-Részletek és kikapcsolók: [`docs/install.hu.md`](docs/install.hu.md).
-
-A Claude Code (és a Claude Code Desktop, ami ugyanazt a mappát olvassa) skilljét külön is
-fel lehet tenni:
+A Claude Code (és a Claude Code Desktop, ugyanaz a mappa) skilljét külön is fel lehet tenni:
 
 ```bash
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-**`npx`-ből nem telepíthető, szándékosan.** Az `npx` az npm gyorsítótárába csomagol ki, amit az npm
-később kitakarít — az onnan beírt bekötés némán elromlana. A telepítő ezt felismeri, nem ír semmit,
-és `npm i -g`-t javasol. Egyszeri lekérdezésre az `npx` jó (az index a felhasználói adatmappában
-van, tehát megmarad), bekötésre nem.
+> [!WARNING]
+> **A szervert ne `npx`-ből kösd be.** A gyorsítótárat később kitakarítják, a bekötés némán meghal. A telepítő ezt felismeri, nem ír semmit, és `npm i -g`-t javasol. Egyszeri lekérdezésre az `npx` jó — az index a felhasználói adatmappában van.
 
-Az index a felhasználói adatmappába kerül — Windowson
-`%LOCALAPPDATA%\centered-agent-memory\hub.sqlite`, máshol
-`$XDG_DATA_HOME/centered-agent-memory/hub.sqlite` (vagy `~/.local/share/...`) —, tehát a globális
-telepítés és az ismételt `npx` hívások ugyanazt az indexet látják. Az a checkout, amelyikben már van
-`.data/hub.sqlite`, azt használja tovább. Hogy éppen mi az érvényes útvonal, a `cam doctor` kiírja.
+<details>
+<summary>Miért tarball, és miért <code>--ignore-scripts</code></summary>
 
-Felülírás: `--db <útvonal>` kapcsoló, `CAM_DB` környezeti változó, vagy konfigurációs fájl
-(`%APPDATA%\centered-agent-memory\config.json`, illetve
-`$XDG_CONFIG_HOME/centered-agent-memory/config.json`; a helyét a `CAM_CONFIG` mozgatja):
+Az `npm link` és az `npm install -g .` is a checkoutra **linkel**. A checkout elmozdítása vagy törlése az imént bekötött klienseket viszi magával. A tarball önálló másolat.
+
+Ebben a függőségi fában egyetlen telepítő szkriptre sincs szükség. Az SQLite-kötés hoz prebuildet, az npm mégis lefuttatná a `node-gyp rebuild`-et — ami Windowson Visual Studiót keres egy üres projekthez. Az `--ignore-scripts` azt a fordítót ugorja át, ami nem kell.
+
+</details>
+
+<details>
+<summary>Hol van az index, és hogyan mozgatod</summary>
+
+Windowson `%LOCALAPPDATA%\centered-agent-memory\hub.sqlite`, máshol `$XDG_DATA_HOME/centered-agent-memory/hub.sqlite` (vagy `~/.local/share/...`). A checkout, amelyikben már van `.data/hub.sqlite`, azt használja. A `cam doctor` kiírja az érvényes útvonalakat.
+
+Felülírás: `--db <útvonal>`, `CAM_DB`, vagy a konfig (`%APPDATA%\centered-agent-memory\config.json` / `$XDG_CONFIG_HOME/centered-agent-memory/config.json`, `CAM_CONFIG` mozgatja):
 
 ```json
 {
@@ -95,98 +119,46 @@ Felülírás: `--db <útvonal>` kapcsoló, `CAM_DB` környezeti változó, vagy 
 }
 ```
 
-A `roots` alatt mind a tíz tárolóhely felülírható. További környezeti változók: `CAM_HOME` a
-profilkönyvtárat írja felül (a források innen oldódnak fel), a `CAM_CASE_FOLD=1|0` pedig azt, hogy az
-útvonalak kisbetűsen tárolódnak-e — alapból Windowson és macOS-en igen, Linuxon nem.
+A `roots` alatt mind a tíz tárolóhely felülírható.
 
-## Használat
+</details>
 
-```bash
-cam sync                       # források beolvasása (inkrementális)
-cam sync --repair              # teljes újraolvasás
-cam projects [--unattributed]  # projektek, vagy a be nem sorolt sessionök
-cam timeline <projekt>         # idővonal minden eszközből
-cam dossier <projekt>          # a projekt teljes képe
-cam recall "<kérdés>"          # keresés a beszélgetésekben
-cam get <tool:id[#seqN-M]>     # egy hivatkozás mögötti teljes szöveg
-cam alias <mappa> <projekt>    # két mappa összevonása egy projektté
-cam attribute <tool:id> <proj> # kézi hozzárendelés
-cam reattribute                # újraszámolás tároló-olvasás nélkül
-cam rebuild                    # szövegindex újraépítése a forrásokból
-cam memory <alparancs>         # hosszú távú memória (lásd lent)
-cam status                     # mikor szinkronizált utoljára az index
-cam doctor                     # állapotjelentés
-cam prune [--vacuum]           # megőrzés: régi nyom, futásnapló, eltűnt forrás
-cam forget --project <p>       # egy projekt vagy session elfelejtése
-cam backup [<fájl>]            # ellenőrzött másolat az indexről
-cam install [--dry-run]        # bekötés az ágens-eszközökbe; cam uninstall visszavonja
-```
+---
 
-Közös kapcsolók: `--json`, `--since` / `--until`, `--tool <eszköz>`, `--subagents`, `--include-weak`,
-`--limit N`, `--db <útvonal>`, `--quiet`, `--verbose`. A `cam sync` szűkíthető egy forrásra:
-`--tool claude_code`.
-
-Kilépési kód: `0` rendben, `1` hiba (a `cam sync` így jelzi az olvashatatlan forrást egy ütemezett
-futásnak is), `2` hibás használat. Két egyidejű `cam sync` közül a második kilép, nem ront bele az
-elsőbe.
-
-A `--quiet` azt jelenti, hogy a parancs hiba esetén beszél, egyébként hallgat — ez kell egy ütemezett
-futáshoz. A parancs *válaszát* sosem nyeli el: a `cam recall --json --quiet` kiírja a JSON-t.
-
-Ha az adatbázis megsérül, a `cam doctor` megmondja, mi baja. A `cam rebuild` a **szövegindexet** építi
-újra a forrásokból — erre a `cam sync --repair` nem képes, mert az csak azt olvassa újra, amit még nem
-indexelt, a contentless FTS-index pedig nem építhető újra magából az adatbázisból.
-
-MCP-szerverként: `cam-mcp` — lásd [`docs/mcp.hu.md`](docs/mcp.hu.md). A bekötést a `cam install` intézi,
-lásd [`docs/install.hu.md`](docs/install.hu.md).
-
-Fejlesztés közben build nélkül: `npm run dev -- sync`.
-
-## Felügyelet nélkül
+## Gyors indítás
 
 ```bash
-cam sync --quiet                # óránként
-cam memory consolidate --quiet  # naponta
-cam prune --quiet               # naponta
+cam sync                       # inkrementális beolvasás
+cam projects                   # amit az index ismer
+cam dossier <projekt>          # egy projekt, minden eszköz
+cam recall "ahogy megbeszéltük" # teljes szöveg; ékezetre érzéketlen
+cam get cursor:9f2a…#seq12-18  # a recall által adott hivatkozás
 ```
 
-Ezt a hármat a `cam install` beállítja magától; ez a szakasz azt írja le, mit.
+Közös kapcsolók: `--json`, `--since` / `--until`, `--tool <eszköz>`, `--subagents`, `--include-weak`, `--limit N`, `--db <útvonal>`, `--quiet`, `--verbose`. Kilépés `0` / `1` / `2` = rendben / hiba / használat. Két `cam sync` közül a második kilép.
 
-Ütemezési minta Task Schedulerre, launchd-re, systemd timerre és cronra, a megőrzési beállítások, a
-mentés és a visszaállítás, és hogy mit tegyél, ha a `cam doctor` panaszkodik:
-[`docs/operations.hu.md`](docs/operations.hu.md).
+A `--quiet` csak hibánál beszél. A választ sosem nyeli el: a `cam recall --json --quiet` kiírja a JSON-t.
 
-A megőrzés a régi keresési nyomot, a fölös futásnaplót és — csak ha kéred — az eltűnt forrású
-sessionöket viszi. Egy szabály felülír mindent: **élő promóció bizonyítéka nem törölhető**, mert egy
-promotált emléknek meg kell tudnia mutatni, milyen kérdésekre jött elő.
+---
 
-A `cam forget` az **indexből** töröl, nem a történelemből: a beszélgetések fájljai máséi, azokhoz nem
-nyúlunk, tehát egy következő `cam sync` újraindexeli őket, ha még megvannak.
-
-## Memória
-
-A hub abból is tanul, amit keresel — modell nélkül. Egy emlék nem attól lesz hosszú távú, hogy
-fontosnak látszik, hanem attól, hogy **többször, több napon, többféle kérdésre** előjött. Minden
-keresés nyomot hagy; a konszolidáció összehajtja a nyomot, kiszedi a visszatérő szavakat, és
-promotálja, ami átmegy a kapukon (legalább 3 előhívás, legalább 3 különböző kérdés, 0,8 pontszám).
+## MCP
 
 ```bash
-cam memory consolidate         # a nyomból promóció
-cam memory list                # a promotált emlékek
-cam memory show <id>           # egy emlék a bizonyítékával
-cam memory topics              # visszatérő témák
-cam memory status              # mennyi nyom gyűlt eddig
-cam memory dream [--dry-run]   # opcionális: egy mondat emlékenként, modelltől
+cam install                    # bekötés minden kliensbe
+cam-mcp                        # vagy kézzel: stdio, JSON-RPC a stdout-on
 ```
 
-Determinisztikus és offline: ugyanabból az adatbázisból kétszer futtatva ugyanaz jön ki. A promotált
-emlék sem tárol szöveget — chunk-hivatkozás, olvasáskor rehidratálva. Részletek:
-[`docs/memory.hu.md`](docs/memory.hu.md).
+Hét csak-olvasó tool: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Bekötés: [`docs/mcp.hu.md`](docs/mcp.hu.md).
 
-Egy lépés opcionálisan mégis modellt használ: a `cam memory dream` egy beállított paranccsal írat egy
-mondatot minden promotált részletről. Alapból ki van kapcsolva, a `consolidate` sosem hívja, kiírja
-mi menne ki *mielőtt* kimegy, és a generált mondatot mindig a modell nevével együtt mutatja. A
-`--dry-run` megmutatja a pontos promptot, és nem küld sehova semmit.
+Minden válasz — a hibás is — az index korával végződik:
+
+```
+— index: 2026-08-29 17:37 UTC (1 min ago) · 1643 session · 32054 turn
+```
+
+24 óra után (`staleAfterHours`) a sor azt írja: `STALE, run: cam sync`, és a szerver utasítása megmondja az ágensnek, hogy ezt jelentse, ne idézze a régit frissként. A lábléc a tool-regisztrációba van kötve, későbbi tool sem hagyhatja ki.
+
+---
 
 ## Mit olvas be
 
@@ -199,27 +171,99 @@ mi menne ki *mielőtt* kimegy, és a generált mondatot mindig a modell nevével
 | Claude Desktop | `<appdata>/Claude/claude-code-sessions/**` | index + cím |
 | Cursor előzmények | `<appdata>/Cursor/User/History/*/entries.json` | idő-korreláció bemenete |
 
-Részletek, formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md).
-Felépítés és séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
+Formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md). Séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
 
-## Fejlesztés
+---
+
+## Memória
+
+Egy emlék attól lesz hosszú távú, hogy **többször, több napon, többféle kérdésre** előjött — nem attól, hogy fontosnak látszik. Modell nem kell. Kapuk: ≥ 3 előhívás, ≥ 3 különböző kérdés, pontszám ≥ 0,8.
 
 ```bash
-npm test          # vitest, valódi tárolót egyetlen teszt sem olvas
+cam memory consolidate         # a nyomból promóció
+cam memory list                # a promotált emlékek
+cam memory show <id>           # egy emlék a bizonyítékával
+cam memory dream [--dry-run]   # opcionális mondat, beállított modelltől
+```
+
+Ugyanaz az adatbázis, ugyanaz a promóció. A promotált emlék sem tárol szöveget — chunk-hivatkozás. Részletek: [`docs/memory.hu.md`](docs/memory.hu.md).
+
+A `cam memory dream` alapból ki van kapcsolva, a `consolidate` sosem hívja, kiírja, mi menne ki *mielőtt* kimegy, és a generált mondatot a modell nevével címkézi.
+
+---
+
+## Felügyelet nélkül
+
+Ezt a hármat a `cam install` állítja be. Task Scheduler, launchd, systemd, cron: [`docs/operations.hu.md`](docs/operations.hu.md).
+
+```bash
+cam sync --quiet                # óránként
+cam memory consolidate --quiet  # naponta
+cam prune --quiet               # naponta
+```
+
+A megőrzés a régi keresési nyomot, a fölös futásnaplót és — csak ha kéred — az eltűnt forrású sessionöket viszi. **Élő promóció bizonyítéka nem törölhető.**
+
+A `cam forget` az *indexből* töröl, nem a történelemből. A beszélgetésfájlokhoz nem nyúl; a következő sync újraindexeli őket, ha még megvannak.
+
+---
+
+<details>
+<summary>Parancsjegyzék</summary>
+
+```bash
+cam sync [--repair] [--tool t] # források (inkrementális, vagy teljes)
+cam projects [--unattributed]  # projektek, vagy a be nem sorolt sessionök
+cam timeline <projekt>         # minden eszköz, időrendben
+cam dossier <projekt>          # egy projekt teljes képe
+cam recall "<kérdés>"          # teljes szövegű keresés
+cam get <tool:id[#seqN-M]>     # hivatkozás mögötti szöveg
+cam alias <mappa> <projekt>    # két mappa egy projektté
+cam attribute <tool:id> <proj> # kézi hozzárendelés
+cam reattribute                # újraszámolás tároló-olvasás nélkül
+cam rebuild                    # szövegindex a forrásokból
+cam memory <alparancs>         # hosszú távú memória
+cam status                     # utolsó szinkron, tartalom
+cam doctor                     # állapotjelentés
+cam prune [--vacuum]           # megőrzés
+cam forget --project <p>       # egy projekt vagy session
+cam backup [<fájl>]            # ellenőrzött másolat
+cam install [--dry-run]        # bekötés; cam uninstall visszavonja
+```
+
+Ha az adatbázis megsérül, a `cam doctor` megmondja, mi baja. A `cam rebuild` a **szövegindexet** építi újra a forrásokból — erre a `cam sync --repair` nem képes, mert a contentless FTS nem építhető újra magából az adatbázisból.
+
+</details>
+
+<details>
+<summary>Mit tart az adatbázis</summary>
+
+Hivatkozásokat, contentless FTS-indexet (invertált index, szöveg nélkül), metaadatot (cím, időbélyeg, munkakönyvtár), projekt-bizonyítékot (fájlútvonalak), a múlandó melléktermékek másolatát, és — mert a promóciónak meg kell mutatnia, milyen kérdések hozták elő — **a saját kereséseid szövegét** (`logQuery: false` csak a hasht tartja).
+
+A beszélgetések szövegét **nem**. Semmi nem megy sehova. A `hub.sqlite` törlése az indexet viszi, a forrást nem.
+
+</details>
+
+---
+
+## Docs
+
+| | Magyar | English |
+|---|---|---|
+| Telepítés | [`docs/install.hu.md`](docs/install.hu.md) | [`docs/install.md`](docs/install.md) |
+| MCP | [`docs/mcp.hu.md`](docs/mcp.hu.md) | [`docs/mcp.md`](docs/mcp.md) |
+| Üzemeltetés | [`docs/operations.hu.md`](docs/operations.hu.md) | [`docs/operations.md`](docs/operations.md) |
+| Memória | [`docs/memory.hu.md`](docs/memory.hu.md) | [`docs/memory.md`](docs/memory.md) |
+| Források | [`docs/sources.hu.md`](docs/sources.hu.md) | [`docs/sources.md`](docs/sources.md) |
+| Felépítés | [`docs/architecture.hu.md`](docs/architecture.hu.md) | [`docs/architecture.md`](docs/architecture.md) |
+| Terv | [`docs/roadmap.hu.md`](docs/roadmap.hu.md) | [`docs/roadmap.md`](docs/roadmap.md) |
+| Changelog | | [`CHANGELOG.md`](CHANGELOG.md) |
+
+```bash
+npm test          # vitest; valódi tárolót egy teszt sem olvas
 npx tsc --noEmit  # típusellenőrzés
 ```
 
-A tesztek fixtúrákat építenek futásidőben (Cursor `state.vscdb`, Codex `state_5.sqlite`) a valódi DDL-lel,
-így a fixtúra nem tud elsodródni az olvasó kódtól.
+A tesztek a Cursor / Codex fixtúrákat futásidőben építik a valódi DDL-lel. Az útvonal-hajtás rögzített (`CAM_CASE_FOLD`); a CI Windowson, macOS-en és Linuxon fut.
 
-## Állapot és terv
-
-Ami elkészült: [`CHANGELOG.md`](CHANGELOG.md).
-Mit kell még tartalmaznia a projektnek, milyen sorrendben, és mit nem csinálunk:
-[`docs/roadmap.hu.md`](docs/roadmap.hu.md).
-
-A tesztek Windowson, macOS-en és Linuxon ugyanazt állítják: az útvonal-hajtás a `CAM_CASE_FOLD`
-kapcsolóval van rögzítve a `vitest.config.ts`-ben, a CI mindhárom platformon lefut
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-
-MIT licenc — lásd [`LICENSE`](LICENSE).
+MIT — [`LICENSE`](LICENSE).

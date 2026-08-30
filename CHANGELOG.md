@@ -18,6 +18,11 @@ Hungarian. A user who does not speak Hungarian would hit those first.
   Installing, wiring and querying no longer requires translating the product first.
 - **`README.hu.md` and `docs/*.hu.md` remain the Hungarian pair.** The English `README.md` and
   `docs/*.md` are the default; the `.hu.md` files stay for readers who want them.
+- **The README is a screening surface, not an essay.** First screen: one sentence, a real
+  `cam dossier` / `cam recall` transcript, the measured numbers, a mermaid of the four
+  sources into one index. Install is six copy-paste lines; the tarball / `npx` / config
+  caveats sit in `<details>` and GitHub alerts. The command dump and the privacy inventory
+  fold away. Same skeleton in `README.hu.md`.
 - **Search still matches Hungarian corpus text.** Accent folding, Hungarian stopwords, keywords
   like `projekt` / `kód` / `fájl`, and relative dates like `tegnapelőtt` are unchanged. The corpus
   is what people actually said.
