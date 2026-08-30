@@ -38,7 +38,8 @@ külön leírásban: [`docs/operations.md`](docs/operations.md).
 
 ## Telepítés
 
-Node 22 vagy újabb kell. A csomag nincs fent az npm registryn, ezért checkoutból telepíts:
+Node 24 vagy újabb kell — ez az aktív LTS. A csomag nincs fent az npm registryn, ezért checkoutból
+telepíts:
 
 ```bash
 git clone https://github.com/arlinamid/centered-agent-memory.git

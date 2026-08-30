@@ -4,6 +4,36 @@ Formátum: [Keep a Changelog](https://keepachangelog.com/), verziózás: [SemVer
 
 ## [Nem kiadott]
 
+> **Törő változás:** a támogatott Node-küszöb 22-ről **24-re** emelkedett. Aki Node 22-n futtatja,
+> annak frissítenie kell, mielőtt a következő kiadásra vált.
+
+### Node 24 a küszöb, és a CI végre nem EOL futtatókörnyezeten indul
+
+**Miből jött:** a CI minden jobja figyelmeztetett, hogy az actionök Node 20-at céloznak. Kiderült,
+hogy nem egy majort maradtunk le, hanem hármat.
+
+- **`actions/checkout` és `actions/setup-node` v4 → v7.** A v4 futtatókörnyezete Node 20, ami 2026
+  áprilisa óta EOL, és a GitHub már kényszerítve futtatta 24-en. A köztes majorok törései nem
+  érintenek minket: a v5 hozta a node24-et és az automatikus csomagkezelő-gyorsítótárat (mi
+  expliciten `cache: npm`-et adunk meg, tehát nálunk no-op), a v6 ezt npm-re szűkítette, a v7 pedig
+  ESM-re váltott és a fork-PR checkoutot tiltja `pull_request_target`/`workflow_run` eseménynél —
+  a CI sima `pull_request`-re fut.
+- **Tesztmátrix 22+24 → 24+26.** A Node 26 május óta Current, és október 28-án lesz Active LTS. A
+  következő LTS tesztelése, amíg még Current, pontosan az a lépés, ami a `better-sqlite3` Node
+  24-es összeomlását hetekkel korábban elkapta volna — az a hiba azért ért váratlanul, mert olyan
+  futtatókörnyezeten jelentkezett, amit helyben nem tudtam futtatni.
+- **A telepítési job is mindkét majoron fut, három OS-en.** Ez nem szimmetria kedvéért: az egyetlen
+  hiba, ami valaha eljutott eddig a jobig, egy natív binding volt, ami az egyik Node-majoron
+  rendben települt, a következőn viszont `SIGABRT`-tel elszállt. Ez telepítéskori hiba, tehát itt
+  kell mindkét majort végigfuttatni.
+- **`engines.node` `>=22` → `>=24`, `@types/node` `^22` → `^24`.** A kettő szándékosan mozog együtt:
+  a típusok a **legalacsonyabb** támogatott futtatókörnyezethez vannak kötve, mert épp ez
+  akadályozza meg, hogy olyan API-t fordítsunk bele, ami a saját `engines` mezőnk szerint támogatott
+  gépen nem létezik. Ha a típusok előreszaladnának a küszöbhöz képest, a fordító némán átengedné.
+- **Amit a küszöb nem old meg.** A `>=24` egy páratlan, EOL kiadást (pl. 25.x) is kielégít, tehát az
+  npm nem szól érte. A küszöb alsó korlát, nem házirend: „támogatott LTS-en fusson" nem fejezhető ki
+  egy `engines` mezőben.
+
 ### Az olvashatatlan tároló nem ugyanaz, mint a hiányzó
 
 **Miből jött:** a kérdés az volt, hogy eltörhet-e az MCP, ha valamelyik forrás-eszköz nincs

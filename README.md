@@ -34,7 +34,8 @@ in [`docs/operations.md`](docs/operations.md) (Hungarian).
 
 ## Install
 
-Node 22 or newer is required. The package is not on the npm registry, so install it from a checkout:
+Node 24 or newer is required — the active LTS line. The package is not on the npm registry, so
+install it from a checkout:
 
 ```bash
 git clone https://github.com/arlinamid/centered-agent-memory.git
