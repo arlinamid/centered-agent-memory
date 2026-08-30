@@ -1,7 +1,8 @@
-# A négy forrás
+# The four sources
 
-Ez a fejezet azt írja le, amit méréssel derítettünk ki a tárolókról — beleértve azokat a
-buktatókat, amelyek ránézésre nem látszanak, és amelyekre mind van regressziós teszt.
+This chapter describes what measurement turned up about the stores — including
+the traps that are not visible at a glance, and for each of which there is a
+regression test.
 
 ## Claude Code
 
@@ -10,21 +11,25 @@ buktatókat, amelyek ránézésre nem látszanak, és amelyekre mind van regress
 ~/.claude/projects/<cwd-slug>/<sessionId>/subagents/<agentId>.jsonl
 ```
 
-JSONL, soronként egy rekord. A referenciagépen **13-féle** `type` fordul elő; ebből csak a `user` és az
-`assistant` beszélgetés.
+JSONL, one record per line. On the reference machine **13 kinds** of `type`
+occur; of these only `user` and `assistant` are conversation.
 
-- **A `message.content` lehet string vagy blokk-tömb.** A tömbből **csak** a `type: "text"` blokkok
-  indexelődnek. A `thinking` blokk több kilobájtnyi base64 `signature`-t hordoz, az `attachment` rekord
-  beillesztett tartalom — egyik sem beszélgetés. Fehérlista, nem feketelista: egy új rekordtípus így nem
-  szennyezi be némán az indexet.
-- **A `queue-operation` rekord a prompt szövegét tartalmazza,** mielőtt `user` rekord lenne belőle.
-  Mindkettő indexelése duplázna.
-- **Cím:** `ai-title` (generált) és `custom-title` (kézi). A kézi erősebb, a későbbi felülírja a korábbit.
-  Régebbi átiratokban egyik sincs — azok címét a Desktop-index adja.
-- **A mappanév-slug lossy**: `Documents/tervek/vázlatok` → `…-tervek-v-zlatok`. A projekt ezért
-  mindig a rekordbeli `cwd`-ből jön, soha a mappanévből.
-- **Az alügynök-átirat minden rekordjában a SZÜLŐ `sessionId`-je áll.** Az azonosítója csak a fájlnév
-  lehet, különben beleolvad a szülő sessionbe.
+- **`message.content` can be a string or a block array.** From the array
+  **only** the `type: "text"` blocks are indexed. A `thinking` block carries
+  several kilobytes of base64 `signature`, an `attachment` record is inserted
+  content — neither is conversation. A whitelist, not a blacklist: a new
+  record type thus does not silently pollute the index.
+- **The `queue-operation` record contains the prompt text** before it becomes
+  a `user` record. Indexing both would duplicate.
+- **Title:** `ai-title` (generated) and `custom-title` (manual). Manual wins,
+  a later one overwrites an earlier one. Older transcripts have neither —
+  their title comes from the Desktop index.
+- **The folder-name slug is lossy**: `Documents/tervek/vázlatok` →
+  `…-tervek-v-zlatok`. The project therefore always comes from the `cwd` in
+  the record, never from the folder name.
+- **Every record in a subagent transcript carries the PARENT's `sessionId`.**
+  Its identifier can only be the filename, otherwise it dissolves into the
+  parent session.
 
 ## Claude Desktop
 
@@ -32,101 +37,114 @@ JSONL, soronként egy rekord. A referenciagépen **13-féle** `type` fordul elő
 <appdata>/Claude/claude-code-sessions/<account>/<org>/local_*.json
 ```
 
-Csak **index**, átirat nélkül: `title`, `cwd`, `model`, `completedTurns`, `createdAt`, `lastActivityAt`
-és egy `cliSessionId`, ami a Claude Code átiratra mutat.
+**Index only**, no transcript: `title`, `cwd`, `model`, `completedTurns`,
+`createdAt`, `lastActivityAt`, and a `cliSessionId` that points at the Claude
+Code transcript.
 
-Ez az egyetlen hely, ahol a régebbi sessionöknek **emberi címük** van („Komplex workflow bemutató"),
-ezért a kollektor gazdagításként fut: meglévő címet sosem ír felül. Amelyik bejegyzéshez nincs helyi
-átirat, az `turn_count = 0` sorként kerül be — jobb, ha az idővonal azt mondja, hogy volt egy
-beszélgetés, mint hogy nyomtalanul eltűnjön.
+This is the only place older sessions have a **human title** ("Komplex
+workflow bemutató"), so the collector runs as enrichment: it never overwrites
+an existing title. An entry with no local transcript is inserted as a
+`turn_count = 0` row — better that the timeline says there was a conversation
+than that it vanish without a trace.
 
-Több fiók lehet, és az egyik „fiók" egy `skills-plugin` nevű álkönyvtár.
+There can be several accounts, and one "account" is a fake directory named
+`skills-plugin`.
 
 ## Cowork (Claude Desktop local agent mode)
 
 ```
 <appdata>/Claude/local-agent-mode-sessions/<account>/<org>/local_<sid>.json     meta
 <appdata>/Claude/local-agent-mode-sessions/<account>/<org>/local_<sid>/
-    .claude/projects/<vm-slug>/<cliSessionId>.jsonl                            átirat
-    outputs/                                                                   termékek
+    .claude/projects/<vm-slug>/<cliSessionId>.jsonl                            transcript
+    outputs/                                                                   products
 ```
 
-Az átirat formátuma **azonos** a Claude Code-éval, ezért ugyanaz a parser olvassa.
+The transcript format is **identical** to Claude Code's, so the same parser
+reads it.
 
-- **A `cwd` itt használhatatlan**: a sandboxon belüli generált név (`/sessions/happy-great-cray`). A
-  projekt a `userSelectedFolders`-ből jön — és egy Cowork session jogosan érinthet több projektet, ezért
-  mindegyik mappa bizonyítékként rögzül.
-- Az `outputs/` mappa kész termékeket tartalmaz (docx, pptx, kutatási jegyzet), amik sehol máshol nem
-  léteznek.
-- A sandbox VM image-ében (`vm_bundles/claudevm.bundle/sessiondata.vhdx`) **nincs** használható adat: a
-  session-mappák léteznek, de kiürítve; a beszélgetés a hoston van.
+- **`cwd` is useless here**: a generated name inside the sandbox
+  (`/sessions/happy-great-cray`). The project comes from
+  `userSelectedFolders` — and a Cowork session may legitimately touch several
+  projects, so each folder is recorded as evidence.
+- The `outputs/` folder holds finished products (docx, pptx, research note)
+  that exist nowhere else.
+- The sandbox VM image (`vm_bundles/claudevm.bundle/sessiondata.vhdx`) has
+  **no** usable data: the session folders exist, but emptied; the conversation
+  is on the host.
 
 ## Codex
 
 ```
 ~/.codex/state_5.sqlite          threads, thread_spawn_edges
-~/.codex/sessions/ÉV/HÓ/NAP/rollout-*.jsonl
+~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 ```
 
-A `threads` tábla adja az indexet, a rollout fájl a szöveget.
+The `threads` table is the index, the rollout file is the text.
 
-- **A `created_at` és `updated_at` MÁSODPERCBEN van**, minden más forrás ezredmásodpercben.
-  Konverzió nélkül minden Codex-session 1970-be esne.
-- **A `title` a sorok többségénél nem cím**, hanem beágyazott prompt (a referenciagépen 917-ből 739 hosszabb
-  200 karakternél). Hosszkapu kell, és visszaesés az első user-üzenet első sorára.
-- **A `session_meta.payload.id` a szál azonosítója; a `session_id` alügynöknél a SZÜLŐÉ.** Rossz
-  mezőre join-olva minden alügynök a szülőhöz kerül.
-- A `cwd` a `threads` táblában `\\?\` prefixszel jön, a `session_meta`-ban anélkül.
-- A `source` mező vagy literál (`exec`, `vscode`), vagy JSON alügynök-leíró (`parent_thread_id`,
-  `agent_role`, `agent_nickname`).
-- **A `response_item` rekordok kihagyva**: duplikálják az `event_msg` tartalmát, és `developer` szerepű
-  engedély-boilerplate-et hoznak.
-- A `projects` és `project_roots` tábla létezik, de üres — nem lehet belőle projektlistát bootstrapelni.
+- **`created_at` and `updated_at` are in SECONDS**, every other source in
+  milliseconds. Without conversion every Codex session would fall in 1970.
+- **`title` is not a title on most rows**, but an embedded prompt (on the
+  reference machine 739 of 917 are longer than 200 characters). A length gate
+  is needed, and a fallback to the first line of the first user message.
+- **`session_meta.payload.id` is the thread identifier; `session_id` on a
+  subagent is the PARENT's.** Joining on the wrong field puts every subagent
+  with the parent.
+- `cwd` arrives in the `threads` table with a `\\?\` prefix, in
+  `session_meta` without.
+- The `source` field is either a literal (`exec`, `vscode`) or a JSON
+  subagent descriptor (`parent_thread_id`, `agent_role`, `agent_nickname`).
+- **`response_item` records are skipped**: they duplicate `event_msg`
+  content and bring `developer`-role permission boilerplate.
+- The `projects` and `project_roots` tables exist but are empty — a project
+  list cannot be bootstrapped from them.
 
 ## Cursor
 
 ```
-<appdata>/Cursor/User/globalStorage/state.vscdb     (a referenciagépen 7,6 GB)
+<appdata>/Cursor/User/globalStorage/state.vscdb     (7.6 GB on the reference machine)
 <appdata>/Cursor/User/History/<hash>/entries.json
 ```
 
-Egy SQLite, `ItemTable` és `cursorDiskKV` táblákkal.
+One SQLite, with `ItemTable` and `cursorDiskKV` tables.
 
-| kulcs | tartalom |
+| key | contents |
 |---|---|
-| `ItemTable['composer.composerHeaders']` | a beszélgetéslista: `composerId`, `name`, `createdAt`, `lastUpdatedAt` |
-| `composerData:<cid>` | `fullConversationHeadersOnly` — rendezett bubble-lista, `type` 1=user, 2=assistant |
-| `bubbleId:<cid>:<bid>` | az üzenet (`text`) |
-| `ofsContent:<cid>:<uri>` | **a kulcs hordozza a nyitott fájl URI-ját**; az érték egész fájltartalom |
-| `messageRequestContext:<cid>:<bid>` | kérés-kontextus |
+| `ItemTable['composer.composerHeaders']` | the conversation list: `composerId`, `name`, `createdAt`, `lastUpdatedAt` |
+| `composerData:<cid>` | `fullConversationHeadersOnly` — ordered bubble list, `type` 1=user, 2=assistant |
+| `bubbleId:<cid>:<bid>` | the message (`text`) |
+| `ofsContent:<cid>:<uri>` | **the key carries the open file's URI**; the value is the whole file contents |
+| `messageRequestContext:<cid>:<bid>` | request context |
 
-**A `LIKE 'prefix%'` teljes indexszkenre esik vissza.** A `key` UNIQUE, tehát van BINARY indexe, de a
-SQLite csak `case_sensitive_like=ON` mellett alakítja a `LIKE`-ot tartomány-kereséssé. Élő méréssel,
-ugyanazon a composeren:
+**`LIKE 'prefix%'` falls back to a full index scan.** `key` is UNIQUE, so it
+has a BINARY index, but SQLite only turns `LIKE` into a range search when
+`case_sensitive_like=ON`. Live measurement, on the same composer:
 
 ```
-LIKE  'bubbleId:<cid>:%'                       100,4 ms   SCAN
-key >= 'bubbleId:<cid>:' AND key < 'bubbleId:<cid>;'   0,0 ms   SEARCH
+LIKE  'bubbleId:<cid>:%'                       100.4 ms   SCAN
+key >= 'bubbleId:<cid>:' AND key < 'bubbleId:<cid>;'   0.0 ms   SEARCH
 ```
 
-Van rá őrszem-teszt, ami `EXPLAIN QUERY PLAN`-nel megköveteli a `SEARCH`-öt.
+There is a sentinel test that requires `SEARCH` via `EXPLAIN QUERY PLAN`.
 
-További tudnivalók:
+Further notes:
 
-- **A beszélgetéseknek nincs munkakönyvtáruk.** A projekt fájlútvonalakból jön: `ofsContent` kulcsokból
-  (erős), a bubble-tartalmakból (erős), végül a fájltörténet idő-korrelációjából (közepes/gyenge).
-- **Sok beszélgetésnek nincs `lastUpdatedAt`-je** (háttér- és cloud-agent szálak). Ezekre a
-  `composerData` sha256-ja a változásjel — de csak ezekre, mert egy bubble szerkesztése nem érinti a
-  `composerData`-t.
-- Egyes beszélgetéseknek `composerData` soruk sincs; ezek üres sessionként kerülnek be.
-- **A bubble-ök nem hordoznak időbélyeget.** A hub nem talál ki egyet turnönként, hanem a chunk
-  időbélyege a session kezdetére esik vissza.
-- A `.backup` fájlt (a referenciagépen 4,1 GB) sosem nyitjuk meg.
-- Az `ofsContent` kulcs URI-ja percent-kódolt: `decodeURIComponent` nélkül a `d%3a` elbukik a
-  betűjel-ellenőrzésen.
+- **Conversations have no working directory.** The project comes from file
+  paths: `ofsContent` keys (strong), bubble contents (strong), finally file
+  history time correlation (medium/weak).
+- **Many conversations have no `lastUpdatedAt`** (background and cloud-agent
+  threads). For these the sha256 of `composerData` is the change signal —
+  but only for these, because editing a bubble does not touch `composerData`.
+- Some conversations have no `composerData` row either; these are inserted as
+  empty sessions.
+- **Bubbles carry no timestamp.** The hub does not invent one per turn; the
+  chunk timestamp falls back to the session start.
+- The `.backup` file (4.1 GB on the reference machine) is never opened.
+- The URI in an `ofsContent` key is percent-encoded: without
+  `decodeURIComponent` the `d%3a` fails the drive-letter check.
 
-### Cursor fájltörténet
+### Cursor file history
 
-`User/History/<hash>/entries.json` — a `resource` a szerkesztett fájl abszolút URI-ja, az `entries[]`
-pedig a mentések időbélyegei. A referenciagépen 6076 mappa, 34 567 esemény. Ez az egyetlen jel azokhoz a
-Cursor-szálakhoz, amelyek egyetlen útvonalat sem említenek.
+`User/History/<hash>/entries.json` — `resource` is the absolute URI of the
+edited file, `entries[]` the save timestamps. On the reference machine 6,076
+folders, 34,567 events. This is the only signal for those Cursor threads that
+mention no path at all.

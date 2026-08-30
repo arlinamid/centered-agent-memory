@@ -48,16 +48,16 @@ export function checkPortability(db: Db): Portability {
 
   const caseFold = stamp === "1";
   const mismatch = caseFold !== CASE_INSENSITIVE_FS;
-  const spelling = (fold: boolean): string => (fold ? "kisbetűsítve" : "betűhelyesen");
+  const spelling = (fold: boolean): string => (fold ? "folded to lowercase" : "case-sensitive");
   return {
     stamped: true,
     wroteOn,
     caseFold,
     mismatch,
     message: mismatch
-      ? `az index ${wroteOn ?? "másik rendszeren"} készült, ahol az útvonalak ${spelling(caseFold)} vannak tárolva, ` +
-        `itt viszont ${spelling(CASE_INSENSITIVE_FS)} keresnénk — a projekt-hozzárendelés némán üres maradna. ` +
-        `Állítsd be: CAM_CASE_FOLD=${stamp}`
+      ? `the index was written ${wroteOn ? `on ${wroteOn}` : "on another system"}, where paths are stored ${spelling(caseFold)}, ` +
+        `but here we would search ${spelling(CASE_INSENSITIVE_FS)} — project attribution would silently stay empty. ` +
+        `Set: CAM_CASE_FOLD=${stamp}`
       : null,
   };
 }

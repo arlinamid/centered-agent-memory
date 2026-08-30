@@ -26,12 +26,12 @@ const transport = new StdioClientTransport({
 
 const client = new Client({ name: "cam-ci", version: "1.0.0" });
 await client.connect(transport);
-console.log("initialize rendben:", JSON.stringify(client.getServerVersion()));
+console.log("initialize ok:", JSON.stringify(client.getServerVersion()));
 
 const { tools } = await client.listTools();
 const names = tools.map((t) => t.name).sort();
-console.log(`${names.length} eszköz: ${names.join(", ")}`);
-if (names.length === 0) throw new Error("a szerver egyetlen eszközt sem hirdetett");
+console.log(`${names.length} tool(s): ${names.join(", ")}`);
+if (names.length === 0) throw new Error("the server advertised no tools");
 
 // The structural guarantee: every answer states how old the index is. On an
 // empty index that is the "never finished a sync" branch, which is the one a
@@ -41,8 +41,8 @@ const text = (result.content ?? []).map((b) => b.text ?? "").join("\n");
 console.log("\ncam_status:\n" + text);
 
 if (!/index/i.test(text)) {
-  throw new Error("a cam_status válaszából hiányzik az index frissességi sora");
+  throw new Error("cam_status reply is missing the index freshness line");
 }
 
 await client.close();
-console.log("\nA telepített MCP-szerver elindul és válaszol.");
+console.log("\nThe installed MCP server starts and answers.");

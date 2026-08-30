@@ -94,7 +94,7 @@ export function readConfigFile(file = configFilePath(), warn?: (msg: string) => 
     if (typeof parsed !== "object" || parsed === null) throw new Error("nem objektum");
     return parsed as FileConfig;
   } catch (err) {
-    warn?.(`a konfigurációs fájl nem olvasható (${file}): ${(err as Error).message}`);
+    warn?.(`config file unreadable (${file}): ${(err as Error).message}`);
     return {};
   }
 }

@@ -34,7 +34,7 @@ const problems = [];
 
 for (const file of files) {
   if (NEVER_COMMITTED.test(file)) {
-    problems.push(`${file}: adatfájl nem való a repóba`);
+    problems.push(`${file}: data file does not belong in the repository`);
     continue;
   }
   if (SKIP.test(file)) continue;
@@ -47,7 +47,7 @@ for (const file of files) {
       const name = match[1];
       if (!isPlaceholder(name)) {
         problems.push(
-          `${file}:${i + 1}: "${name}" nem helyőrző felhasználónév\n      ${line.trim()}`
+          `${file}:${i + 1}: "${name}" is not a placeholder username\n      ${line.trim()}`
         );
       }
     }
@@ -55,13 +55,13 @@ for (const file of files) {
 }
 
 if (problems.length > 0) {
-  console.error("Gépspecifikus nyom a repóban:\n");
+  console.error("Machine-specific trace in the repository:\n");
   for (const p of problems) console.error("  " + p);
   console.error(
-    `\nHelyőrzőnek ez fogadható el: ${[...PLACEHOLDERS].join(", ")}, vagy egyetlen betű.` +
-      "\nHa valódi útvonalat kellene mutatni, írd körül helyette."
+    `\nAccepted placeholders: ${[...PLACEHOLDERS].join(", ")}, or a single letter.` +
+      "\nIf a real path must be shown, describe it instead."
   );
   process.exit(1);
 }
 
-console.log(`${files.length} fájl átnézve, gépspecifikus nyom nincs benne.`);
+console.log(`${files.length} file(s) checked, no machine-specific traces.`);

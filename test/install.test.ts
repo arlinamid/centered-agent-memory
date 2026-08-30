@@ -184,6 +184,8 @@ describe("skills", () => {
     expect(text).toMatch(/^---\nname: agent-memory\n/);
     expect(text).toContain("description:");
     expect(text).not.toContain("{{SURFACE}}");
+    const [claudeCode] = clientTargets("user", home, cwd);
+    expect(text).toBe(renderSkill(claudeCode!));
   });
 
   it("tells a terminal-less client not to promise a sync it cannot run", () => {
@@ -191,7 +193,7 @@ describe("skills", () => {
     const desktop = renderSkill(targets.find((t) => t.id === "claude_desktop")!, "{{SURFACE}}");
     const code = renderSkill(targets.find((t) => t.id === "claude_code")!, "{{SURFACE}}");
 
-    expect(desktop).toContain("kérd meg a");
+    expect(desktop).toContain("ask the user");
     expect(code).toContain("cam sync");
   });
 });

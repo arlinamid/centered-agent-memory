@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Melyik tag (pl. v0.5.0)"
+        description: "Which tag (e.g. v0.5.0)"
         required: true
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   verify:
-    name: ellenőrzés · ${{ matrix.os }}
+    name: verify · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
@@ -34,29 +34,29 @@ jobs:
           node-version: "24"
           cache: npm
 
-      # Ugyanaz, mint a CI-ban: a natív függőség prebuildet hoz, fordítóra
-      # nincs szükség, és a telepítő szkriptek átugrása ezt ki is használja.
+      # Same as in CI: the native dependency ships a prebuild, no compiler is
+      # needed, and skipping the install scripts takes advantage of that.
       - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit
       - run: npm test
       - run: node .github/scripts/check-privacy.mjs
 
-      - name: Csomagolás és globális telepítés
+      - name: Pack and install globally
         shell: bash
         run: |
           npm pack
           npm install -g --ignore-scripts ./centered-agent-memory-*.tgz
 
-      - name: A telepített példány elindul és válaszol
+      - name: Installed copy starts and answers
         shell: bash
         run: |
           out=$(cam status)
-          test -n "$out" || { echo "a telepített cam semmit nem írt ki"; exit 1; }
+          test -n "$out" || { echo "installed cam printed nothing"; exit 1; }
           cam doctor
           node .github/scripts/mcp-initialize.mjs
 
   release:
-    name: kiadás
+    name: release
     runs-on: ubuntu-latest
     needs: verify
     permissions:
@@ -78,26 +78,26 @@ jobs:
       # A tag claiming a version the package does not carry would produce a
       # tarball that installs as something else. Cheap to check, confusing to
       # debug later.
-      - name: A tag és a package.json verziója egyezik
+      - name: Tag matches package.json version
         id: meta
         shell: bash
         run: |
           tag="${{ inputs.tag || github.ref_name }}"
           version=$(node -p "require('./package.json').version")
           test "$tag" = "v$version" || {
-            echo "a tag ($tag) nem egyezik a package.json verziójával ($version)"
+            echo "tag ($tag) does not match package.json version ($version)"
             exit 1
           }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # `npm pack` már `<név>-<verzió>.tgz`-t ad, tehát pont azt, amire a
-      # kiadási jegyzet hivatkozik — átnevezni nem kell, és nem is szabad.
-      - name: Csomag építése
+      # `npm pack` already produces `<name>-<version>.tgz`, which is exactly
+      # what the release notes link to — no rename needed, and none allowed.
+      - name: Build the package
         shell: bash
         run: npm pack
 
-      - name: Kiadási jegyzet a changelogból
+      - name: Release notes from the changelog
         shell: bash
         run: |
           node .github/scripts/release-notes.mjs \

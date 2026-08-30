@@ -88,7 +88,7 @@ describe("config file", () => {
     write("{ ez nem json");
     const warnings: string[] = [];
     const cfg = loadConfig({}, (m) => warnings.push(m));
-    expect(warnings[0]).toContain("nem olvasható");
+    expect(warnings[0]).toContain("unreadable");
     expect(cfg.dbPath).toContain("hub.sqlite");
   });
 });

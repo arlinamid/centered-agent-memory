@@ -42,19 +42,20 @@ export const SERVER_KEY = "cam";
 /** The skill's directory name, and its `name:` in the frontmatter. */
 export const SKILL_NAME = "agent-memory";
 
-const CLI_SURFACE = `## Ez a felület
+const CLI_SURFACE = `## This surface
 
-Az \`cam_*\` MCP-toolok mellett ugyanez a terminálból is megvan, ha a \`cam\` a PATH-on van:
-\`cam projects\`, \`cam dossier <projekt>\`, \`cam recall "<kérdés>"\`, \`cam get <hivatkozás>\`,
-\`cam timeline <projekt>\`, \`cam memory list\`. Mindegyik ért \`--json\`-t. A renderelés közös, tehát
-ugyanazt kapod, mint a toolokból.
+The \`cam_*\` MCP tools are also available from the terminal if \`cam\` is on PATH:
+\`cam projects\`, \`cam dossier <project>\`, \`cam recall "<query>"\`, \`cam get <citation>\`,
+\`cam timeline <project>\`, \`cam memory list\`. Each accepts \`--json\`. Rendering is shared,
+so you get the same text as from the tools.
 
-Ha az index elavult, a \`cam sync\` frissíti. Ez az egyetlen írási művelet, és csak az indexet írja.`;
+If the index is stale, \`cam sync\` refreshes it. That is the only write, and it writes
+only the index.`;
 
-const MCP_ONLY_SURFACE = `## Ez a felület
+const MCP_ONLY_SURFACE = `## This surface
 
-Csak az \`cam_*\` MCP-toolok érhetők el, terminál nincs. Ha az index elavult, kérd meg a
-felhasználót, hogy futtasson egy \`cam sync\`-et — magadtól nem tudod frissíteni.`;
+Only the \`cam_*\` MCP tools are available; there is no terminal. If the index is stale,
+ask the user to run \`cam sync\` — you cannot refresh it yourself.`;
 
 /**
  * Claude Code keeps its user-level server map in `~/.claude.json`, not under

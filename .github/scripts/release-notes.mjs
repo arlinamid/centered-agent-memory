@@ -13,14 +13,14 @@ import fs from "node:fs";
 
 const [version, repo, tag] = process.argv.slice(2);
 if (!version || !repo || !tag) {
-  console.error("használat: release-notes.mjs <version> <repo> <tag>");
+  console.error("usage: release-notes.mjs <version> <repo> <tag>");
   process.exit(2);
 }
 
 const lines = fs.readFileSync("CHANGELOG.md", "utf8").split("\n");
 const start = lines.findIndex((l) => l.startsWith(`## [${version}]`));
 if (start === -1) {
-  console.error(`a CHANGELOG.md-ben nincs [${version}] szakasz`);
+  console.error(`CHANGELOG.md has no [${version}] section`);
   process.exit(1);
 }
 
@@ -35,7 +35,7 @@ const body = (end === -1 ? rest : rest.slice(0, end))
   .trim();
 
 if (body === "") {
-  console.error(`a [${version}] szakasz üres`);
+  console.error(`[${version}] section is empty`);
   process.exit(1);
 }
 
@@ -46,14 +46,13 @@ process.stdout.write(
 
 ---
 
-## Telepítés
+## Install
 
 \`\`\`bash
 npm install -g ${tarball}
 cam install
 \`\`\`
 
-Node 22 vagy újabb kell. A \`cam install\` beköti az MCP-szervert a megtalált ágens-eszközökbe, és
-ütemezett frissítést állít be — előbb nézd meg \`--dry-run\`-nal, mit csinálna.
+Node 24 or newer is required. \`cam install\` registers the MCP server with every agent tool it finds and sets up scheduled refresh — preview with \`--dry-run\` first.
 `
 );

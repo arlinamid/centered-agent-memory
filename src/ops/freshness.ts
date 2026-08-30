@@ -76,11 +76,11 @@ export function freshness(db: Db, nowMs = Date.now(), staleAfterMs = DEFAULT_STA
 /** Coarse on purpose: the decision it supports is "trust this or re-sync". */
 export function humanAge(ms: number): string {
   const min = Math.floor(ms / 60_000);
-  if (min < 1) return "épp most";
-  if (min < 60) return `${min} perce`;
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
   const hours = Math.floor(min / 60);
-  if (hours < 48) return `${hours} órája`;
-  return `${Math.floor(hours / 24)} napja`;
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 /**
@@ -90,8 +90,8 @@ export function humanAge(ms: number): string {
  */
 export function formatFreshness(f: Freshness): string {
   if (f.lastEndedMs === null) {
-    const started = f.unfinished > 0 ? ", és egy korábbi futás félbeszakadt" : "";
-    return `— index: még nem futott végig szinkron${started}; a tartalom hiányos lehet (cam sync)`;
+    const started = f.unfinished > 0 ? ", and an earlier run was interrupted" : "";
+    return `— index: no sync has finished yet${started}; contents may be incomplete (cam sync)`;
   }
 
   const parts = [
@@ -99,9 +99,9 @@ export function formatFreshness(f: Freshness): string {
     `${f.sessions} session`,
     `${f.turns} turn`,
   ];
-  if (f.stale) parts.push("ELAVULT, futtasd: cam sync");
-  if (f.errors > 0) parts.push(`${f.errors} hiba az utolsó szinkronban`);
-  if (f.running) parts.push("most fut egy szinkron");
+  if (f.stale) parts.push("STALE, run: cam sync");
+  if (f.errors > 0) parts.push(`${f.errors} error(s) in the last sync`);
+  if (f.running) parts.push("a sync is running");
   return parts.join(" · ");
 }
 
@@ -110,14 +110,14 @@ export function describeFreshness(f: Freshness): string {
   const L: string[] = [];
   L.push(
     f.lastEndedMs === null
-      ? "utolsó szinkron   még nem futott végig"
-      : `utolsó szinkron   ${new Date(f.lastEndedMs).toISOString().slice(0, 16).replace("T", " ")} UTC` +
-          `  (${humanAge(f.ageMs ?? 0)}${f.stale ? ", elavult" : ""})`,
+      ? "last sync         no finished run yet"
+      : `last sync         ${new Date(f.lastEndedMs).toISOString().slice(0, 16).replace("T", " ")} UTC` +
+          `  (${humanAge(f.ageMs ?? 0)}${f.stale ? ", stale" : ""})`,
   );
-  L.push(`tartalom          ${f.sessions} session · ${f.turns} turn`);
-  if (f.turnsAdded > 0) L.push(`utolsó futás      ${f.turnsAdded} új turn`);
-  if (f.errors > 0) L.push(`  ! ${f.errors} hiba az utolsó szinkronban`);
-  if (f.unfinished > 0) L.push(`  ! ${f.unfinished} félbeszakadt futás (cam prune takarítja)`);
-  if (f.running) L.push("  ! most fut egy szinkron");
+  L.push(`contents          ${f.sessions} session · ${f.turns} turn`);
+  if (f.turnsAdded > 0) L.push(`last run          ${f.turnsAdded} new turn(s)`);
+  if (f.errors > 0) L.push(`  ! ${f.errors} error(s) in the last sync`);
+  if (f.unfinished > 0) L.push(`  ! ${f.unfinished} interrupted run(s) (cam prune cleans these)`);
+  if (f.running) L.push("  ! a sync is running");
   return L.join("\n");
 }

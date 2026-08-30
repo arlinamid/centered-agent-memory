@@ -57,12 +57,12 @@ export async function select(
 
   const def = (opts.defaultIndex ?? 0) + 1;
   for (;;) {
-    const answer = await question(`Melyik? [${def}] `);
+    const answer = await question(`Which? [${def}] `);
     if (answer === "") return fallback;
     if (answer === "0" && opts.escape) return null;
     const n = Number(answer);
     if (Number.isInteger(n) && n >= 1 && n <= choices.length) return choices[n - 1]!.value;
-    process.stdout.write(`Írj egy számot 1 és ${choices.length} között${opts.escape ? ", vagy 0-t" : ""}.\n`);
+    process.stdout.write(`Enter a number between 1 and ${choices.length}${opts.escape ? ", or 0" : ""}.\n`);
   }
 }
 
@@ -74,7 +74,7 @@ export async function ask(prompt: string, fallback = ""): Promise<string> {
 
 export async function confirm(prompt: string, fallback = true): Promise<boolean> {
   if (!interactive()) return fallback;
-  const answer = (await question(`${prompt} ${fallback ? "[I/n]" : "[i/N]"} `)).toLowerCase();
+  const answer = (await question(`${prompt} ${fallback ? "[Y/n]" : "[y/N]"} `)).toLowerCase();
   if (answer === "") return fallback;
   return answer.startsWith("i") || answer.startsWith("y");
 }

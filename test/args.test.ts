@@ -20,17 +20,17 @@ describe("parseArgs", () => {
   it("accepts the --flag=value form for both kinds", () => {
     const a = parseArgs(["--project=demo", "x"], SPEC);
     expect(flag(a, "project")).toBe("demo");
-    expect(parseArgs(["--json=igen"], SPEC).errors[0]).toContain("nem vár értéket");
+    expect(parseArgs(["--json=igen"], SPEC).errors[0]).toContain("does not take a value");
   });
 
   it("reports an unknown flag rather than dropping it", () => {
     const a = parseArgs(["--projct", "demo"], SPEC);
-    expect(a.errors[0]).toContain("ismeretlen kapcsoló: --projct");
+    expect(a.errors[0]).toContain("unknown flag: --projct");
   });
 
   it("reports a value flag at the end of the line", () => {
-    expect(parseArgs(["--project"], SPEC).errors[0]).toContain("értéket vár");
-    expect(parseArgs(["--project", "--json"], SPEC).errors[0]).toContain("értéket vár");
+    expect(parseArgs(["--project"], SPEC).errors[0]).toContain("requires a value");
+    expect(parseArgs(["--project", "--json"], SPEC).errors[0]).toContain("requires a value");
   });
 
   it("treats everything after a bare -- as positional", () => {

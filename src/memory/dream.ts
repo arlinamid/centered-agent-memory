@@ -61,11 +61,11 @@ export const DREAM_DEFAULTS = {
 export class DreamNotConfiguredError extends Error {
   constructor() {
     super(
-      "a dream fázishoz modell kell, és nincs beállítva.\n" +
-        "Írd a konfigurációs fájlba (cam doctor kiírja, hol van):\n" +
-        '  "memory": { "dream": { "provider": "command", "model": "<modell>",\n' +
+      "the dream phase needs a model, and none is configured.\n" +
+        "Write this into the config file (cam doctor prints the path):\n" +
+        '  "memory": { "dream": { "provider": "command", "model": "<model>",\n' +
         '    "command": ["codex", "exec", "--model", "{model}", "-"] } }\n' +
-        "A prompt a stdin-re megy. Bármilyen parancs jó, ami promptot olvas és szöveget ír.",
+        "The prompt goes to stdin. Any command that reads a prompt and writes text will do.",
     );
     this.name = "DreamNotConfiguredError";
   }
@@ -116,7 +116,7 @@ export function commandProvider(cfg: DreamConfig): DreamProvider {
         let err = "";
         const timer = setTimeout(() => {
           child.kill();
-          reject(new Error(`időtúllépés (${timeoutMs} ms)`));
+          reject(new Error(`timed out (${timeoutMs} ms)`));
         }, timeoutMs);
 
         child.stdout.setEncoding("utf8");
@@ -133,7 +133,7 @@ export function commandProvider(cfg: DreamConfig): DreamProvider {
           const written = outFile !== null && fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf8") : null;
           cleanup(tempFile, outFile);
           if (code !== 0) {
-            reject(new Error(`a parancs ${code} kóddal lépett ki: ${lastLine(err) || lastLine(out)}`));
+            reject(new Error(`command exited with code ${code}: ${lastLine(err) || lastLine(out)}`));
             return;
           }
           resolve((written ?? out).trim());
@@ -186,18 +186,18 @@ export function buildPrompt(fact: MemoryFact, questions: ReadonlyArray<string>, 
   const excerpt = fact.text.length > maxInputChars ? `${fact.text.slice(0, maxInputChars)}…` : fact.text;
   return [
     `[cam-dream v${PROMPT_VERSION} · digest]`,
-    "Az alábbi részlet egy régi beszélgetésből való, amit a keresések többször előhívtak.",
-    "Írd le 1-3 mondatban, miről szól és miért lehet később fontos.",
+    "The excerpt below is from an old conversation that searches have recalled more than once.",
+    "In 1-3 sentences, say what it is about and why it may matter later.",
     "",
-    "Szabályok:",
-    "- Csak arra támaszkodj, ami a részletben benne van. Ne találj ki semmit.",
-    "- Azon a nyelven válaszolj, amin a részlet van.",
-    "- Ne ismételd meg a feladatot és ne magyarázd, mit csinálsz. Csak a lényeget írd.",
+    "Rules:",
+    "- Rely only on what is in the excerpt. Invent nothing.",
+    "- Answer in the language of the excerpt.",
+    "- Do not repeat the task or explain what you are doing. Write only the point.",
     "",
-    `Projekt: ${fact.project ?? "ismeretlen"}`,
-    `Kérdések, amikre előjött: ${questions.join(" · ") || "(nincs feljegyezve)"}`,
+    `Project: ${fact.project ?? "unknown"}`,
+    `Queries that brought it up: ${questions.join(" · ") || "(none recorded)"}`,
     "",
-    "--- részlet ---",
+    "--- excerpt ---",
     excerpt,
   ].join("\n");
 }
@@ -302,7 +302,7 @@ export async function runDream(db: Db, opts: DreamOptions = {}): Promise<DreamSt
       stat.sentChars += item.prompt.length;
       if (!text) {
         stat.failed++;
-        stat.errors.push(`#${item.fact.id}: üres válasz`);
+        stat.errors.push(`#${item.fact.id}: empty reply`);
         continue;
       }
       insert.run(item.fact.chunkId, item.inputSha256, provider.model, PROMPT_VERSION, text, text.length, nowMs);

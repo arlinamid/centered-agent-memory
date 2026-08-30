@@ -7,7 +7,8 @@ történt az X projekten*.
 
 CLI-ként és MCP-szerverként is használható.
 
-English: [`README.md`](README.md).
+English: [`README.md`](README.md). A termék (CLI, MCP, skill) angolul beszél; a magyar docs
+a `docs/*.hu.md`.
 
 ## Alapelvek
 
@@ -34,7 +35,7 @@ a `cam dossier` 8 ms.
 
 **Megmondja, milyen régi.** Minden MCP-válasz utolsó sora az index kora, hogy egy ágens ne idézhessen
 hathetes választ frissként. A felügyelet nélküli üzem — ütemezés, frissesség, megőrzés, mentés —
-külön leírásban: [`docs/operations.md`](docs/operations.md).
+külön leírásban: [`docs/operations.hu.md`](docs/operations.hu.md).
 
 ## Telepítés
 
@@ -63,7 +64,7 @@ kellett volna semmit.
 A `cam install` beköti a szervert minden megtalált ágens-eszközbe (Claude Code, Claude Desktop,
 Codex, Cursor), melléteszi a használati utasítást, ad az álom fázisnak modellt a gépen már meglévő
 ágens-CLI-k közül, és beállítja az óránkénti frissítést. Előbb nézd meg, mit csinálna: `--dry-run`.
-Részletek és kikapcsolók: [`docs/install.md`](docs/install.md).
+Részletek és kikapcsolók: [`docs/install.hu.md`](docs/install.hu.md).
 
 A Claude Code (és a Claude Code Desktop, ami ugyanazt a mappát olvassa) skilljét külön is
 fel lehet tenni:
@@ -136,8 +137,8 @@ Ha az adatbázis megsérül, a `cam doctor` megmondja, mi baja. A `cam rebuild` 
 újra a forrásokból — erre a `cam sync --repair` nem képes, mert az csak azt olvassa újra, amit még nem
 indexelt, a contentless FTS-index pedig nem építhető újra magából az adatbázisból.
 
-MCP-szerverként: `cam-mcp` — lásd [`docs/mcp.md`](docs/mcp.md). A bekötést a `cam install` intézi,
-lásd [`docs/install.md`](docs/install.md).
+MCP-szerverként: `cam-mcp` — lásd [`docs/mcp.hu.md`](docs/mcp.hu.md). A bekötést a `cam install` intézi,
+lásd [`docs/install.hu.md`](docs/install.hu.md).
 
 Fejlesztés közben build nélkül: `npm run dev -- sync`.
 
@@ -153,7 +154,7 @@ Ezt a hármat a `cam install` beállítja magától; ez a szakasz azt írja le, 
 
 Ütemezési minta Task Schedulerre, launchd-re, systemd timerre és cronra, a megőrzési beállítások, a
 mentés és a visszaállítás, és hogy mit tegyél, ha a `cam doctor` panaszkodik:
-[`docs/operations.md`](docs/operations.md).
+[`docs/operations.hu.md`](docs/operations.hu.md).
 
 A megőrzés a régi keresési nyomot, a fölös futásnaplót és — csak ha kéred — az eltűnt forrású
 sessionöket viszi. Egy szabály felülír mindent: **élő promóció bizonyítéka nem törölhető**, mert egy
@@ -180,7 +181,7 @@ cam memory dream [--dry-run]   # opcionális: egy mondat emlékenként, modellt�
 
 Determinisztikus és offline: ugyanabból az adatbázisból kétszer futtatva ugyanaz jön ki. A promotált
 emlék sem tárol szöveget — chunk-hivatkozás, olvasáskor rehidratálva. Részletek:
-[`docs/memory.md`](docs/memory.md).
+[`docs/memory.hu.md`](docs/memory.hu.md).
 
 Egy lépés opcionálisan mégis modellt használ: a `cam memory dream` egy beállított paranccsal írat egy
 mondatot minden promotált részletről. Alapból ki van kapcsolva, a `consolidate` sosem hívja, kiírja
@@ -198,8 +199,8 @@ mi menne ki *mielőtt* kimegy, és a generált mondatot mindig a modell nevével
 | Claude Desktop | `<appdata>/Claude/claude-code-sessions/**` | index + cím |
 | Cursor előzmények | `<appdata>/Cursor/User/History/*/entries.json` | idő-korreláció bemenete |
 
-Részletek, formátumok és buktatók: [`docs/sources.md`](docs/sources.md).
-Felépítés és séma: [`docs/architecture.md`](docs/architecture.md).
+Részletek, formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md).
+Felépítés és séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
 
 ## Fejlesztés
 
@@ -215,7 +216,7 @@ A tesztek fixtúrákat építenek futásidőben (Cursor `state.vscdb`, Codex `st
 
 Ami elkészült: [`CHANGELOG.md`](CHANGELOG.md).
 Mit kell még tartalmaznia a projektnek, milyen sorrendben, és mit nem csinálunk:
-[`docs/roadmap.md`](docs/roadmap.md).
+[`docs/roadmap.hu.md`](docs/roadmap.hu.md).
 
 A tesztek Windowson, macOS-en és Linuxon ugyanazt állítják: az útvonal-hajtás a `CAM_CASE_FOLD`
 kapcsolóval van rögzítve a `vitest.config.ts`-ben, a CI mindhárom platformon lefut

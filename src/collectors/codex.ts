@@ -21,7 +21,7 @@ export const codexCollector: Collector = {
       // state_6.sqlite this collector would otherwise report zero sessions and
       // look perfectly healthy.
       if (fs.existsSync(ctx.roots.codexHome)) {
-        ctx.log(`codex: nincs meg a ${ctx.roots.codexStateDb} — új Codex-verzió más nevű tárolóval?`);
+        ctx.log(`codex: ${ctx.roots.codexStateDb} not found — new Codex version with a different store name?`);
       }
       return stat;
     }

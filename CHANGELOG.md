@@ -1,658 +1,704 @@
 # Changelog
 
-Formátum: [Keep a Changelog](https://keepachangelog.com/), verziózás: [SemVer](https://semver.org/).
+Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](https://semver.org/).
 
-## [Nem kiadott]
+## [Unreleased]
 
-> **Törő változás:** a támogatott Node-küszöb 22-ről **24-re** emelkedett. Aki Node 22-n futtatja,
-> annak frissítenie kell, mielőtt a következő kiadásra vált.
+> **Breaking change:** the supported Node floor rose from 22 to **24**. Anyone running Node 22
+> has to upgrade before switching to the next release.
 
-### A skill a `npx skills add` paranccsal is feltehető
+### CLI, MCP, skill and docs speak English
 
-**Miből jött:** a Claude Code Desktop a `~/.claude/skills/` mappát olvassa, és oda a [skills](https://skills.sh)
-CLI telepít: `npx skills add <repo> --skill <név> --agent claude-code`. A mi skillünk viszont
-`assets/skill.md` volt, helyőrzővel — a CLI ezt nem találja.
+**Where it came from:** the product UI, MCP tool titles and descriptions, the skill body, the
+freshness footer, installer messages, the public docs, CI job names and GitHub script errors were
+Hungarian. A user who does not speak Hungarian would hit those first.
 
-- **`skills/agent-memory/SKILL.md`** a felfedezhető, frontmatteres, kész skill. Ettől működik:
+- **They are now English.** The CLI answers, the MCP titles and descriptions, the skill, the
+  freshness line, the installer, the public docs, the CI job names and the GitHub script errors.
+  Installing, wiring and querying no longer requires translating the product first.
+- **`README.hu.md` and `docs/*.hu.md` remain the Hungarian pair.** The English `README.md` and
+  `docs/*.md` are the default; the `.hu.md` files stay for readers who want them.
+- **Search still matches Hungarian corpus text.** Accent folding, Hungarian stopwords, keywords
+  like `projekt` / `kód` / `fájl`, and relative dates like `tegnapelőtt` are unchanged. The corpus
+  is what people actually said.
+- **Fixture conversation text in tests stays Hungarian.** That is what the collectors index;
+  translating it would test a corpus that does not exist.
+- **`[Nem kiadott]` is now `[Unreleased]`.** The heading follows Keep a Changelog.
+
+### The skill can also be installed with `npx skills add`
+
+**Where it came from:** Claude Code Desktop reads `~/.claude/skills/`, and the [skills](https://skills.sh)
+CLI installs there: `npx skills add <repo> --skill <name> --agent claude-code`. Our skill, though,
+was `assets/skill.md`, with a placeholder — the CLI does not find that.
+
+- **`skills/agent-memory/SKILL.md`** is the discoverable, frontmattered, finished skill. That is what makes this work:
 
   ```
   npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
   ```
 
-- **A klasszikus Desktop / Cowork ettől még nem kap skillt.** Nincs `claude-desktop` ügynök a
-  skills CLI-ben, és a Cowork nem olvassa be a mappába másolt fájlt — csak a Customize UI
-  feltöltőjét. A `cam install` oda továbbra is csak az MCP-t köti be.
-- **A `cam install` nem hívja az `npx`-et.** Az a nyilvános, hálózatos út. A saját telepítő
-  offline, és ugyanoda ír.
-- **A törzs átnevezve `assets/skill-body.md`-re.** Windowson a `skill.md` ugyanaz, mint a
-  `SKILL.md`, ezért a skills CLI a sablont is skillnek nézte, és figyelmeztetéssel kihagyta.
+- **Classic Desktop / Cowork still does not get a skill from this.** There is no `claude-desktop` agent in
+  the skills CLI, and Cowork does not pick up a file copied into the folder — only the Customize UI
+  uploader. `cam install` still only wires MCP there.
+- **`cam install` does not call `npx`.** That is the public, networked path. Our own installer
+  is offline, and writes to the same place.
+- **The body was renamed to `assets/skill-body.md`.** On Windows `skill.md` is the same as
+  `SKILL.md`, so the skills CLI treated the template as a skill too, and skipped it with a warning.
 
-### Node 24 a küszöb, és a CI végre nem EOL futtatókörnyezeten indul
+### Node 24 is the floor, and CI finally starts on a runtime that is not EOL
 
-**Miből jött:** a CI minden jobja figyelmeztetett, hogy az actionök Node 20-at céloznak. Kiderült,
-hogy nem egy majort maradtunk le, hanem hármat.
+**Where it came from:** every CI job warned that the actions target Node 20. It turned out
+we were not one major behind, but three.
 
-- **`actions/checkout` és `actions/setup-node` v4 → v7.** A v4 futtatókörnyezete Node 20, ami 2026
-  áprilisa óta EOL, és a GitHub már kényszerítve futtatta 24-en. A köztes majorok törései nem
-  érintenek minket: a v5 hozta a node24-et és az automatikus csomagkezelő-gyorsítótárat (mi
-  expliciten `cache: npm`-et adunk meg, tehát nálunk no-op), a v6 ezt npm-re szűkítette, a v7 pedig
-  ESM-re váltott és a fork-PR checkoutot tiltja `pull_request_target`/`workflow_run` eseménynél —
-  a CI sima `pull_request`-re fut.
-- **Tesztmátrix 22+24 → 24+26.** A Node 26 május óta Current, és október 28-án lesz Active LTS. A
-  következő LTS tesztelése, amíg még Current, pontosan az a lépés, ami a `better-sqlite3` Node
-  24-es összeomlását hetekkel korábban elkapta volna — az a hiba azért ért váratlanul, mert olyan
-  futtatókörnyezeten jelentkezett, amit helyben nem tudtam futtatni.
-- **A telepítési job is mindkét majoron fut, három OS-en.** Ez nem szimmetria kedvéért: az egyetlen
-  hiba, ami valaha eljutott eddig a jobig, egy natív binding volt, ami az egyik Node-majoron
-  rendben települt, a következőn viszont `SIGABRT`-tel elszállt. Ez telepítéskori hiba, tehát itt
-  kell mindkét majort végigfuttatni.
-- **`engines.node` `>=22` → `>=24`, `@types/node` `^22` → `^24`.** A kettő szándékosan mozog együtt:
-  a típusok a **legalacsonyabb** támogatott futtatókörnyezethez vannak kötve, mert épp ez
-  akadályozza meg, hogy olyan API-t fordítsunk bele, ami a saját `engines` mezőnk szerint támogatott
-  gépen nem létezik. Ha a típusok előreszaladnának a küszöbhöz képest, a fordító némán átengedné.
-- **Amit a küszöb nem old meg.** A `>=24` egy páratlan, EOL kiadást (pl. 25.x) is kielégít, tehát az
-  npm nem szól érte. A küszöb alsó korlát, nem házirend: „támogatott LTS-en fusson" nem fejezhető ki
-  egy `engines` mezőben.
+- **`actions/checkout` and `actions/setup-node` v4 → v7.** The v4 runtime is Node 20, which has been EOL
+  since April 2026, and GitHub was already forcing it onto 24. The intervening majors' breaking
+  changes do not affect us: v5 brought node24 and automatic package-manager caching (we
+  set `cache: npm` explicitly, so for us it is a no-op), v6 narrowed that to npm, and v7
+  switched to ESM and blocks fork-PR checkout on `pull_request_target`/`workflow_run` —
+  CI runs on plain `pull_request`.
+- **Test matrix 22+24 → 24+26.** Node 26 has been Current since May, and becomes Active LTS on
+  October 28. Testing the next LTS while it is still Current is exactly the step that would have
+  caught the `better-sqlite3` Node 24 crash weeks earlier — that bug caught me by surprise
+  because it showed up on a runtime I could not run locally.
+- **The install job also runs on both majors, on three OSes.** This is not for symmetry: the only
+  bug that ever reached this job was a native binding that installed fine on one Node major
+  and aborted with `SIGABRT` on the next. That is an install-time fault, so this is where
+  both majors have to be exercised.
+- **`engines.node` `>=22` → `>=24`, `@types/node` `^22` → `^24`.** The two move together on
+  purpose: the types are pinned to the **lowest** supported runtime, because that is what
+  stops us from compiling in an API that does not exist on a machine our own `engines` field
+  claims to support. If the types ran ahead of the floor, the compiler would silently let it through.
+- **What the floor does not solve.** `>=24` also satisfies an odd, EOL release (e.g. 25.x), so
+  npm will not complain. The floor is a lower bound, not a policy: "run on a supported LTS"
+  cannot be expressed in an `engines` field.
 
-### Az olvashatatlan tároló nem ugyanaz, mint a hiányzó
+### An unreadable store is not the same as a missing one
 
-**Miből jött:** a kérdés az volt, hogy eltörhet-e az MCP, ha valamelyik forrás-eszköz nincs
-telepítve. A válasz nem — a szerver csak az SQLite indexet olvassa, a kollektorok `existsSync`-kel
-indulnak, és a szinkron minden kollektort külön `try/catch`-be tesz. Az átvizsgálás viszont két
-olyan pontot talált, ahol a válasz csak majdnem volt igaz.
+**Where it came from:** the question was whether MCP can break if one of the source tools is not
+installed. The answer is no — the server only reads the SQLite index, the collectors start with
+`existsSync`, and sync wraps every collector in its own `try/catch`. The review, though, found
+two places where the answer was only almost true.
 
-- **Két őrizetlen `readdirSync` befoltozva.** A `cursor-history` és az `artifacts` terv-ága az
-  `existsSync` után csupaszon listázta a mappát. Ha a mappa **létezik, de nem olvasható**
-  (jogosultság), a kollektor dobott. A szinkron ezt elkapta, tehát összeomlás nem volt — de egy
-  jogosultsági hiba így is 1-es kilépési kódot adott, teszt nélkül.
-- **A visszatérési érték `null`, nem üres lista — és ez a lényeg.** A `cursor-history` tükrözi a
-  mappát: törli az egész `file_events` táblát, és visszaírja, amit épp olvasott. Ha egy olvasási
-  hibára üres listát kapott volna, kitörli az előző szinkron által gyűjtött attribúciós bemenetet
-  egy jogosultsági hiba miatt. A `readDirOrNull` ezért különbözteti meg a kettőt: az üres lista azt
-  jelenti, hogy „töröld, amid van", a `null` azt, hogy „nem tudtál meg semmit, ne nyúlj hozzá".
-- **A hiba számít, nem tűnik el.** A „nincs telepítve" néma és nulla; a „van, de nem olvasható"
-  `errors++` és egy megnevezett naplósor. Csak az elsőnek jár a csend — a másodikból különben az
-  lesz, hogy „nincs egy tervfájlod se", és senki nem tudja meg, hogy valójában jogosultsági baj van.
-- **Hat új teszt, köztük az, ami a README állítását támasztja alá.** Eddig egyetlen teszt sem
-  futtatott le teljes szinkront úgy, hogy **egyik** eszköz sincs telepítve, pedig pont ezt ígérjük.
-  Most mind a hét kollektor lefut, mind nullát jelent, a futás nulla hibával kerül a `sync_runs`-ba.
-  Ehhez a konfigból kellett rögzíteni a gyökereket is: a `CAM_HOME` a profilalapú tárolókat
-  elmozdítja, de a Claude-jegyzettömb az OS temp mappájában van, tehát e nélkül a teszt a fejlesztő
-  valódi gépét olvasta volna. A hiányzó gyökér ága a claude-code, claude-desktop és cowork
-  kollektoroknál eddig kezelve volt, de nem bizonyítva.
-- **Egy elavult megjegyzés javítva.** A `cli.test.ts` fejléce még azt írta, hogy a hamis home nem
-  mozdítja a Desktop és Cursor tárolóit. A 0.5.0 `appSupportDir`-javítása óta ez nem igaz, és az új
-  teszt épp az ellenkezőjére épül.
+- **Two unguarded `readdirSync` calls patched.** The `cursor-history` and `artifacts` plan branch
+  listed the folder bare after `existsSync`. If the folder **exists but is not readable**
+  (permissions), the collector threw. Sync caught it, so there was no crash — but a
+  permission error still produced exit code 1, with no test.
+- **The return value is `null`, not an empty list — and that is the point.** `cursor-history` mirrors
+  the folder: it wipes the whole `file_events` table and writes back what it just read. If a read
+  error had returned an empty list, it would wipe the attribution input collected by the previous
+  sync because of a permission error. That is why `readDirOrNull` distinguishes the two: an empty
+  list means "wipe what you have", `null` means "you learned nothing, leave it alone".
+- **The error counts; it does not disappear.** "Not installed" is silent and zero; "present but
+  unreadable" is `errors++` and a named log line. Only the first earns silence — otherwise the
+  second becomes "you have no plan files at all", and nobody finds out it is actually a
+  permission problem.
+- **Six new tests, including the one that backs the README claim.** Until now not a single test
+  ran a full sync with **none** of the tools installed, even though that is exactly what we promise.
+  Now all seven collectors run, all report zero, and the run lands in `sync_runs` with zero errors.
+  That also required pinning the roots in the config: `CAM_HOME` moves the profile-based stores,
+  but the Claude notepad lives in the OS temp folder, so without this the test would have read
+  the developer's real machine. The missing-root branch was already handled for the claude-code,
+  claude-desktop and cowork collectors, but not proven.
+- **One stale comment fixed.** The `cli.test.ts` header still said that a fake home does not
+  move the Desktop and Cursor stores. That has not been true since the 0.5.0 `appSupportDir`
+  fix, and the new test is built on the opposite.
 
 ## [0.5.0] — 2026-08-29
 
-### Nyilvános repó — CI, kiadás, és a gépspecifikus nyomok kitakarítása
+### Public repository — CI, release, and scrubbing the machine-specific traces
 
-**Cél volt:** a projekt eddig egyetlen gépen élt, és ez látszott rajta. Egy eszköz, ami valakinek a
-teljes beszélgetéstörténetét indexeli, nem mehet ki úgy nyilvánosra, hogy közben a szerzője gépéről
-mutat útvonalakat és valódi projektneveket — pláne nem tesztfixtúraként, ahol senki nem keresi.
+**The goal was:** the project had lived on a single machine, and it showed. A tool that indexes
+somebody's entire conversation history cannot go public while pointing at paths and real project
+names from the author's machine — least of all as test fixtures, where nobody is looking.
 
-- **Minden gépspecifikus nyom kicserélve.** A tesztfixtúrák valódi projektnevei, a gyűjtőmappa
-  útvonala, a Node verziókezelő telepítési helye és a launchd-címkébe épített vezetéknév
-  (`io.github.arlinamid.cam` lett) mind kitalált megfelelőt kaptak. Két teszt ettől elhasalt, és
-  mindkettő jogosan: az egyik aláhúzós elnevezést várt vissza, a másik a találatok ábécésorrendjét
-  ellenőrizte. Amit a csere elmosott, azt kézzel állítottam helyre, nem az elvárást igazítottam a
-  kimenethez.
-- **A tiltás strukturális, nem névlista.** A `check-privacy.mjs` nem azt keresi, hogy szerepel-e a
-  szerző neve — egy ilyen lista pont azt tenné közzé, amit ki akar zárni. Azt nézi, hogy minden
-  home-könyvtár neve **helyőrzőnek látszik-e** (`me`, `dev`, `user`, egyetlen betű), és hogy
-  adatfájl nem került-e a repóba. Ez a szabály minden jövőbeli közreműködőre is igaz marad.
-- **A nyilvános történet egyetlen commitból indul.** A régi 8 commit diffje ugyanezeket a nyomokat
-  vitte volna fel, és egy `git grep` a történeten mindet előhalássza. A fejlődés menetét a changelog
-  amúgy is részletesebben őrzi, mint a commit-üzenetek; az eredeti történet helyben, bundle-ben
-  maradt meg.
-- **CI mind a három platformon** (`.github/workflows/ci.yml`): típusellenőrzés, teszt Node 22-n és
-  24-en, majd — és ez az új rész — **a lefordított csomag tényleges telepítése** tarballból, és
-  annak ellenőrzése, hogy a telepített példány *válaszol is*. A `cam --help` egy néma no-opot is
-  átenged, ezért a lépés azt kéri számon, hogy a `cam status` kiír-e bármit; pont ez a hiba
-  fordult elő élesben. Az MCP-szervert külön indítja `initialize`-zal, üres indexen.
-- **A tesztfuttató két workerre korlátozva CI-n.** A suite nagy része valódi alfolyamatként
-  indítja a CLI-t, tehát itt egy worker sokkal többe kerül a szokásosnál; a leglassabb futtatón ez
-  egyszer kiéheztette a vitest saját főszálát („Timeout calling onTaskUpdate"), miközben mind a
-  454 teszt átment. Nem kerül semmibe: mérve a falióra-idő ugyanannyi, a versengés viszont
-  kevesebb (115 s → 55 s tesztidő).
-- **A `vitest.config.ts` nem írja felül némán a hívót.** A `test.env` erősebb a shell környezeti
-  változójánál, tehát a beégetett `CAM_CASE_FOLD: "1"` csendben eldobta, ha valaki a másik hajtást
-  kérte. Most alapértelmezés (`process.env.CAM_CASE_FOLD ?? "1"`), nem parancs.
-- **Nincs második, megfordított hajtású teljes tesztfutás — és ez tudatos.** Írtam egyet, aztán
-  kiderült, hogy a fenti felülírás miatt sosem futott le ténylegesen; amikor végre lefutott, 32
-  teszt bukott el. Egyik sem termékhiba volt: a suite szándékosan **rögzíti** a hajtást, hogy
-  ugyanaz az elvárás álljon mind a három platformon, tehát az állításai kis betűs útvonalakat
-  írnak le szó szerint. Megfordítva futtatva csak azt bizonyítanák, hogy a másik beállításhoz
-  írták őket. Zöldre hozni annyit tenne, hogy az állítások harmadát származtatottra írom át — az a
-  kódot hasonlítaná önmagához. A hajtás ott van lefedve, ahol értelme van: a `normalizePath`
-  paraméterként kapja meg, és a `test/projkey.test.ts` mindkét értékkel meghívja.
-- **A csomag tartalma ellenőrzött:** ha forrás, teszt vagy source map kerülne a tarballba, a CI
-  elbukik. A verzió három helyen szerepel (`package.json`, `SERVER_VERSION`, changelog-szakasz), és
-  a CI megköveteli, hogy egyezzenek.
-- **Kiadás tagre** (`.github/workflows/release.yml`): a tarball nem épül és reménykedik — előbb
-  mind a három platformon feltelepül és elindul, és a release csak akkor jön létre, ha mind a három
-  rendben volt. A kiadási jegyzetet a changelogból emeli ki, mert két prózai leírás ugyanarról a
-  kiadásról előbb-utóbb elkezd egymásnak ellentmondani.
-- **A `private: true` marad**, a nyilvános repó ellenére is. A kiadási csatorna a GitHub release és
-  a tarball, nem az npm registry — így a mező pontosan egy dolgot csinál: megfog egy véletlen
-  `npm publish`-t.
-- **A telepítési recept pontosítva:** az `npm link` és az `npm install -g .` is a checkoutra
-  **linkel**, nem másol, tehát a checkout elmozdítása vinné magával a bekötött klienseket. A README
-  most tarballt ajánl, és megmondja, miért.
+- **Every machine-specific trace replaced.** The real project names in the test fixtures, the
+  collection-folder path, the Node version-manager install location, and the last name built into
+  the launchd label (it became `io.github.arlinamid.cam`) all got invented counterparts. Two
+  tests failed from this, and both were right: one expected an underscored name back, the other
+  checked alphabetical order of hits. What the swap blurred, I restored by hand; I did not
+  adjust the expectation to the output.
+- **The ban is structural, not a name list.** `check-privacy.mjs` does not look for whether the
+  author's name appears — such a list would publish exactly what it exists to keep out. It
+  checks that every home-directory name **looks like a placeholder** (`me`, `dev`, `user`, a
+  single letter), and that no data file landed in the repository. The rule stays true for every
+  future contributor too.
+- **The public history starts from a single commit.** The old 8-commit diff would have carried
+  the same traces up, and a `git grep` of the history would find them all. The changelog already
+  keeps the development path in more detail than the commit messages; the original history
+  stayed local, in a bundle.
+- **CI on all three platforms** (`.github/workflows/ci.yml`): type check, tests on Node 22 and
+  24, then — and this is the new part — **actually installing the built package** from a tarball,
+  and checking that the installed copy *answers too*. `cam --help` also lets a silent no-op
+  through, so the step demands that `cam status` prints something; that is exactly the bug
+  that happened in production. The MCP server is started separately with `initialize`, on an
+  empty index.
+- **The test runner limited to two workers on CI.** Most of the suite starts the CLI as a real
+  subprocess, so one worker costs much more than usual here; on the slowest runner this once
+  starved vitest's own main thread ("Timeout calling onTaskUpdate"), while all
+  454 tests still passed. It costs nothing: wall-clock time measured the same, contention
+  dropped (115 s → 55 s test time).
+- **`vitest.config.ts` no longer silently overrides the caller.** `test.env` is stronger than the
+  shell environment variable, so the baked-in `CAM_CASE_FOLD: "1"` quietly discarded a request
+  for the other folding. Now it is a default (`process.env.CAM_CASE_FOLD ?? "1"`), not a command.
+- **There is no second, inverted-folding full test run — and that is deliberate.** I wrote one,
+  then found that because of the override above it never actually ran; when it finally did, 32
+  tests failed. None of them were product bugs: the suite deliberately **pins** the folding so
+  the same expectation holds on all three platforms, so its assertions spell out lowercase
+  paths literally. Run inverted they would only prove they were written for the other setting.
+  Making them green would mean rewriting a third of the assertions as derived — that would
+  compare the code to itself. Folding is covered where it belongs: `normalizePath` takes it
+  as an argument, and `test/projkey.test.ts` calls it with both values.
+- **Package contents are checked:** if source, tests or a source map would land in the tarball,
+  CI fails. The version appears in three places (`package.json`, `SERVER_VERSION`, changelog
+  section), and CI requires that they agree.
+- **Release on a tag** (`.github/workflows/release.yml`): the tarball is not built and hoped
+  for — it is first installed and started on all three platforms, and the release is only
+  created if all three were fine. Release notes are lifted from the changelog, because two
+  prose accounts of the same release eventually start disagreeing.
+- **`private: true` stays**, even though the repository is public. The release channel is the
+  GitHub release and the tarball, not the npm registry — so the field does exactly one thing:
+  catch an accidental `npm publish`.
+- **The install recipe is more precise:** both `npm link` and `npm install -g .` **link** to
+  the checkout instead of copying, so moving the checkout would take the wired clients with
+  it. The README now recommends a tarball, and says why.
 
-**Amit az első CI-futás talált — három hiba, mindhárom olyan platformon, amit fejlesztés közben nem
-tudtam futtatni:**
+**What the first CI run found — three bugs, all on a platform I could not run during
+development:**
 
-- **`better-sqlite3` 11 → 13.** Node 24-en a folyamat `SIGABRT`-tel elszállt a leálláskor
-  (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`), a `Statement`
-  destruktorából. A 12-es és alatti kiadások a nyers V8 `node::ObjectWrap`-re épülnek, amihez a Node
-  24.19 cleanup hookot adott; a hook eltávolítása a már megszűnt `Environment`-en hasal el. A 13.0.0
-  N-API-ra váltott, ezzel a hibaosztály nem javítva, hanem **megszüntetve** lett. Nekünk ez azon
-  túl is nyereség, hogy a CI zöld: az N-API build nincs Node ABI-hoz kötve, márpedig ezt az eszközt
-  tetszőleges Node-verzió alá telepítik globálisan.
-- **A frissesség-figyelmeztetés tesztje a platformot nézte, nem a beállítást.** A „másik
-  útvonal-hajtással írt index" esetét úgy állította elő, hogy Windowson `0`-t írt, máshol `1`-et —
-  csakhogy a macOS is hajt, mint a Windows, tehát ott nem az ellenkezőjét írta, és a figyelmeztetés
-  jogosan maradt el. Most a tényleges `CASE_INSENSITIVE_FS` ellenkezőjét írja, ami a `CAM_CASE_FOLD`
-  megfordított futásában is helyes marad.
-- **A telepítő-tesztek fixtúrája feloldatlan tempkönyvtárat használt.** macOS-en a `/var` a
-  `/private/var`-ra mutat, és a `locate` — helyesen — feloldott útvonalat ad vissza. Nem az
-  elvárást igazítottam a kimenethez: a fixtúra gyökere lett feloldott, mert az installer is
-  szándékosan feloldott útvonalat ír (egy symlinkre mutató ütemezett feladat a link elmozdulásának
-  napján törik el).
-- **`--ignore-scripts` a telepítésnél, és ez nem CI-kerülőút.** A 13-as `better-sqlite3` minden
-  támogatott platformra hoz előre fordított binárist a csomagban, az npm mégis lefuttatja rá a
-  beépített `node-gyp rebuild`-et. A `binding.gyp` ilyenkor no-oppá teszi magát — csakhogy a
-  node-gyp Windowson *előbb* keres Visual Studiót, hogy aztán egy üres projektet generáljon. A
-  futtatón ez elhasalt (a VS 18-at nem ismerte fel), pedig fordítani nem kellett volna semmit.
-  Fordító nélküli gépen ugyanez a felhasználót érné el, ezért a README és a `docs/install.md` is
-  `--ignore-scripts`-tel telepít. Ellenőrizve: tiszta `npm ci --ignore-scripts` után nem keletkezik
-  `build/` mappa, a kötés a prebuildből töltődik, és mind a 454 teszt zöld.
+- **`better-sqlite3` 11 → 13.** On Node 24 the process aborted with `SIGABRT` at shutdown
+  (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`), from the `Statement`
+  destructor. Releases 12 and below are built on the raw V8 `node::ObjectWrap`, which Node
+  24.19 gave a cleanup hook; removing the hook fails on an `Environment` that is already gone.
+  13.0.0 switched to N-API, so this class of bug was not fixed but **eliminated**. For us that
+  is a win beyond CI going green: an N-API build is not tied to a Node ABI, and this tool is
+  installed globally under whatever Node version is there.
+- **The freshness-warning test looked at the platform, not the setting.** The "index written
+  with the other path-folding" case was produced by writing `0` on Windows and `1` elsewhere —
+  except macOS folds too, like Windows, so there it did not write the opposite, and the warning
+  correctly stayed away. Now it writes the opposite of the actual `CASE_INSENSITIVE_FS`, which
+  stays correct in an inverted `CAM_CASE_FOLD` run as well.
+- **The installer-test fixture used an unresolved temp directory.** On macOS `/var` points at
+  `/private/var`, and `locate` — correctly — returns a resolved path. I did not adjust the
+  expectation to the output: the fixture root became resolved, because the installer also
+  deliberately writes a resolved path (a scheduled task pointing at a symlink breaks on the
+  day the link moves).
+- **`--ignore-scripts` at install, and this is not a CI workaround.** `better-sqlite3` 13 ships
+  a prebuilt binary for every supported platform in the package, yet npm still runs the
+  built-in `node-gyp rebuild` on it. `binding.gyp` then turns itself into a no-op — except
+  node-gyp on Windows looks for Visual Studio *first*, in order to generate an empty project.
+  On the runner that failed (it did not recognise VS 18), even though nothing needed compiling.
+  On a machine without a compiler the same thing would reach the user, so the README and
+  `docs/install.md` also install with `--ignore-scripts`. Verified: after a clean
+  `npm ci --ignore-scripts` no `build/` folder is created, the binding loads from the prebuild,
+  and all 454 tests are green.
 
 ---
 
-### Telepítés — egy parancs, ami beköti magát mindenhova
+### Install — one command that wires itself in everywhere
 
-**Cél volt:** a kézi bekötés négy kliensben, négy formátumban, plusz az ütemezés — ez az a lépés,
-ahol egy egyébként kész eszközt nem kezd el használni senki. Hogyan:
+**The goal was:** manual wiring in four clients, in four formats, plus scheduling — that is the
+step where nobody starts using an otherwise finished tool. How:
 [`docs/install.md`](docs/install.md).
 
-- **`cam install` / `cam uninstall`**, `--dry-run`-nal és részenkénti kikapcsolással
-  (`--no-mcp`, `--no-skills`, `--no-dream`, `--no-schedule`), globálisan vagy `--project`-tel a
-  repóba. A telepítő kiírja azt is, **melyik indexet** fogja használni a bekötött szerver — az
-  útvonal nem magától értetődő, és minden más rész ezt a fájlt olvassa.
-- **`npx`-ből nem telepítünk, mert nem lehet tartósan.** Az `npx` az npm gyorsítótárába csomagol ki
-  (`_npx/<hash>`), és a saját `node_modules/.bin`-jét teszi a `PATH`-ra a futás idejére — tehát az
-  abszolút útvonal a gyorsítótár kitakarításáig él, a puszta `cam-mcp` pedig a folyamat kilépéséig.
-  Mindkettő olyan konfigurációt ad, ami ma jónak látszik, és később némán nem indul el. A telepítő
-  felismeri az ideiglenes csomagmappát, nem ír semmit, és `npm i -g`-t javasol.
-- **A szerver mindig abszolút útvonallal kerül a konfigurációba**, akkor is, ha a `cam-mcp` a
-  `PATH`-on van. Eddig ilyenkor a puszta parancsot írtuk be, holott a klienst nem a telepítő shellje
-  indítja: egy dockból indított asztali alkalmazásnak nincs bejelentkezési `PATH`-a. A dokumentáció
-  egyébként eddig is ezt állította — most a kód is ezt csinálja.
-- **Egy csomag, egy ütemezés.** A feladatnevek rögzítettek, tehát duplikálni nem lehetett őket —
-  átvenni viszont igen: egy második telepítés némán a saját példányára állította volna a meglévő
-  feladatot, és az előző úgy nézett volna ki, mintha telepítve volna, miközben semmi nem fut a
-  nevében. A telepítő mostantól megnézi, kié a regisztrált feladat: ugyanez a példány esetén nincs
-  teendő, másiknál nem ír, megnevezi mindkét parancsot, és `1`-gyel lép ki. Átvétel: `--force`.
-  (A `scheduleInstalled` eddig is megvolt, csak soha senki nem hívta meg.)
-- **A háttérfeladat és az MCP-parancs feloldott symlinkekkel íródik.** Egy Node-verziókezelő mozgó
-  linket tesz a Node bináriba és a globális `node_modules`-ba is; egy óránként futó feladat nem
-  változhat attól, hogy valaki verziót váltott egy terminálban.
+- **`cam install` / `cam uninstall`**, with `--dry-run` and per-part opt-out
+  (`--no-mcp`, `--no-skills`, `--no-dream`, `--no-schedule`), globally or with `--project` into
+  the repo. The installer also prints **which index** the wired server will use — the
+  path is not obvious, and every other part reads this file.
+- **We do not install from `npx`, because it cannot last.** `npx` unpacks into the npm cache
+  (`_npx/<hash>`) and puts its own `node_modules/.bin` on `PATH` for the duration of the run —
+  so the absolute path lives until the cache is collected, and a bare `cam-mcp` only until the
+  process exits. Both produce a configuration that looks fine today and later fails to start
+  silently. The installer detects the temporary package folder, writes nothing, and suggests
+  `npm i -g`.
+- **The server always goes into the configuration with an absolute path**, even if `cam-mcp` is
+  on `PATH`. Until now we wrote the bare command in that case, even though the client is not
+  started by the installer's shell: a desktop app launched from the dock has no login `PATH`.
+  The documentation already claimed this — now the code does it too.
+- **One package, one schedule.** Task names are fixed, so they could not be duplicated —
+  but they could be taken over: a second install would silently point the existing task at
+  its own copy, and the previous one would look installed while nothing ran in its name.
+  The installer now checks whose registered task it is: same instance, nothing to do;
+  another one, it writes nothing, names both commands, and exits `1`. Takeover: `--force`.
+  (`scheduleInstalled` already existed, nobody had ever called it.)
+- **The background task and the MCP command are written with resolved symlinks.** A Node
+  version manager puts a moving link on both the Node binary and the global `node_modules`;
+  a task that runs hourly must not change because someone switched versions in a terminal.
 
-### Javítva
+### Fixed
 
-- **A globálisan telepített CLI semmit nem csinált, és nullával lépett ki.** A belépéspont-vizsgálat
-  az `import.meta.url`-t hasonlította a `process.argv[1]`-hez nyersen, a Node viszont az elsőt
-  feloldott symlinkekkel adja, a másodikat úgy, ahogy a shell írta. Egy Node-verziókezelő pontosan
-  ide tesz linket (`C:\nvm\current` → `…\nvm\v22.21.1`), tehát a két érték sosem egyezett: a `cam`
-  elindult, nem futtatott semmit, és sikert jelentett. Ütemezett feladatként ez óránkénti zöld
-  futás, üres eredménnyel. Az összehasonlítás mostantól feloldott útvonalakon történik.
-- **A kliensek konfigurációja sértetlen marad.** A JSON-ok a saját behúzásukkal íródnak vissza, a
-  Codex TOML-jában szövegszinten cseréljük a saját táblánkat (a kommentek megmaradnak), és az első
-  változtatás előtt biztonsági másolat készül. Egy **sérült konfigurációt nem írunk felül**: a
-  parancs megmondja, melyiket, folytatja a többivel, és `1`-gyel lép ki.
-- **Ami nincs telepítve, azt nem telepítjük.** Egy klienst a saját könyvtára jelent be; enélkül a
-  parancs kihagyja, ahelyett hogy egy soha nem használt eszköznek konfigurációt írna.
-- **Skill kliensenként**, egy közös törzsből (`assets/skill.md`). Az MCP-bekötéstől az ágens még nem
-  használja az indexet — attól használja, hogy tudja, mikor érdemes. Ami eszközönként eltér, az egy
-  szakasz: van-e terminál, vagy csak az MCP-toolok.
-- **Az álom fázis modellt kap a gépen már meglévő ágens-CLI-kból** (Codex, Claude Code, Cursor
-  Agent, Gemini, Antigravity, Ollama), és a modellt is a felhasználó választja — a listát a Codex a
-  saját `models_cache.json`-jéből, az Antigravity az `agy models`-ből, a Cursor a `--list-models`-ből
-  adja. **Csak akkor kerül a konfigurációba, ha egy éles promptra válaszolt:** egy rossz kapcsolóval
-  megírt sablon pontosan úgy néz ki, mint egy működő, egészen az első éjszakai futásig.
-- **A sablonok nem engedik a modellt a lemezhez** (`-s read-only`, `--tools ""`, `--mode ask`), és
-  **kikapcsolják a session-mentést** ott, amit a `cam` maga is indexel (`--ephemeral`,
-  `--no-session-persistence`) — enélkül a következő szinkron beolvasná az álom-promptokat, és az
-  index lassan megtelne a saját tükörképével.
-- **Ütemezés telepítése** mind a három platformon: Task Scheduler, launchd, systemd user timer,
-  óránkénti szinkronnal és éjszakai karbantartással, mindenhol bekapcsolt pótlással. A tervező tiszta
-  függvény, ezért mind a három recept tesztelhető egyetlen gépről.
+- **The globally installed CLI did nothing and exited zero.** The entry-point check compared
+  `import.meta.url` to `process.argv[1]` raw, but Node gives the first with resolved
+  symlinks and the second the way the shell wrote it. A Node version manager puts a link
+  exactly here (`C:\nvm\current` → `…\nvm\v22.21.1`), so the two values never matched: `cam`
+  started, ran nothing, and reported success. As a scheduled task that is an hourly green
+  run with an empty result. The comparison now happens on resolved paths.
+- **Client configurations stay intact.** JSON files are written back with their own
+  indentation, in Codex TOML we replace our own table at text level (comments survive), and
+  a backup is made before the first change. We **do not overwrite a broken configuration**:
+  the command says which one, continues with the rest, and exits `1`.
+- **What is not installed, we do not install.** A client announces itself by its own
+  directory; without that the command skips it, instead of writing a configuration for a
+  tool that is never used.
+- **Skill per client**, from a shared body (`assets/skill.md`). MCP wiring alone does not
+  make the agent use the index — it uses it when it knows when to. What differs per tool is
+  one section: whether there is a terminal, or only the MCP tools.
+- **The dream phase gets a model from agent CLIs already on the machine** (Codex, Claude Code,
+  Cursor Agent, Gemini, Antigravity, Ollama), and the user picks the model too — Codex
+  supplies the list from its own `models_cache.json`, Antigravity from `agy models`, Cursor
+  from `--list-models`. **It only goes into the configuration if it answered a live prompt:**
+  a template written with a bad flag looks exactly like a working one, until the first
+  nightly run.
+- **The templates do not let the model touch the disk** (`-s read-only`, `--tools ""`,
+  `--mode ask`), and **turn off session saving** where `cam` itself also indexes
+  (`--ephemeral`, `--no-session-persistence`) — without that the next sync would ingest the
+  dream prompts, and the index would slowly fill with its own reflection.
+- **Schedule install** on all three platforms: Task Scheduler, launchd, systemd user timer,
+  with hourly sync and nightly maintenance, catch-up enabled everywhere. The planner is a
+  pure function, so all three recipes can be tested from a single machine.
 
-#### Javítva
+#### Fixed
 
-- **A `.cmd`-shim mögötti valódi program.** Windowson egy npm-es CLI három fájl, és egyik sem a
-  program; a Node 18.20 óta shell nélkül el sem indítja őket. A keresés mostantól az egész `PATH`-t
-  végignézi, átolvas az indítókon, és vagy natív futtathatónál, vagy `node <szkript>`-nél köt ki.
-  Ez nem kozmetika: a `PATH` sorrendje rossz döntőbíró, ha egy eszköz kétszer van fent (a
-  fejlesztőgépen épp a shim mögötti npm-verzió volt hibás), és a beírt parancsot később egy ütemezett
-  feladat futtatja, aminek nincs shellje és nincs `PATH`-a.
-- **`appSupportDir` a kapott profilt használja, nem a környezeti változót.** Az `APPDATA` és az
-  `XDG_CONFIG_HOME` a futó folyamat profilját írja le; más home-mal hívva némán ide irányítottak
-  vissza — így írt volna egy fixture-be irányított telepítés a valódi Claude Desktop-konfigba.
-- **A `cam memory dream` a `stdout` helyett fájlból veszi a választ, ahol az eszköz tudja**
-  (`codex exec -o`), mert a `stdout`-on ott a banner és a tokenszámláló is.
+- **The real program behind the `.cmd` shim.** On Windows an npm CLI is three files, and
+  none of them is the program; since Node 18.20 it will not even start them without a shell.
+  The search now walks the whole `PATH`, reads through the launchers, and lands on either a
+  native executable or `node <script>`. This is not cosmetics: `PATH` order is a bad
+  tie-breaker when a tool is installed twice (on the development machine it was the npm
+  version behind the shim that was broken), and the command written down is later run by a
+  scheduled task that has no shell and no `PATH`.
+- **`appSupportDir` uses the given profile, not the environment variable.** `APPDATA` and
+  `XDG_CONFIG_HOME` describe the running process's profile; called with another home they
+  silently pointed back here — that is how a fixture-directed install would have written
+  into the real Claude Desktop config.
+- **`cam memory dream` takes the reply from a file instead of `stdout`, where the tool can**
+  (`codex exec -o`), because `stdout` also has the banner and the token counter.
 
 ---
 
 ## [0.4.0] — 2026-08-29
 
-### Álom fázis — az egyetlen hely, ahol modell dolgozik
+### Dream phase — the only place a model works
 
-**Cél volt:** a determinizmus nem tud megmondani egy mondatban, hogy egy előhívott részlet miről szól.
-Ez az egy dolog hiányzott, és csak ez kerül modell közelébe. Hogyan működik:
-[`docs/memory.md`](docs/memory.md#az-álom-fázis-opcionális).
+**The goal was:** determinism cannot say in one sentence what a recalled excerpt is about.
+That was the one missing thing, and only this comes near a model. How it works:
+[`docs/memory.md`](docs/memory.md#the-dream-phase-optional).
 
-- **`cam memory dream [--dry-run] [--force] [--project p] [--model m]`** és a
-  **`cam memory dream forget`** (`src/memory/dream.ts`, `memory_dreams` tábla). Nem promotál, nem von
-  vissza, egyetlen bizonyíték-táblát sem ír.
-- **Alapból ki van kapcsolva, és a `consolidate` sosem hívja.** Modell nélkül a parancs nem küld
-  semmit, hanem megmondja, mit kell beállítani, és `2`-vel lép ki.
-- **A modell konfiguráció, nem kód:** bármilyen parancs jó, ami promptot olvas és szöveget ír
-  (`"memory": { "dream": { "provider": "command", … } }`), tehát modellt cserélni nem fordítás.
-- **Ami kimegy, azt a parancs megmondja, mielőtt kimenne** — hány emlék, hány karakter, melyik
-  modellnek. Ez a sor `--quiet` mellett is megjelenik: nem haladásjelzés, hanem közlés. A `--dry-run`
-  emellett az első promptot szó szerint kiírja, és nem indít el semmit.
-- **A kimenet gyorsítótárazva van a bemenet hashével**, a modell nevével megjelölve, a forrásoktól
-  külön tárolva — ugyanazért kétszer nem fizetsz, és `dream forget`-tel bármikor eldobható.
-- **Egy elszálló modell nem viszi magával a futást:** a hiba emlékenként van feljegyezve, a parancs
-  nem nulla kóddal lép ki, és holnap újrapróbálható. Az időtúllépés is ide tartozik.
-- **A generált mondat sosem látszik forrásnak:** a `cam memory list`, a `cam memory show` és a
-  `cam_memory` mind a modell nevével együtt írja ki.
+- **`cam memory dream [--dry-run] [--force] [--project p] [--model m]`** and
+  **`cam memory dream forget`** (`src/memory/dream.ts`, `memory_dreams` table). It does not promote,
+  it does not revoke, it writes no evidence table.
+- **Off by default, and `consolidate` never calls it.** Without a model the command sends
+  nothing; it says what to configure, and exits `2`.
+- **The model is configuration, not code:** any command that reads a prompt and writes text is
+  fine (`"memory": { "dream": { "provider": "command", … } }`), so swapping a model is not a
+  compile.
+- **What goes out, the command says before it goes out** — how many memories, how many
+  characters, to which model. This line appears even with `--quiet`: it is not a progress
+  indicator, it is a disclosure. `--dry-run` also prints the first prompt verbatim, and starts
+  nothing.
+- **The output is cached with the input hash**, tagged with the model name, stored apart from
+  the sources — you do not pay twice for the same thing, and `dream forget` can drop it any
+  time.
+- **A crashing model does not take the run with it:** the error is recorded per memory, the
+  command exits non-zero, and tomorrow it can be retried. Timeouts belong here too.
+- **The generated sentence is never presented as a source:** `cam memory list`, `cam memory show`
+  and `cam_memory` all print it together with the model name.
 
-### M4 — Üzemeltetés
+### M4 — Operations
 
-**Cél volt:** felügyelet nélkül is használható maradjon. Hogyan üzemeltesd:
+**The goal was:** it should stay usable unattended. How to operate it:
 [`docs/operations.md`](docs/operations.md).
 
-#### Hozzáadva
+#### Added
 
-- **Frissesség-jelzés** (`src/ops/freshness.ts`). A `sync_runs` táblát az első verzió óta írjuk, és
-  eddig senki nem olvasta — ami ugyanaz, mintha nem lenne. Mostantól **minden MCP-válasz utolsó sora**
-  megmondja, mikor szinkronizált utoljára az index, mit tartalmaz, elavult-e, és hibázott-e az utolsó
-  futás. A kor a legutóbbi **befejezett** futásból jön, nem a legutóbbi sorból: egy elszállt futás nem
-  teheti frissnek az indexet.
-- **`cam status`** és a hetedik MCP-tool, a **`cam_status`**: ugyanez a jelentés önállóan, `--json`-nal
-  is. A `cam doctor` is kiírja, a méret és a betűhajtás-figyelmeztetés mellett.
-- **`cam get <tool:id[#seqN-M]>`** — a `cam_get` MCP-tool CLI-párja, ami eddig hiányzott. A
-  `cam recall` hivatkozásokat írt ki (`cursor:217d5d40…#seq16-23`), amiket terminálból semmi nem
-  tudott megnyitni: a keresés fele CLI-ból zsákutca volt. A hivatkozás-elemző és a turn-renderelő
-  ezzel a lekérdező rétegbe került (`parseCitation` a `recall.ts`-be, `formatTurns` a `format.ts`-be),
-  tehát a két felület ugyanazt a szöveget és ugyanazokat a hibaeseteket adja. Az elemezhetetlen
-  hivatkozás `2`-vel, a nem létező session `1`-gyel lép ki.
-- **`cam prune`** — megőrzési szabály a régi előhívási nyomra, a futásnaplóra és az eltűnt forrású
-  sessionökre. `--dry-run` ugyanazokat a számokat adja, mint az éles futás; `--vacuum` a helyet is
-  visszaadja. Beállítható a konfigban (`retention`) és kapcsolóval (`--recall-days`, `--keep-runs`,
-  `--missing-days`).
-- **`cam forget --project <kulcs> | <tool:sessionId>`** — egy projekt vagy egy session elfelejtése az
-  indexből, a promotált emlékeivel együtt. A forrásfájlokhoz nem nyúl.
-- **`cam backup [<fájl>]`** — ellenőrzött, önálló másolat az SQLite online backup API-jával, `--json`
-  kimenettel. Utána megnyitja a másolatot, `quick_check`-eli, és összecsukja a WAL-t; ha az ellenőrzés
-  hibát talál, `1`-gyel lép ki, és nem nevezi mentésnek.
-- **`--quiet` és `--verbose`** minden parancson (`src/log.ts`). A `--quiet` hiba esetén beszél,
-  egyébként hallgat; a parancs *válaszát* sosem nyeli el — egy `cam recall --json --quiet`, ami semmit
-  nem ír ki, csapda lenne. A `--verbose` fázisonkénti időt ad a synchez.
-- **Ütemezési minta mind a négy platformra**: Task Scheduler, launchd, systemd timer, cron —
+- **Freshness signal** (`src/ops/freshness.ts`). We have written the `sync_runs` table since the
+  first version, and until now nobody read it — which is the same as not having it. From now on
+  **every MCP response's last line** says when the index last synced, what it contains, whether
+  it is stale, and whether the last run failed. Age comes from the latest **completed** run, not
+  the latest row: a crashed run must not make the index look fresh.
+- **`cam status`** and the seventh MCP tool, **`cam_status`**: the same report on its own, with
+  `--json` too. `cam doctor` also prints it, next to size and the case-folding warning.
+- **`cam get <tool:id[#seqN-M]>`** — the CLI counterpart of the `cam_get` MCP tool, which had
+  been missing. `cam recall` printed citations (`cursor:217d5d40…#seq16-23`) that nothing in the
+  terminal could open: half of search from the CLI was a dead end. The citation parser and the
+  turn renderer moved into the query layer with this (`parseCitation` into `recall.ts`,
+  `formatTurns` into `format.ts`), so the two surfaces give the same text and the same error
+  cases. An unparseable citation exits `2`, a session that does not exist exits `1`.
+- **`cam prune`** — retention for old recall evidence, the run log, and sessions whose source
+  has gone missing. `--dry-run` gives the same numbers as a live run; `--vacuum` also gives the
+  space back. Configurable in the config (`retention`) and with flags (`--recall-days`,
+  `--keep-runs`, `--missing-days`).
+- **`cam forget --project <key> | <tool:sessionId>`** — forget a project or a session from the
+  index, together with its promoted memories. It does not touch the source files.
+- **`cam backup [<file>]`** — a checked, standalone copy via the SQLite online backup API, with
+  `--json` output. Afterwards it opens the copy, `quick_check`s it, and folds the WAL; if the
+  check finds an error it exits `1` and does not call it a backup.
+- **`--quiet` and `--verbose`** on every command (`src/log.ts`). `--quiet` talks on error,
+  otherwise stays silent; it never swallows the command's *answer* — a `cam recall --json --quiet`
+  that printed nothing would be a trap. `--verbose` gives per-phase timing for sync.
+- **Scheduling sample for all four platforms**: Task Scheduler, launchd, systemd timer, cron —
   [`docs/operations.md`](docs/operations.md).
-- **Betűhajtás-bélyeg** (`src/db/portability.ts`, `meta.path_case_fold`). Egy Windowson írt index
-  kisbetűs útvonalakat tárol; Linuxon megnyitva **némán** semmit nem talál. A `cam backup` behozta ezt
-  a hibalehetőséget, ezért az index megjelöli magát, a `cam doctor` és a `cam_status` pedig
-  összeveti a futó rendszerrel, és megmondja, mit kell beállítani.
-- **`npm run smoke`** (`scripts/mcp-smoke.ts`) — a kiadott MCP-szervert valódi stdio-alproceszként
-  hajtja meg a valódi indexen, és ellenőrzi, hogy mind a hét tool válaszán rajta van az index kora, a
-  hibaválaszokon is. A tool-listát a szervertől kérdezi, tehát egy le nem tesztelt toolt is kiszúr.
+- **Case-fold stamp** (`src/db/portability.ts`, `meta.path_case_fold`). An index written on
+  Windows stores lowercase paths; opened on Linux it finds **nothing**, silently. `cam backup`
+  brought this failure mode in, so the index marks itself, and `cam doctor` and `cam_status`
+  compare it with the running system and say what to set.
+- **`npm run smoke`** (`scripts/mcp-smoke.ts`) — drives the released MCP server as a real stdio
+  subprocess against the real index, and checks that all seven tool replies carry the index
+  age, error replies included. It asks the server for the tool list, so an untested tool is
+  caught too.
 
-#### Javítva
+#### Fixed
 
-- **A `resolveFileEvents` nem a feloldás miatt volt lassú, hanem az írás miatt.** A terv gyanúja a
-  6 064 útvonal újra-feloldása volt; a valóság az, hogy a régi kód 6 064 külön `UPDATE`-et adott ki a
-  `file_events` táblára, aminek nem volt indexe a `resource` oszlopon — 6 064 teljes tábla-scan
-  34 567 soron. Az új `idx_fe_resource` index és az egyetlen halmaz-alapú `UPDATE` mellett, a
-  referenciagép indexén mérve: **14 982 ms → 228 ms**. A `path_keys` gyorsítótár a maradékot viszi
-  (a teljes fázis 804 ms → 128 ms), és túléli a Cursor-fájltörténet napi újratöltését, ami eddig
-  nullázta a kiszámolt `project_key`-t. A `cam reattribute` teljes újraszámolást kér, mert egy új
-  alias megváltoztatja, mire old fel egy útvonal.
-- **A `sync_runs.sources_synced` sosem forrásokat számolt, hanem sessionöket.** A frissesség-jelentés
-  hozta elő. Az oszlop marad a történeti értékeivel (oszlopot nem törlünk és nem nevezünk át), az új
-  futások a `sessions_seen`-be írnak. Séma verzió 3 → 4.
+- **`resolveFileEvents` was slow because of the writes, not the resolving.** The plan suspected
+  re-resolving 6 064 paths; the reality was that the old code issued 6 064 separate `UPDATE`s
+  against `file_events`, which had no index on the `resource` column — 6 064 full table scans
+  over 34 567 rows. With the new `idx_fe_resource` index and a single set-based `UPDATE`,
+  measured on the reference machine's index: **14 982 ms → 228 ms**. The `path_keys` cache
+  takes the rest (the whole phase 804 ms → 128 ms), and survives the daily reload of the
+  Cursor file history, which until now zeroed the computed `project_key`. `cam reattribute`
+  asks for a full recalculation, because a new alias changes what a path resolves to.
+- **`sync_runs.sources_synced` never counted sources; it counted sessions.** The freshness
+  report brought this out. The column stays with its historical values (we do not drop or
+  rename a column); new runs write into `sessions_seen`. Schema version 3 → 4.
 
-#### Amit a megőrzés nem tesz
+#### What retention does not do
 
-- **Élő promóció bizonyítéka nem törölhető.** Egy promotált emlék állítása az, hogy meg tudja mutatni,
-  mikor és milyen kérdésekre jött elő; ha a prune kiürítené a `recall_events`-ét, az állítás hamissá
-  válna, miközben az emlék ott marad. Ezért egy `memory_facts`-ban szereplő chunk nyoma korra való
-  tekintet nélkül marad, és csak a visszavonás engedi el.
-- **A hiányzó forrás alapból nem ok a törlésre** (`missingDays: 0`). Egy fel nem csatolt külső meghajtó
-  pontosan úgy néz ki, mint egy véglegesen eltűnt forrás.
-- **A `cam forget` az indexből töröl, nem a történelemből.** A beszélgetések fájljai máséi; egy
-  következő `cam sync` újraindexeli őket, ha még megvannak.
+- **Live promotion evidence cannot be deleted.** A promoted memory's claim is that it can show
+  when and on which questions it came up; if prune emptied its `recall_events`, the claim would
+  become false while the memory stayed. So a chunk that appears in `memory_facts` keeps its
+  evidence regardless of age, and only a revoke lets it go.
+- **A missing source is not, by default, a reason to delete** (`missingDays: 0`). An unmounted
+  external drive looks exactly like a source that is gone for good.
+- **`cam forget` deletes from the index, not from history.** The conversation files belong to
+  someone else; a later `cam sync` reindexes them if they are still there.
 
-#### Mérések (referenciagép, 2026-08-29, M4 után)
+#### Measurements (reference machine, 2026-08-29, after M4)
 
-1 643 session · 32 054 turn · 16 448 chunk · 451 melléktermék · 57,6 MB.
+1 643 session · 32 054 turn · 16 448 chunk · 451 artifact · 57,6 MB.
 
-| fázis | M3 | M4 |
+| phase | M3 | M4 |
 |---|---|---|
-| kollektorok (mind a hét) | ~320 ms | ~330 ms |
+| collectors (all seven) | ~320 ms | ~330 ms |
 | `resolveFileEvents` | ~20 s | 128 ms |
 | `reattribute` | ~4,2 s | ~3,5 s |
-| **`cam sync` végig** | **~26 s** | **~4,6 s** |
+| **`cam sync` end to end** | **~26 s** | **~4,6 s** |
 
-A szűk keresztmetszet ezzel a `reattribute`-ba került, nem a fájlútvonalakba.
+The bottleneck is now in `reattribute`, not in the file paths.
 
-**404 teszt zöld** (293 → 404), `tsc --noEmit` tiszta, `npm run build` OK. Új tesztfájlok:
-`test/ops.test.ts` (frissesség, megőrzés, felejtés, vacuum, mentés, hordozhatóság) és
-`test/dream.test.ts` (konfiguráció, közlés, gyorsítótár, elszálló és beragadó modell, felejtés).
+**404 tests green** (293 → 404), `tsc --noEmit` clean, `npm run build` OK. New test files:
+`test/ops.test.ts` (freshness, retention, forget, vacuum, backup, portability) and
+`test/dream.test.ts` (configuration, disclosure, cache, crashing and stuck model, forget).
 
-A lefedettség két ponton **önmagát tartja karban**: a `test/cli.test.ts` minden parancsot meghajt, és
-a listája a `SPECS`-hez van kötve, tehát egy később hozzáadott parancs addig buktatja a tesztet, amíg
-nincs meghajtva; a `test/mcp.test.ts` pedig a szervertől lekért tool-listát sorolja fel, tehát egy
-később regisztrált tool is automatikusan beleesik az index-kor ellenőrzésébe. Az álom CLI-oldala
-(mit tagad meg modell nélkül, mit közöl küldés előtt, mit tesz `--quiet` mellett) a
-`test/cli.test.ts`-ben van, a fázis maga a `test/dream.test.ts`-ben.
+Coverage **maintains itself** at two points: `test/cli.test.ts` drives every command, and its
+list is bound to `SPECS`, so a command added later fails the test until it is driven; and
+`test/mcp.test.ts` lists the tool list fetched from the server, so a tool registered later
+automatically falls into the index-age check. The dream CLI side (what it refuses without a
+model, what it discloses before sending, what it does with `--quiet`) is in
+`test/cli.test.ts`; the phase itself is in `test/dream.test.ts`.
 
 ## [0.3.0] — 2026-08-29
 
-Az M1 (első használható állapot), az M1.5 (megszilárdítás), az M2 (telepíthető csomag) és az M3
-(memória-réteg) együtt.
+M1 (first usable state), M1.5 (hardening), M2 (installable package) and M3
+(memory layer) together.
 
-### Hozzáadva
+### Added
 
-- **Váz és adatbázis.** TypeScript/Node ESM projekt (`better-sqlite3`, `vitest`), teljes séma:
+- **Skeleton and database.** TypeScript/Node ESM project (`better-sqlite3`, `vitest`), full schema:
   `sources`, `sessions`, `turns`, `chunks`, `chunks_fts`, `path_evidence`, `attribution`,
-  `file_events`, `artifacts`, `recall_events`, `sync_runs`. A `chunks_fts` **contentless**
-  (`content=''`, `contentless_delete=1`, `unicode61 remove_diacritics 2`), így az invertált index
-  létezik, a szöveg nem — ez teszi a „nem duplikálunk" szabályt valóságossá.
-- **Platform- és profilfüggetlen tárolóhelyek.** `appSupportDir()` Windows / macOS / Linux alatt old,
-  minden út `os.homedir()`-ből és `os.tmpdir()`-ből származik.
-- **Projektfelismerés autodetektálással.** Marker-alapú séta (`.git`, `package.json`, `pyproject.toml`,
-  `go.mod`, `CMakeLists.txt`, …) a generikus mappanevek átugrásával; a workspace-gyökereket a korpuszból
-  tanulja (`detectWorkspaceRoots`); a `projects.root_path` túléli a projekt mozgatását; alias-tábla a
-  felhasználó döntéseinek. Semmilyen bedrótozott útvonal vagy profilnév.
-- **Inkrementális index.** `sources` vízjeltábla: azonos méret+mtime → nulla olvasás; növekvő fájl →
-  olvasás a `bytes_indexed`-től; fix ablakos `prefixHash` különbözteti meg az appendet az újraírástól.
-- **Hivatkozás, nem másolat.** A `turns` locatort tárol (fájl+offset, vagy SQLite kulcs), a szöveget a
-  `Hydrator` olvassa vissza, és `ok` / `stale` / `missing` állapotot ír vissza.
-- **Claude Code kollektor.** Fő és alügynök-átiratok, csak `text` blokkok indexelése, cím `ai-title` /
-  `custom-title` rekordokból.
-- **Codex kollektor.** `state_5.sqlite` (`threads`, `thread_spawn_edges`) + rollout fájlok;
-  másodperc→ezredmásodperc konverzió, hosszkapus címkezelés, `payload.id` alapú azonosítás.
-- **Cursor kollektor.** `state.vscdb` fél-nyílt tartomány-lekérdezésekkel; `ofsContent` kulcsokból és a
-  bubble-tartalmakból származó projekt-bizonyíték.
-- **Cursor fájltörténet kollektor.** `User/History/*/entries.json` → `file_events`, az attribúciós
-  idő-korreláció bemenete.
+  `file_events`, `artifacts`, `recall_events`, `sync_runs`. `chunks_fts` is **contentless**
+  (`content=''`, `contentless_delete=1`, `unicode61 remove_diacritics 2`), so the inverted index
+  exists and the text does not — that is what makes the "we do not duplicate" rule real.
+- **Platform- and profile-independent store locations.** `appSupportDir()` resolves under
+  Windows / macOS / Linux; every path comes from `os.homedir()` and `os.tmpdir()`.
+- **Project recognition with autodetect.** Marker-based walk (`.git`, `package.json`, `pyproject.toml`,
+  `go.mod`, `CMakeLists.txt`, …) skipping generic folder names; workspace roots are learned from
+  the corpus (`detectWorkspaceRoots`); `projects.root_path` survives a project move; alias table
+  for the user's decisions. No hardcoded path or profile name.
+- **Incremental index.** `sources` watermark table: same size+mtime → zero reads; growing file →
+  read from `bytes_indexed`; a fixed-window `prefixHash` distinguishes append from rewrite.
+- **Citation, not a copy.** `turns` stores a locator (file+offset, or an SQLite key); `Hydrator`
+  reads the text back and writes an `ok` / `stale` / `missing` status.
+- **Claude Code collector.** Main and subagent transcripts, only `text` blocks indexed, title from
+  `ai-title` / `custom-title` records.
+- **Codex collector.** `state_5.sqlite` (`threads`, `thread_spawn_edges`) + rollout files;
+  seconds→milliseconds conversion, length-gated title handling, identification by `payload.id`.
+- **Cursor collector.** `state.vscdb` with half-open range queries; project evidence from
+  `ofsContent` keys and from bubble contents.
+- **Cursor file-history collector.** `User/History/*/entries.json` → `file_events`, the input to
+  attribution time-correlation.
 - **CLI:** `cam sync`, `cam projects`, `cam timeline`, `cam doctor`.
 
-### Javítva
+### Fixed
 
-- `prefixHash` fix ablakot használ. Korábban a fájl aktuális méretéig hashelt, ezért egy rövid,
-  append-only átirat minden hozzáfűzését újraírásnak („rotated") jelezte volna — vagyis minden sync
-  teljes újraolvasás lett volna.
-- A Claude Code alügynök-átiratok a **szülő** `sessionId`-jét hordozzák minden rekordjukban; az
-  azonosító ezért a fájlnévből jön, különben az alügynök beleolvad a szülő sessionbe.
-- A projektfelismerés generált mappaneveket (UUID, ≥16 jegyű hex, időbélyeges job-nevek, `codex-runs`,
-  `worktrees`) sosem fogad el projektnévnek, és ilyenkor tovább lép felfelé. Nélküle 41 szemét-projekt
-  keletkezett a `codex-runs/<hash>` mappákból.
-- A tanult workspace-gyökerek átmennek a kizárt prefixek (OS temp, ágens-dotfile-ok) szűrőjén.
-- Cursor: a `lastUpdatedAt` nélküli beszélgetések (háttér/cloud szálak) minden futáskor újraolvasódtak;
-  most a `composerData` sha256-ja a változásjel — de **csak ha időbélyeg egyáltalán nincs**, mert egy
-  bubble szövegének szerkesztése nem változtatja meg a `composerData`-t.
-- Az útvonal-kinyerő „lenyelte" a következő szót (Windows útvonalnévben lehet szóköz), így ugyanaz az
-  útvonal kétszer szavazott.
+- `prefixHash` uses a fixed window. Previously it hashed up to the file's current size, so every
+  append of a short, append-only transcript would have been flagged as a rewrite ("rotated") —
+  meaning every sync would have been a full reread.
+- Claude Code subagent transcripts carry the **parent** `sessionId` in every record; the
+  identifier therefore comes from the filename, otherwise the subagent melts into the parent
+  session.
+- Project recognition never accepts generated folder names (UUID, ≥16-digit hex, timestamped
+  job names, `codex-runs`, `worktrees`) as a project name, and walks further up in that case.
+  Without this, 41 junk projects were born from `codex-runs/<hash>` folders.
+- Learned workspace roots pass through the excluded-prefix filter (OS temp, agent dotfiles).
+- Cursor: conversations without `lastUpdatedAt` (background/cloud threads) were reread on every
+  run; now the sha256 of `composerData` is the change signal — but **only if there is no
+  timestamp at all**, because editing a bubble's text does not change `composerData`.
+- The path extractor "swallowed" the next word (a Windows path name can contain a space), so the
+  same path voted twice.
 
-- **Cowork kollektor.** `local-agent-mode-sessions` meta + átirat; a projekt a `userSelectedFolders`-ből
-  jön, a sandbox `cwd` súlytalan bizonyítékként rögzül.
-- **Claude Desktop gazdagítás.** A `cliSessionId` alapján címet ad a cím nélküli Claude Code
-  sessionöknek; a helyi átirat nélküli bejegyzések üres sessionként megmaradnak.
-- **Melléktermék-kollektor.** Temp-scratchpad és Cowork-kimenetek (múlandó → másolat), `~/.claude/plans`
-  tervdokumentumok (stabil → hivatkozás, a sessionhöz a fájlnév-slug alapján kötve).
-- **Idő-korrelációs attribúció.** A Cursor fájltörténetből (`file_events`) közepes/gyenge megbízhatóságú
-  hozzárendelés azoknak a szálaknak, amelyek egyetlen útvonalat sem említenek.
-- **Keresési réteg.** HU/EN stopszavak, prefix-illesztés az agglutináció miatt, dátumszavak
-  (`ma`, `tegnap`), hosszőrző ékezet-hajtás, saját kiemelő (a contentless FTS `snippet()`-je NULL).
-- **Lekérdezések:** `recall`, `timeline`, `dossier`, `getTurns` — közös rendereléssel a CLI és az MCP
-  között. A `recall` naplózza a találatokat (`recall_events`), hogy a későbbi memória-réteg tudjon miből
-  promótálni.
-- **MCP szerver.** Öt read-only tool (`cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`,
-  `cam_projects`) az SDK `StdioServerTransport`-ján, `InMemoryTransport`-tal tesztelve.
-- **Teljes CLI:** `sync`, `projects`, `timeline`, `dossier`, `recall`, `alias`, `attribute`,
+- **Cowork collector.** `local-agent-mode-sessions` meta + transcript; the project comes from
+  `userSelectedFolders`; the sandbox `cwd` is recorded as weightless evidence.
+- **Claude Desktop enrichment.** Gives a title to untitled Claude Code sessions via
+  `cliSessionId`; entries without a local transcript stay as empty sessions.
+- **Artifact collector.** Temp scratchpads and Cowork outputs (ephemeral → copy), `~/.claude/plans`
+  plan documents (stable → reference, bound to the session by the filename slug).
+- **Time-correlation attribution.** Medium/weak-confidence assignment from Cursor file history
+  (`file_events`) for threads that mention no path at all.
+- **Search layer.** HU/EN stopwords, prefix matching because of agglutination, date words
+  (`ma`, `tegnap`), length-preserving accent folding, own highlighter (contentless FTS
+  `snippet()` is NULL).
+- **Queries:** `recall`, `timeline`, `dossier`, `getTurns` — with shared rendering between CLI
+  and MCP. `recall` logs hits (`recall_events`) so the later memory layer has something to
+  promote from.
+- **MCP server.** Five read-only tools (`cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`,
+  `cam_projects`) on the SDK's `StdioServerTransport`, tested with `InMemoryTransport`.
+- **Full CLI:** `sync`, `projects`, `timeline`, `dossier`, `recall`, `alias`, `attribute`,
   `reattribute`, `doctor`.
-- **Dokumentáció:** `docs/architecture.md`, `docs/sources.md`, `docs/mcp.md`.
-- **Terv** (`docs/roadmap.md`): mit kell tartalmaznia a projektnek, mérföldkövekre bontva,
-  mindegyiknél ellenőrizhető „mikor kész" feltétellel. Tartalmazza a jelenlegi ismert hiányokat
-  (M1.5), a kiadás feltételeit (M2), a memória-réteget (M3), az üzemeltetést (M4), az adatvédelmi
-  álláspontot, és hogy mely részek alszanak szándékosan.
+- **Documentation:** `docs/architecture.md`, `docs/sources.md`, `docs/mcp.md`.
+- **Plan** (`docs/roadmap.md`): what the project must contain, broken into milestones, each
+  with a checkable "done when" condition. Includes the then-known gaps (M1.5), the release
+  conditions (M2), the memory layer (M3), operations (M4), the privacy stance, and which
+  parts are asleep on purpose.
 
-### Javítva (folytatás)
+### Fixed (continued)
 
-- A kiemelés elcsúszott minden ékezet után: az NFD-alapú ékezet-eltávolítás megváltoztatja a szöveg
-  hosszát, így a folded stringben talált pozíciók nem feleltek meg az eredetinek. Az összehasonlítás
-  mostantól **hosszőrző** (karakterenként egy karakter).
-- A Cursor bubble-ök nem hordoznak időbélyeget, ezért minden Cursor-turn `ts_ms`-e null volt, és a
-  `--since` szűrés rájuk nem működött. A hub nem talál ki turnönkénti időpontot: a chunk időbélyege a
-  session kezdetére esik vissza.
-- Az azonos promptból ismételten futtatott Codex-sessionök nyolcszor töltötték ki a dosszié „legutóbbi
-  témák" listáját; a lista mostantól cím szerint deduplikál.
+- Highlighting slipped after every accent: NFD-based accent stripping changes the text
+  length, so positions found in the folded string did not match the original. Comparison is
+  now **length-preserving** (one character per character).
+- Cursor bubbles carry no timestamp, so every Cursor turn's `ts_ms` was null, and `--since`
+  filtering did not work on them. The hub does not invent a per-turn time: the chunk timestamp
+  falls back to the session start.
+- Codex sessions run repeatedly from the same prompt filled the dossier "recent topics" list
+  eight times; the list is now deduplicated by title.
 
-### Javítva (kód-review nyomán)
+### Fixed (from a code review)
 
-Egy review-agent hét megállapítása közül öt valódi, néma hibaosztály volt — mind kapott regressziós
-tesztet (`test/regressions.test.ts`):
+Five of a review agent's seven findings were real, silent bug classes — each got a regression
+test (`test/regressions.test.ts`):
 
-- **Azonos méretre átírt fájl elveszett.** A „változatlan" gyorsút csak méretet és mtime-ot nézett;
-  egy azonos hosszra átírt fájl az mtime granularitásán belül **véglegesen és némán** kimaradt volna.
-  A prefix-ablak hash-e most a skip úton is ellenőrződik (egy 4 KiB olvasás).
-- **Zsugorodó fájl a vízjel mögé került.** Ha a fájl a vízjel-ellenőrzés és az olvasás között lett
-  kisebb, a `readJsonlFrom` „nincs új tartalom"-ot jelzett, a vízjel a kisebb méretre állt, és az
-  átírt tartalom soha többé nem került beolvasásra. Most rotációként jelez, és a vízjel nullázódik.
-- **Az indexelés és a visszaolvasás nem ugyanazt szűrte.** Indexeléskor csak a `type: "text"` blokkok
-  számítottak, visszaolvasáskor a `content[*].text` mutató mindegyiket vitte. A mutató mostantól maga
-  hordozza a szűrőt (`content[*type=text].text`), így a kettő nem mondhat mást — különben minden ilyen
-  turn tartósan „stale"-nek látszana.
-- **A melléktermék-kollektor minden futáskor mindent újraolvasott**, és tervenként végigolvasta az
-  összes ismert átiratot (O(tervek × átiratok) teljes fájlolvasás, korlátlanul növekedve). Most
-  méret+mtime alapján kihagyja a változatlant, és a terv gazdáját csak egyszer keresi meg.
-  Mérve: 8,1 s → 87 ms.
-- **Árva FTS-sorok.** A `chunks_fts` contentless, nincs idegen kulcsa; egy `delete from sessions`
-  SQLite-on belül kaszkádolt volna a `chunks`-ra, az FTS-sorok megkerülésével. Trigger enforce-olja
-  a sémaszinten.
-- Kisebbek: az `artifacts.tool` mező írásra került (eddig átadtuk, de sehol nem tárolódott); a
-  `cam sync` hibaágon is lezárja az adatbázist; a `claude-desktop` kollektor nem jelenti újnak a már
-  ismert sessionöket.
+- **A file rewritten to the same size was lost.** The "unchanged" fast path only looked at size
+  and mtime; a file rewritten to the same length within mtime granularity would have been
+  skipped **permanently and silently**. The prefix-window hash is now checked on the skip path
+  too (one 4 KiB read).
+- **A shrinking file slipped behind the watermark.** If the file got smaller between the
+  watermark check and the read, `readJsonlFrom` reported "no new content", the watermark moved
+  to the smaller size, and the rewritten content was never read again. Now it is flagged as
+  rotation, and the watermark is zeroed.
+- **Indexing and reread did not filter the same thing.** At index time only `type: "text"`
+  blocks counted; at reread the `content[*].text` pointer took every one. The pointer now
+  carries the filter itself (`content[*type=text].text`), so the two cannot disagree — otherwise
+  every such turn would look permanently "stale".
+- **The artifact collector reread everything on every run**, and for each plan walked every
+  known transcript (O(plans × transcripts) full file reads, growing without bound). Now it
+  skips the unchanged by size+mtime, and looks up a plan's owner only once.
+  Measured: 8,1 s → 87 ms.
+- **Orphan FTS rows.** `chunks_fts` is contentless and has no foreign key; a `delete from
+  sessions` would have cascaded to `chunks` inside SQLite, bypassing the FTS rows. A trigger
+  enforces this at schema level.
+- Smaller: the `artifacts.tool` field is now written (we passed it, but it was stored
+  nowhere); `cam sync` closes the database on the error path too; the `claude-desktop`
+  collector does not report already-known sessions as new.
 
-### Hozzáadva (folytatás)
+### Added (continued)
 
-- **Migráció** (`src/db/migrate.ts`): additív, idempotens oszlop-hozzáadás, hogy egy korábbi verzióval
-  létrehozott adatbázis is frissüljön. A DDL `IF NOT EXISTS`, tehát új tábla/index/trigger magától
-  megjelenik; oszlopot csak ez tud hozzáadni.
+- **Migration** (`src/db/migrate.ts`): additive, idempotent column add, so a database created
+  with an earlier version still updates. DDL is `IF NOT EXISTS`, so a new table/index/trigger
+  appears on its own; only this can add a column.
 
-### M1.5 — megszilárdítás
+### M1.5 — hardening
 
-Az első használható állapot után a [terv](docs/roadmap.md) M1.5 mérföldköve: a meglévő működés legyen
-igaz, tesztelt és üzembiztos.
+After the first usable state, the [plan](docs/roadmap.md) M1.5 milestone: the existing behaviour
+should be true, tested and operationally sound.
 
-**Javítva**
+**Fixed**
 
-- **A CLI nem nyeli le többé a pozicionális argumentumot.** A régi elemző minden `--kapcsoló` után
-  elfogyasztotta a következő tokent, ezért a `cam recall --json "kérdés"` nulla pozicionálist látott és
-  a súgót írta ki; ugyanígy a `cam timeline --subagents <projekt>`. Az új elemző (`src/args.ts`)
-  parancsonként ismeri, melyik kapcsoló vár értéket, kezeli a `--flag=érték` és a `--` formát, és az
-  elgépelt kapcsolót **hibaként** jelzi ahelyett, hogy csendben eldobná.
-- **A `--limit` mindenhol él**, nem csak a `recall`-ban: a `timeline` nem vág némán 200-nál, a
-  `projects` és a `dossier` is figyelembe veszi. A nem szám vagy nulla/negatív érték hiba.
-- **Kilépési kódok.** `0` rendben, `1` hiba, `2` hibás használat. A `cam sync` nem nulla kóddal jelez,
-  ha egy forrás olvashatatlan volt — enélkül egy ütemezett futás nem tudta észrevenni, hogy elromlott.
-  Ismeretlen alparancs is nem nulla kódot ad.
-- **A kézi hozzárendelés túléli az újraszámolást.** A `reattribute` a `manual` bizonyíték `raw_path`-ját
-  (`~manual:<kulcs>`) útvonalként próbálta feloldani, az pedig semmire nem oldódott — vagyis minden
-  `cam attribute` döntés elveszett a következő szinkronnál. A `manual` mostantól — a
-  `time_correlation`-höz hasonlóan — maga hordozza a verdiktet. `rule_version` 1 → **2**, tehát a
-  `cam doctor` eltérést jelez, és a `cam reattribute` javítja.
-- **A séma-frissítés sorrendje.** Az `initSchema` a feltételes DDL *után* migrált, holott a
-  `CREATE INDEX IF NOT EXISTS` egy hiányzó oszlopra akkor is elhasal, ha az index feltételes. A migráció
-  most a DDL előtt fut (és utána is), és tűri, ha egy tábla még egyáltalán nem létezik.
-- **Nem szivárog adatbázis-kapocs.** Sérült fájlon a `new Database()` még sikerül, az első pragma bukik
-  el — a kapocs eddig nyitva maradt, és fogva tartotta a fájlt (Windowson törölni sem lehetett).
-  Az `openHub` és az `openSourceReadonly` is lezárja a kapcsot, mielőtt tovább dobja a hibát.
-- **Hordozhatóság.** A POSIX útvonal-kinyerés `file:///home/...` alakú URI-t is felismer (eddig
-  drive-betűt követelt, tehát Linuxon a Cursor-attribúció némán idő-korrelációra esett vissza), és
-  több gyökeret ismer (`/mnt`, `/media`, `/data`, `/projects`, …).
+- **The CLI no longer swallows the positional argument.** The old parser consumed the next
+  token after every `--flag`, so `cam recall --json "question"` saw zero positionals and
+  printed help; same for `cam timeline --subagents <project>`. The new parser (`src/args.ts`)
+  knows per command which flag expects a value, handles `--flag=value` and `--`, and reports
+  a mistyped flag as an **error** instead of silently dropping it.
+- **`--limit` is live everywhere**, not only in `recall`: `timeline` no longer silently cuts at
+  200, and `projects` and `dossier` honour it too. A non-number or a zero/negative value is an
+  error.
+- **Exit codes.** `0` ok, `1` error, `2` bad usage. `cam sync` signals with a non-zero code if
+  a source was unreadable — without that a scheduled run could not notice it had broken.
+  An unknown subcommand also gives a non-zero code.
+- **Manual assignment survives recalculation.** `reattribute` tried to resolve the `manual`
+  evidence `raw_path` (`~manual:<key>`) as a path, and it resolved to nothing — so every
+  `cam attribute` decision was lost on the next sync. `manual` now — like
+  `time_correlation` — carries the verdict itself. `rule_version` 1 → **2**, so
+  `cam doctor` reports a mismatch, and `cam reattribute` fixes it.
+- **Schema-update order.** `initSchema` migrated *after* the conditional DDL, even though
+  `CREATE INDEX IF NOT EXISTS` on a missing column fails even if the index is conditional.
+  Migration now runs before the DDL (and after it too), and tolerates a table that does not
+  exist yet at all.
+- **No leaking database handle.** On a corrupt file `new Database()` still succeeds, the first
+  pragma fails — the handle used to stay open and hold the file (on Windows it could not even
+  be deleted). Both `openHub` and `openSourceReadonly` close the handle before rethrowing.
+- **Portability.** POSIX path extraction also recognises a `file:///home/...` URI (until now
+  it required a drive letter, so on Linux Cursor attribution silently fell back to
+  time-correlation), and it knows more roots (`/mnt`, `/media`, `/data`, `/projects`, …).
 
-**Hozzáadva**
+**Added**
 
-- **`cam rebuild`:** a contentless szövegindex újraépítése a forrásokból. A `sync --repair` erre nem
-  képes — az csak azt olvassa újra, ami még nincs indexelve —, egy contentless FTS-index pedig nem
-  építhető újra tartalomtáblából. A hiányzó forrású chunk kimarad az indexből és jelentve lesz; a
-  részben olvasható chunk bekerül, a hiányzó turnök jelölése nélkül.
-- **Párhuzamosság-védelem.** A `sync` és a `rebuild` tanácsadó zárat vesz a `meta` táblában (pid, gép,
-  idő). A második futás udvariasan kilép, nem ront bele az elsőbe; az elárvult zár egy óra után vagy a
-  folyamat eltűnésével átvehető. A törlés-majd-újratöltés mind a négy helyen egy tranzakcióban van
-  (`file_events`, `path_evidence` origó szerint, `workspace_roots`, `collectCwdEvidence`), tehát egy
-  közben érkező lekérdezés sosem lát üres táblát.
-- **A `cam doctor` sérült adatbázison is lefut.** Integritás-ellenőrzést végez (`quick_check`), és
-  megmondja, mi a teendő: szövegindex-hiba → `cam rebuild`, olvashatatlan fájl → mentés és újraszinkron.
-  Kiírja az indexelt chunkok számát és az élő sync-zárat is.
-- **Verziózott tárolónevek jelzése.** Ha a `~/.codex` létezik, de a `state_5.sqlite` nem (vagy a Cursor
-  `User` mappa megvan, de a `state.vscdb` nincs), a kollektor figyelmeztet ahelyett, hogy nulla
-  sessiont jelentene.
-- **`CAM_HOME` és `CAM_CASE_FOLD`.** Az előbbi a profilkönyvtárat írja felül (a CLI így végigfuttatható
-  fixtúra-profilon), az utóbbi az útvonalak kisbetűsítését — ez utóbbi platformfüggő döntés, amitől
-  minden tárolt útvonal alakja függ.
-- **CI** (`.github/workflows/ci.yml`): Ubuntu, macOS és Windows, Node 22, típusellenőrzés, teszt,
-  build, és egy `node dist/cli.js --help` füstteszt.
+- **`cam rebuild`:** rebuild the contentless text index from the sources. `sync --repair`
+  cannot do this — it only rereads what is not yet indexed — and a contentless FTS index
+  cannot be rebuilt from a content table. A chunk whose source is missing is left out of the
+  index and reported; a partially readable chunk goes in, without marking the missing turns.
+- **Concurrency protection.** `sync` and `rebuild` take an advisory lock in the `meta` table
+  (pid, machine, time). The second run exits politely, it does not corrupt the first; an
+  orphaned lock can be taken over after an hour or when the process is gone. Wipe-then-reload
+  is in a transaction at all four sites (`file_events`, `path_evidence` by origin,
+  `workspace_roots`, `collectCwdEvidence`), so a query arriving in between never sees an empty
+  table.
+- **`cam doctor` still runs on a corrupt database.** It does an integrity check (`quick_check`)
+  and says what to do: text-index error → `cam rebuild`, unreadable file → backup and resync.
+  It also prints the indexed chunk count and the live sync lock.
+- **Versioned store-name warning.** If `~/.codex` exists but `state_5.sqlite` does not (or the
+  Cursor `User` folder is there but `state.vscdb` is not), the collector warns instead of
+  reporting zero sessions.
+- **`CAM_HOME` and `CAM_CASE_FOLD`.** The former overrides the profile directory (so the CLI
+  can be run end to end on a fixture profile); the latter lowercases paths — a
+  platform-dependent decision that every stored path's shape depends on.
+- **CI** (`.github/workflows/ci.yml`): Ubuntu, macOS and Windows, Node 22, type check, test,
+  build, and a `node dist/cli.js --help` smoke test.
 
-**Tesztek** — 163 → **255 zöld**, hat új fájllal a terv által megnevezett vakfoltokra:
+**Tests** — 163 → **255 green**, six new files for the blind spots the plan named:
 
-- `test/cli.test.ts` — a CLI `run()`-on át, kilépési kóddal együtt: kapcsoló-elemzés, `--limit`,
-  ismeretlen parancs, zár, `doctor` sérült fájlon, `rebuild`.
-- `test/args.test.ts` — az argumentum-elemző önmagában.
-- `test/lock.test.ts` — zár, elárvult zár átvétele, idegen gép, garbázs érték.
-- `test/attribution.test.ts` — a kaszkád minden lépcsője, a kézi döntés túlélése, az idő-korreláció
-  közepes/gyenge útja, az ablak széle, a tanult gyökerek.
-- `test/collector-cursor-history.test.ts` — a fájltörténet-kollektor (eddig nulla teszt), a vízjellel és
-  a tranzakciós újratöltéssel együtt.
-- `test/migrate.test.ts` — régi adatbázis frissítése, adatvesztés nélkül, kétszer futtatva.
-- `test/chunker.test.ts` — a túl nagy turn végtelenciklus-őre, az átfedés, a lefedettség.
-- Bővítve: `test/query.test.ts` a `recall` megbízhatósági aszimmetriájával (projektszűrő nélkül a
-  besorolatlan találat átmegy, a gyenge nem) és a `stale` úttal végponttól végpontig;
-  `test/collector-cursor.test.ts` a POSIX útvonalakkal; `test/projkey.test.ts` a hajtás rögzítésével.
+- `test/cli.test.ts` — the CLI through `run()`, including exit code: flag parsing, `--limit`,
+  unknown command, lock, `doctor` on a corrupt file, `rebuild`.
+- `test/args.test.ts` — the argument parser on its own.
+- `test/lock.test.ts` — lock, taking over an orphaned lock, foreign machine, garbage value.
+- `test/attribution.test.ts` — every step of the cascade, survival of a manual decision, the
+  medium/weak time-correlation path, the window edge, learned roots.
+- `test/collector-cursor-history.test.ts` — the file-history collector (until now zero tests),
+  together with the watermark and the transactional reload.
+- `test/migrate.test.ts` — updating an old database, without data loss, run twice.
+- `test/chunker.test.ts` — the infinite-loop guard on an oversized turn, overlap, coverage.
+- Extended: `test/query.test.ts` with `recall`'s confidence asymmetry (without a project filter
+  an unattributed hit goes through, a weak one does not) and the `stale` path end to end;
+  `test/collector-cursor.test.ts` with POSIX paths; `test/projkey.test.ts` with folding pinned.
 
-### M2 — Kiadható csomag
+### M2 — Releasable package
 
-**Cél volt:** más gépén is telepíthető, önálló eszköz.
+**The goal was:** installable on someone else's machine, as a standalone tool.
 
-- **Licenc:** MIT, `LICENSE` fájlként és `license` mezőként.
-- **Csomagolás:** `files` (dist JS + dokumentáció + README/CHANGELOG/LICENSE, semmi más — 41 fájl,
-  76 kB), `prepare` script (a `dist/` gitignore-olt, enélkül a gitből telepítés üres csomagot adna),
-  `repository`, `author`, `keywords`, `engines`. A **`private: true` szándékosan marad**: a repó privát,
-  a kiadási csatorna a git/tarball telepítés, nem a nyilvános registry — a mező csak a véletlen
-  `npm publish` ellen véd, a `npm pack`-et és a telepítést nem akadályozza.
-- **`cam-mcp` belépéspont:** a `docs/mcp.md` mind a négy klienshez ugyanazt a gépfüggetlen parancsot
-  adja (`{"command": "cam-mcp"}`), abszolút útvonal másolgatása nélkül.
-- **Az adatbázis alapértelmezett helye a felhasználói adatmappa** — Windowson `LOCALAPPDATA`, máshol
-  `XDG_DATA_HOME` (illetve `~/.local/share`). Eddig a telepítési mappa alá írt volna, tehát globális
-  telepítésnél a `node_modules`-ba, `npx`-nél pedig két hívás között eldobódott volna az index. Az a
-  checkout, amelyikben már van `.data/hub.sqlite`, azt használja tovább.
-- **`--db <útvonal>` kapcsoló** minden parancson, és **konfigurációs fájl** (`CAM_CONFIG`, alapból az
-  `APPDATA` / `XDG_CONFIG_HOME` alatt). A fájlból a `dbPath`, a `maxInlineBytes` és mind a **tíz
-  tárolóhely** felülírható — eddig a `loadConfig` fogadott override-ot, de egyetlen hívó sem adott neki.
-  Sorrend: kapcsoló > környezeti változó > konfigurációs fájl > alapértelmezés. A hibás konfigurációs
-  fájl figyelmeztetés, nem végzetes hiba.
-- **A MCP belépéspont-heurisztikája kijavítva:** fájlnév-egyezés helyett a `process.argv[1]`
-  fájl-URL-jének pontos összehasonlítása, tehát egy `server.js` nevű modul importálása nem indít
-  véletlenül stdio-szervert. A `cam-mcp` is elfogad `--db` kapcsolót.
-- **Angol `README.md`**, a magyar a `README.hu.md`-be került; a `docs/` marad magyarul.
-- A MCP-szerver verziója nem sodródhat el a `package.json`-tól: teszt köti össze a kettőt.
+- **Licence:** MIT, as a `LICENSE` file and as a `license` field.
+- **Packaging:** `files` (dist JS + documentation + README/CHANGELOG/LICENSE, nothing else — 41
+  files, 76 kB), `prepare` script (`dist/` is gitignored, without this a git install would give
+  an empty package), `repository`, `author`, `keywords`, `engines`. **`private: true` stays on
+  purpose**: the repo was private, the release channel is git/tarball install, not the public
+  registry — the field only guards against an accidental `npm publish`; it does not block
+  `npm pack` or install.
+- **`cam-mcp` entry point:** `docs/mcp.md` gives the same machine-independent command for all
+  four clients (`{"command": "cam-mcp"}`), without copying absolute paths around.
+- **The database's default place is the user data directory** — `LOCALAPPDATA` on Windows,
+  `XDG_DATA_HOME` (or `~/.local/share`) elsewhere. Until now it would have written under the
+  install folder, so a global install would have put it in `node_modules`, and with `npx` the
+  index would have been thrown away between two calls. A checkout that already has
+  `.data/hub.sqlite` keeps using it.
+- **`--db <path>` flag** on every command, and a **config file** (`CAM_CONFIG`, by default under
+  `APPDATA` / `XDG_CONFIG_HOME`). From the file, `dbPath`, `maxInlineBytes` and all **ten store
+  locations** can be overridden — until now `loadConfig` accepted an override, but no caller
+  gave it one. Order: flag > environment variable > config file > default. A bad config file
+  is a warning, not a fatal error.
+- **The MCP entry-point heuristic was fixed:** instead of a filename match, an exact comparison
+  of the file URL of `process.argv[1]`, so importing a module named `server.js` does not
+  accidentally start a stdio server. `cam-mcp` also accepts a `--db` flag.
+- **English `README.md`**, Hungarian moved into `README.hu.md`; `docs/` stayed Hungarian.
+- The MCP server version cannot drift from `package.json`: a test ties the two together.
 
-**Ellenőrizve tiszta környezetben** (becsomagolt tarball, üres projektbe telepítve): a `cam` és a
-`cam-mcp` felkerül a PATH-ra, a `cam --help` lefut, a `cam-mcp` válaszol az `initialize` kérésre, és két
-egymás utáni futás **ugyanazt** az indexet látja a felhasználói adatmappában.
+**Verified in a clean environment** (packed tarball, installed into an empty project): `cam`
+and `cam-mcp` land on PATH, `cam --help` runs, `cam-mcp` answers the `initialize` request, and
+two runs in a row see **the same** index in the user data directory.
 
-**Tesztek:** 255 → **266** (`test/config.test.ts` az útvonal-feloldásra és a precedenciára, `--db` a
-CLI-tesztekben, verzió-egyezés a MCP-tesztekben).
+**Tests:** 255 → **266** (`test/config.test.ts` for path resolution and precedence, `--db` in
+the CLI tests, version agreement in the MCP tests).
 
-### M3 — Memória-réteg
+### M3 — Memory layer
 
-**Cél volt:** a hub ne csak megtalálja a múltat, hanem tanuljon is belőle — modell és hálózat nélkül.
-Hogyan működik: [`docs/memory.md`](docs/memory.md).
+**The goal was:** the hub should not only find the past, it should also learn from it — without
+a model and without a network. How it works: [`docs/memory.md`](docs/memory.md).
 
-- **Konszolidáció három menetben** (`src/memory/consolidate.ts`): **Light** összehajtja az előhívási
-  nyomot chunkonként (hányszor, hány kérdésre, hány külön napon, milyen átlagos találati pontszámmal);
-  **REM** kiszedi a *különböző* kérdésekben visszatérő szavakat — ez a „visszatérő téma"
-  determinisztikus megfelelője, összefoglalás és kitalálás nélkül; **Deep** pontoz, kapuz, promotál és
-  budgetel.
-- **Promóciós pontszám** (`src/memory/score.ts`) a tervben megadott súlyokkal: 0,30 relevancia +
-  0,24 gyakoriság + 0,15 diverzitás + 0,15 frissesség + 0,10 konszolidáció + 0,06 fogalmi. A számlálók
-  logaritmikusan telítődnek, a frissesség felezési ideje 14 nap. Kapuk: legalább 3 előhívás, legalább
-  3 **különböző** kérdés, 0,8 pontszám. A kapu nem váltható ki magas pontszámmal.
-- **Felejtés két irányból:** a frissesség elhalványul (a promóció visszavonódik, de a nyom megmarad —
-  egyetlen újabb előhívás visszahozza), és a karakter-budget (alapból 200 000) kiejti a legrégebbi
-  promóciókat.
-- **A promotált emlék sem tárol szöveget.** Chunk-hivatkozás, olvasáskor rehidratálva; ha a forrás
-  eltűnt, az emlék ezt kiírja. A „hivatkozás, nem másolat" invariáns a memória-rétegen sem sérül.
-- **`cam memory consolidate | list | show <id> | topics | status`** és a hatodik MCP-tool,
-  a **`cam_memory`**. A `cam doctor` is jelenti a memória állapotát.
-- **A `recall_events` mostantól olvasásra is szolgál** — eddig szándékosan csak gyűlt.
+- **Consolidation in three passes** (`src/memory/consolidate.ts`): **Light** folds the recall
+  evidence per chunk (how many times, on how many questions, on how many separate days, at
+  what average hit score); **REM** extracts the words that return in *different* questions —
+  the deterministic counterpart of a "recurring theme", with no summary and no invention;
+  **Deep** scores, gates, promotes and budgets.
+- **Promotion score** (`src/memory/score.ts`) with the weights given in the plan: 0.30 relevance +
+  0.24 frequency + 0.15 diversity + 0.15 freshness + 0.10 consolidation + 0.06 conceptual.
+  Counters saturate logarithmically, freshness half-life is 14 days. Gates: at least 3 recalls,
+  at least 3 **different** questions, 0.8 score. A high score cannot buy the gate.
+- **Forgetting from two directions:** freshness fades (promotion is revoked, but the evidence
+  stays — one more recall brings it back), and the character budget (200 000 by default) drops
+  the oldest promotions.
+- **A promoted memory stores no text either.** Chunk reference, rehydrated at read time; if the
+  source is gone, the memory says so. The "citation, not a copy" invariant does not break on
+  the memory layer either.
+- **`cam memory consolidate | list | show <id> | topics | status`** and the sixth MCP tool,
+  **`cam_memory`**. `cam doctor` also reports memory state.
+- **`recall_events` is now also for reading** — until now it was deliberately only collected.
 
-**Új tábla a kérdésekhez.** A `recall_events` csak a kérdés hashét tárolta, márpedig „milyen kérdésekre
-jött elő" hash-sel nem mutatható meg. A `memory_queries` a kérdés szövegét és a belőle kiparsolt
-szavakat őrzi. Ez **bővíti azt, ami az adatbázisba kerül** (a saját keresési kérdéseid szövegével), és
-kikapcsolható: `recall(..., { logQuery: false })` esetén csak a hash marad. A README és a terv
-adatvédelmi szakasza ennek megfelelően frissült. Séma verzió 1 → 2.
+**A new table for the questions.** `recall_events` only stored the question hash, and "on which
+questions it came up" cannot be shown with a hash. `memory_queries` keeps the question text and
+the words parsed from it. This **widens what goes into the database** (with the text of your
+own search questions), and it can be turned off: with `recall(..., { logQuery: false })` only
+the hash remains. The README and the plan's privacy section were updated accordingly. Schema
+version 1 → 2.
 
-**Determinizmus.** A promóció kora a nyomból származik (mikor hívtad elő először), nem az órából.
-Enélkül egy budget miatt kiesett, majd újra promotált emlék a sor elejére ugrana, és minden futás más
-eredményt adna — így viszont ugyanabból az adatbázisból kétszer futtatva ugyanaz jön ki. Tesztelve.
+**Determinism.** A promotion's age comes from the evidence (when you first recalled it), not
+from the clock. Without that, a memory dropped by the budget and then promoted again would
+jump to the front of the queue, and every run would give a different result — this way, run
+twice from the same database, the same thing comes out. Tested.
 
-**Mérés a valódi indexen:** a teljes konszolidáció 18 előhívási eseményen és 16 428 chunkon 7–19 ms.
-Promóció még nincs: a nyom három kérdésből, egyetlen napról van — a kapuk pontosan ezt szűrik ki.
+**Measurement on the real index:** full consolidation on 18 recall events and 16 428 chunks is
+7–19 ms. There is no promotion yet: the evidence is three questions, from a single day — the
+gates filter exactly that.
 
-**Tesztek:** 266 → **293** (`test/memory.test.ts` a pontozásra, a három menetre, a promócióra, a
-visszavonásra, a budgetre és a determinizmusra; `test/cli.test.ts` a `cam memory` parancsokra).
+**Tests:** 266 → **293** (`test/memory.test.ts` for scoring, the three passes, promotion,
+revoke, budget and determinism; `test/cli.test.ts` for the `cam memory` commands).
 
-### Mérések (referenciagép, 2026-08-29)
+### Measurements (reference machine, 2026-08-29)
 
-Egyetlen, a végállapoton mért táblázat. Az első sync ideje az üres adatbázisból induló futásé.
+A single table, measured on the final state. First-sync time is a run starting from an empty
+database.
 
-| | session | turn | első sync | ismételt sync |
+| | session | turn | first sync | repeat sync |
 |---|---|---|---|---|
 | codex | 917 | 15 511 | 37 s | 167 ms |
 | cursor | 465 | 9 622 | 42 s | 110 ms |
 | claude_code | 54 | 5 987 | 4,2 s | 42 ms |
-| claude_desktop | 133 | — (index, turn nélkül) | 0,4 s | 0,4 s |
+| claude_desktop | 133 | — (index, no turns) | 0,4 s | 0,4 s |
 | cowork | 67 | 785 | 5,8 s | 142 ms |
-| **összesen** | **1 636** | **31 922** | | **~320 ms** |
+| **total** | **1 636** | **31 922** | | **~320 ms** |
 
-Chunk: 16 414. Melléktermék: 446 fájl. Projekt: 133. Projekthez kötve: 1 381 / 1 636 (84%).
+Chunk: 16 414. Artifact: 446 files. Project: 133. Bound to a project: 1 381 / 1 636 (84%).
 
-Az „ismételt sync" oszlop a **kollektorok** ideje. A `cam sync` teljes ideje ennél sokkal több, mert az
-olvasás után jön az attribúció; fázisonként mérve, változatlan forrásokon:
+The "repeat sync" column is the **collectors**' time. Full `cam sync` time is much more,
+because attribution comes after the read; measured per phase, on unchanged sources:
 
-| fázis | idő |
+| phase | time |
 |---|---|
-| kollektorok (mind a hét) | ~320 ms |
+| collectors (all seven) | ~320 ms |
 | `collectCwdEvidence` + `learnRoots` + `correlateTime` | ~60 ms |
-| `resolveFileEvents` (6 064 különböző fájlútvonal feloldása) | ~20 s |
+| `resolveFileEvents` (resolving 6 064 distinct file paths) | ~20 s |
 | `reattribute` | ~4,2 s |
-| **`cam sync` végig** | **~26 s** |
+| **`cam sync` end to end** | **~26 s** |
 
-A korábbi „ismételt teljes sync: ~320 ms" állítás tehát a kollektorokra igaz, a parancsra nem. A
-`resolveFileEvents` minden futáskor újra feloldja az összes fájlútvonalat, mert a Cursor-fájltörténet
-kollektor naponta újratölti a `file_events` táblát — ennek gyorsítása az M4 tétele.
+So the earlier "repeat full sync: ~320 ms" claim is true of the collectors, not of the
+command. `resolveFileEvents` re-resolves every file path on every run, because the Cursor
+file-history collector reloads the `file_events` table daily — speeding that up is the M4
+item.
 
-MCP éles adaton, alproceszként mérve: `cam_projects` 8 ms, `cam_dossier` 8 ms, `cam_recall` 55 ms,
-`cam_get` 5 ms, `cam_timeline` 2 ms.
+MCP on live data, measured as a subprocess: `cam_projects` 8 ms, `cam_dossier` 8 ms,
+`cam_recall` 55 ms, `cam_get` 5 ms, `cam_timeline` 2 ms.
 
-**293 teszt zöld**, `tsc --noEmit` tiszta, `npm run build` OK.
+**293 tests green**, `tsc --noEmit` clean, `npm run build` OK.

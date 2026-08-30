@@ -165,7 +165,7 @@ describe("recall", () => {
     fs.rmSync(p.loc_path);
     const hits = recall(h.hub, { query: "arvizturo" });
     expect(hits[0]!.availability).toBe("missing");
-    expect(hits[0]!.snippet).toContain("forrás hiányzik");
+    expect(hits[0]!.snippet).toContain("source missing");
   });
 
   it("returns nothing for an empty query rather than everything", () => {
@@ -226,7 +226,7 @@ describe("a source that changed under us", () => {
     const hits = recall(h.hub, { query: "arvizturo" });
     expect(hits[0]!.availability).toBe("stale");
     expect(hits[0]!.snippet).toContain("docker-kompoze");
-    expect(formatRecall(hits, "arvizturo")).toContain("forrás módosult");
+    expect(formatRecall(hits, "arvizturo")).toContain("source changed");
 
     // What we learned at read time is written back, so doctor can count it.
     const t = h.hub.prepare("select count(*) c from turns where availability = 'stale'").get() as { c: number };
@@ -305,6 +305,6 @@ describe("timeline and dossier", () => {
   });
 
   it("renders an empty result honestly", () => {
-    expect(formatRecall([], "semmi")).toContain("Nincs találat");
+    expect(formatRecall([], "semmi")).toContain("No hits");
   });
 });

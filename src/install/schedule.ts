@@ -75,7 +75,7 @@ function windowsPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "minute"
     `$t = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(${o.minute}) ` +
     `-RepetitionInterval (New-TimeSpan -Hours 1); ` +
     `Register-ScheduledTask -TaskName ${q(SYNC_JOB)} -Action $a -Trigger $t -Settings $s -Force ` +
-    `-Description 'Centered Agent Memory: beszélgetés-index frissítése' | Out-Null`;
+    `-Description 'Centered Agent Memory: refresh the conversation index' | Out-Null`;
 
   const maintenance =
     `${settings}; ` +
@@ -83,7 +83,7 @@ function windowsPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "minute"
     `$b = New-ScheduledTaskAction -Execute ${q(o.node)} -Argument ${q(`"${o.cli}" prune --quiet`)}; ` +
     `$t = New-ScheduledTaskTrigger -Daily -At 4am; ` +
     `Register-ScheduledTask -TaskName ${q(MAINTENANCE_JOB)} -Action @($a, $b) -Trigger $t -Settings $s -Force ` +
-    `-Description 'Centered Agent Memory: konszolidáció és megőrzés' | Out-Null`;
+    `-Description 'Centered Agent Memory: consolidate and prune' | Out-Null`;
 
   const ps = (script: string): string[] => ["powershell", "-NoProfile", "-NonInteractive", "-Command", script];
 
@@ -94,16 +94,16 @@ function windowsPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "minute"
     cli: o.cli,
     files: [],
     install: [
-      { describe: `Task Scheduler: ${SYNC_JOB} (óránként, :${String(o.minute).padStart(2, "0")})`, argv: ps(sync) },
-      { describe: `Task Scheduler: ${MAINTENANCE_JOB} (naponta 04:00)`, argv: ps(maintenance) },
+      { describe: `Task Scheduler: ${SYNC_JOB} (hourly, :${String(o.minute).padStart(2, "0")})`, argv: ps(sync) },
+      { describe: `Task Scheduler: ${MAINTENANCE_JOB} (daily at 04:00)`, argv: ps(maintenance) },
     ],
     remove: [
       {
-        describe: `Task Scheduler: ${SYNC_JOB} törlése`,
+        describe: `Task Scheduler: remove ${SYNC_JOB}`,
         argv: ps(`Unregister-ScheduledTask -TaskName ${q(SYNC_JOB)} -Confirm:$false -ErrorAction SilentlyContinue`),
       },
       {
-        describe: `Task Scheduler: ${MAINTENANCE_JOB} törlése`,
+        describe: `Task Scheduler: remove ${MAINTENANCE_JOB}`,
         argv: ps(
           `Unregister-ScheduledTask -TaskName ${q(MAINTENANCE_JOB)} -Confirm:$false -ErrorAction SilentlyContinue`,
         ),
@@ -170,11 +170,11 @@ function darwinPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "home">>)
     cli: o.cli,
     files: built.map((b) => ({ path: b.file, contents: b.contents })),
     install: built.map((b) => ({
-      describe: `launchd: ${b.label} betöltése`,
+      describe: `launchd: load ${b.label}`,
       argv: ["launchctl", "bootstrap", `gui/${uid}`, b.file],
     })),
     remove: built.map((b) => ({
-      describe: `launchd: ${b.label} kiléptetése`,
+      describe: `launchd: unload ${b.label}`,
       argv: ["launchctl", "bootout", `gui/${uid}/${b.label}`],
     })),
     notes: [],
@@ -196,42 +196,42 @@ function linuxPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "home">>):
     files: [
       {
         path: path.posix.join(dir, `${SYNC_JOB}.service`),
-        contents: unit("Centered Agent Memory: beszélgetés-index frissítése", `${o.node} ${o.cli} sync --quiet`),
+        contents: unit("Centered Agent Memory: refresh the conversation index", `${o.node} ${o.cli} sync --quiet`),
       },
       {
         path: path.posix.join(dir, `${SYNC_JOB}.timer`),
-        contents: timer("cam sync óránként", "OnBootSec=5min\nOnUnitActiveSec=1h"),
+        contents: timer("cam sync hourly", "OnBootSec=5min\nOnUnitActiveSec=1h"),
       },
       {
         path: path.posix.join(dir, `${MAINTENANCE_JOB}.service`),
         contents: unit(
-          "Centered Agent Memory: konszolidáció és megőrzés",
+          "Centered Agent Memory: consolidate and prune",
           `${o.node} ${o.cli} memory consolidate --quiet\nExecStart=${o.node} ${o.cli} prune --quiet`,
         ),
       },
       {
         path: path.posix.join(dir, `${MAINTENANCE_JOB}.timer`),
-        contents: timer("cam karbantartás naponta", "OnCalendar=*-*-* 04:00:00"),
+        contents: timer("cam maintenance daily", "OnCalendar=*-*-* 04:00:00"),
       },
     ],
     install: [
       { describe: "systemd: daemon-reload", argv: ["systemctl", "--user", "daemon-reload"] },
-      { describe: `systemd: ${SYNC_JOB}.timer indítása`, argv: ["systemctl", "--user", "enable", "--now", `${SYNC_JOB}.timer`] },
+      { describe: `systemd: start ${SYNC_JOB}.timer`, argv: ["systemctl", "--user", "enable", "--now", `${SYNC_JOB}.timer`] },
       {
-        describe: `systemd: ${MAINTENANCE_JOB}.timer indítása`,
+        describe: `systemd: start ${MAINTENANCE_JOB}.timer`,
         argv: ["systemctl", "--user", "enable", "--now", `${MAINTENANCE_JOB}.timer`],
       },
     ],
     remove: [
-      { describe: `systemd: ${SYNC_JOB}.timer leállítása`, argv: ["systemctl", "--user", "disable", "--now", `${SYNC_JOB}.timer`] },
+      { describe: `systemd: stop ${SYNC_JOB}.timer`, argv: ["systemctl", "--user", "disable", "--now", `${SYNC_JOB}.timer`] },
       {
-        describe: `systemd: ${MAINTENANCE_JOB}.timer leállítása`,
+        describe: `systemd: stop ${MAINTENANCE_JOB}.timer`,
         argv: ["systemctl", "--user", "disable", "--now", `${MAINTENANCE_JOB}.timer`],
       },
     ],
     // A user timer stops when the last session ends unless lingering is on,
     // which is exactly the machine that most needs the catch-up run.
-    notes: ["ha a gép nem marad bejelentkezve: loginctl enable-linger $USER"],
+    notes: ["if the machine does not stay logged in: loginctl enable-linger $USER"],
   };
 }
 
@@ -249,7 +249,7 @@ export function schedulePlan(opts: ScheduleOptions): SchedulePlan {
       return linuxPlan({ node: opts.node, cli: opts.cli, home });
     default: {
       const never: never = platform;
-      throw new Error(`ismeretlen platform: ${String(never)}`);
+      throw new Error(`unknown platform: ${String(never)}`);
     }
   }
 }
@@ -275,7 +275,7 @@ export function applySchedule(plan: SchedulePlan, remove = false): StepResult[] 
     for (const f of plan.files) {
       fs.mkdirSync(path.dirname(f.path), { recursive: true });
       fs.writeFileSync(f.path, f.contents, "utf8");
-      out.push({ describe: `írva: ${f.path}`, ok: true, detail: "" });
+      out.push({ describe: `wrote: ${f.path}`, ok: true, detail: "" });
     }
   }
   for (const step of remove ? plan.remove : plan.install) out.push(run(step));
@@ -283,7 +283,7 @@ export function applySchedule(plan: SchedulePlan, remove = false): StepResult[] 
     for (const f of plan.files) {
       if (fs.existsSync(f.path)) {
         fs.rmSync(f.path);
-        out.push({ describe: `törölve: ${f.path}`, ok: true, detail: "" });
+        out.push({ describe: `removed: ${f.path}`, ok: true, detail: "" });
       }
     }
   }
@@ -350,7 +350,7 @@ export function scheduleState(plan: SchedulePlan): ScheduleState {
     }
     default: {
       const never: never = plan.platform;
-      throw new Error(`ismeretlen platform: ${String(never)}`);
+      throw new Error(`unknown platform: ${String(never)}`);
     }
   }
 }

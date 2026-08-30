@@ -24,24 +24,22 @@ export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
 export const SERVER_VERSION = "0.5.0";
 
-const INSTRUCTIONS = `Kereshető index a felhasználó MÁSIK AI-eszközeinek beszélgetéseiről:
-Claude Code, Claude Desktop / Cowork, Codex és Cursor. Csak olvas — egyik eszköz
-tárolóját sem módosítja.
+const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
+Claude Code, Claude Desktop / Cowork, Codex and Cursor. Read-only — it does not
+modify any of those stores.
 
-Használd, mielőtt egy projekt korábbi munkájáról kérdeznél vagy feltételeznél
-valamit: cam_dossier adja a projekt teljes képét, cam_timeline az időrendet,
-cam_recall a szöveges keresést, cam_get pedig egy találat teljes szövegét.
-A cam_memory azt adja vissza, ami a korábbi kereséseidben többször, több napon,
-többféle kérdésre előjött — bizonyítékkal együtt.
+Use it before asking about or assuming earlier work on a project: cam_dossier
+gives the full picture, cam_timeline the chronology, cam_recall full-text
+search, and cam_get the full text of a hit. cam_memory returns what earlier
+searches brought up more than once, across days and questions — with evidence.
 
-Minden találat mellett ott a projekt-hozzárendelés megbízhatósága
-(strong / medium / weak / none). A gyenge hozzárendelés idő-korrelációból
-származik és tévedhet. Ha egy forrás azóta megváltozott vagy eltűnt, az
-eredmény ezt kiírja ahelyett, hogy csendben kihagyná.
+Every hit carries a project-attribution confidence (strong / medium / weak /
+none). Weak attribution comes from time overlap and can be wrong. If a source
+has since changed or vanished, the result says so instead of dropping it.
 
-Minden válasz utolsó sora megmondja, mikor szinkronizált utoljára az index.
-Ha ELAVULT-ot ír, az azóta folytatott beszélgetések nincsenek benne — ezt
-mondd meg a felhasználónak ahelyett, hogy a régi adatot friss gyanánt idéznéd.`;
+The last line of every answer says when the index last synced. If it says
+STALE, conversations since then are not in it — tell the user rather than
+quoting old data as current.`;
 
 export interface ServerOptions {
   /** Past this age the index reports itself as stale. */
@@ -78,13 +76,13 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_dossier",
     {
-      title: "Projekt-dosszié",
+      title: "Project dossier",
       description:
-        "Mi történt egy projekten: eszközönkénti session- és turn-számok, időtartomány, " +
-        "legnagyobb sessionök, legutóbbi témák, melléktermékek, forrás-állapot. " +
-        "Ezzel kezdd, ha egy projekt előzményeire vagy kíváncsi.",
+        "What happened on a project: per-tool session and turn counts, date range, " +
+        "largest sessions, recent topics, artifacts, source state. " +
+        "Start here when you want a project's history.",
       inputSchema: {
-        project: z.string().min(1).describe("Projektkulcs, ahogy a cam_projects listázza"),
+        project: z.string().min(1).describe("Project key, as listed by cam_projects"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -95,7 +93,7 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
           .slice(0, 15)
           .map((p) => p.key)
           .join(", ");
-        return text(`Nincs ilyen projekt: ${project}\nIsmert projektek: ${known}`, true);
+        return text(`No such project: ${project}\nKnown projects: ${known}`, true);
       }
       return text(formatDossier(d));
     }),
@@ -104,15 +102,15 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_timeline",
     {
-      title: "Projekt idővonala",
+      title: "Project timeline",
       description:
-        "Egy projekt sessionjei időrendben, mind a négy eszközből, a projekt-hozzárendelés " +
-        "módjával és megbízhatóságával. Szöveget nem olvas, ezért gyors.",
+        "A project's sessions in chronological order, from all four tools, with " +
+        "attribution method and confidence. Does not read text, so it is fast.",
       inputSchema: {
         project: z.string().min(1),
-        since: z.string().optional().describe("ISO dátum, ettől kezdve"),
-        until: z.string().optional().describe("ISO dátum, eddig"),
-        tools: z.array(z.string()).optional().describe("Szűrés eszközre: claude_code, codex, cursor, cowork"),
+        since: z.string().optional().describe("ISO date, from"),
+        until: z.string().optional().describe("ISO date, until"),
+        tools: z.array(z.string()).optional().describe("Filter by tool: claude_code, codex, cursor, cowork"),
         includeSubagents: z.boolean().optional(),
         limit: z.number().int().min(1).max(1000).optional(),
       },
@@ -150,18 +148,18 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_recall",
     {
-      title: "Keresés a beszélgetésekben",
+      title: "Search conversations",
       description:
-        "Teljes szövegű keresés az indexelt beszélgetésekben. Ékezetre érzéketlen, és a hosszabb " +
-        "szavakra prefix-illesztést használ (magyar toldalékolás miatt). Minden találat idézhető " +
-        "hivatkozást ad, amit a cam_get kibont.",
+        "Full-text search over indexed conversations. Accent-insensitive, with prefix " +
+        "matching on longer words (so inflection is not a barrier). Every hit carries a " +
+        "citation that cam_get expands.",
       inputSchema: {
         query: z.string().min(1),
         project: z.string().optional(),
         tool: z.string().optional(),
         since: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional(),
-        includeWeak: z.boolean().optional().describe("Gyenge projekt-hozzárendelésű találatok is"),
+        includeWeak: z.boolean().optional().describe("Include weakly attributed hits"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -197,24 +195,24 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_get",
     {
-      title: "Egy session szövege",
+      title: "A session's text",
       description:
-        "Egy találat teljes szövege. A hivatkozás formája tool:sessionId#seqN-M, ahogy a " +
-        "cam_recall adja. Ha a forrás azóta megváltozott vagy eltűnt, azt jelzi.",
+        "The full text of a hit. Citation form is tool:sessionId#seqN-M, as returned by " +
+        "cam_recall. If the source has since changed or vanished, that is marked.",
       inputSchema: {
         citation: z
           .string()
           .min(3)
-          .describe("cam_recall hivatkozás, pl. codex:019d4cd9-…#seq12-18, vagy csak tool:sessionId"),
+          .describe("cam_recall citation, e.g. codex:019d4cd9-…#seq12-18, or just tool:sessionId"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     dated(({ citation }: { citation: string }) => {
       const parsed = parseCitation(citation);
-      if (!parsed) return text(`Értelmezhetetlen hivatkozás: ${citation}`, true);
+      if (!parsed) return text(`Unreadable citation: ${citation}`, true);
 
       const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
-      if (turns.length === 0) return text(`Nincs ilyen session: ${citation}`, true);
+      if (turns.length === 0) return text(`No such session: ${citation}`, true);
 
       return text(formatTurns(turns));
     }),
@@ -223,8 +221,8 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_projects",
     {
-      title: "Projektek listája",
-      description: "Az indexelt projektek session- és turn-számmal, a legutóbbi aktivitás szerint.",
+      title: "Project list",
+      description: "Indexed projects with session and turn counts, most recent activity first.",
       inputSchema: { limit: z.number().int().min(1).max(200).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -234,26 +232,26 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         .map(
           (p) =>
             `${p.key.padEnd(30)} ${String(p.sessions).padStart(4)} session ${String(p.turns).padStart(7)} turn` +
-            `  utoljára: ${p.lastMs ? new Date(p.lastMs).toISOString().slice(0, 10) : "?"}`,
+            `  last: ${p.lastMs ? new Date(p.lastMs).toISOString().slice(0, 10) : "?"}`,
         )
         .join("\n");
-      return text(listed || "Az index üres. Futtasd: cam sync");
+      return text(listed || "The index is empty. Run: cam sync");
     }),
   );
 
   server.registerTool(
     "cam_memory",
     {
-      title: "Hosszú távú memória",
+      title: "Long-term memory",
       description:
-        "Amit a kereséseid többször, több napon, többféle kérdésre előhívtak — determinisztikusan " +
-        "promotálva, nem modellel összefoglalva. Az `id` megadásával egy emlék teljes szövegét és a " +
-        "promóció bizonyítékát adja (mikor, milyen kérdésekre jött elő). Ha üres, még nem gyűlt elég " +
-        "előhívási nyom; ez nem hiba.",
+        "What your searches recalled more than once, across days and questions — promoted " +
+        "deterministically, not summarized by a model. With `id`, returns one memory's full " +
+        "text and the promotion evidence (when, for which queries). If empty, not enough " +
+        "recall trail has accumulated yet; that is not a failure.",
       inputSchema: {
-        id: z.number().int().min(1).optional().describe("Egy konkrét emlék azonosítója"),
+        id: z.number().int().min(1).optional().describe("A specific memory id"),
         project: z.string().optional(),
-        topics: z.boolean().optional().describe("A visszatérő témákat adja vissza az emlékek helyett"),
+        topics: z.boolean().optional().describe("Return recurring topics instead of memories"),
         limit: z.number().int().min(1).max(50).optional(),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -272,7 +270,7 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       }) => {
         if (id !== undefined) {
           const found = getFact(db, id);
-          if (!found) return text(`Nincs ilyen emlék: #${id}`, true);
+          if (!found) return text(`No such memory: #${id}`, true);
           return text(formatMemoryFact(found.fact, found.evidence));
         }
         if (topics) return text(formatTopics(listTopics(db, limit ?? 20)));
@@ -284,11 +282,11 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   server.registerTool(
     "cam_status",
     {
-      title: "Az index állapota",
+      title: "Index status",
       description:
-        "Mikor szinkronizált utoljára az index, mit tartalmaz, és megbízható-e. Akkor hívd, ha egy " +
-        "válasz ELAVULT-nak jelzi magát, vagy ha a felhasználó azt kérdezi, naprakész-e az előzmény. " +
-        "Írni nem tud: a szinkront a felhasználónak kell elindítania (cam sync).",
+        "When the index last synced, what it holds, and whether it is trustworthy. Call this " +
+        "when a reply marks itself STALE, or when the user asks if the history is current. " +
+        "It cannot write: the user has to start the sync (cam sync).",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -298,15 +296,15 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       const tools = db
         .prepare("select tool k, count(*) c from sessions group by k order by c desc")
         .all() as Array<{ k: string; c: number }>;
-      if (tools.length > 0) L.push(`eszközök          ${tools.map((t) => `${t.k}=${t.c}`).join("  ")}`);
+      if (tools.length > 0) L.push(`tools             ${tools.map((t) => `${t.k}=${t.c}`).join("  ")}`);
 
       const conf = db
         .prepare("select confidence k, count(*) c from attribution group by k")
         .all() as Array<{ k: string; c: number }>;
-      if (conf.length > 0) L.push(`hozzárendelés     ${conf.map((r) => `${r.k}=${r.c}`).join("  ")}`);
+      if (conf.length > 0) L.push(`attribution       ${conf.map((r) => `${r.k}=${r.c}`).join("  ")}`);
 
       const mem = memoryStatus(db);
-      L.push(`memória           ${mem.facts} emlék · ${mem.events} előhívás ${mem.queries} kérdésből`);
+      L.push(`memory            ${mem.facts} memories · ${mem.events} recalls from ${mem.queries} queries`);
 
       // A copied index that finds nothing looks identical to an empty one; the
       // only place that difference can be surfaced is here.

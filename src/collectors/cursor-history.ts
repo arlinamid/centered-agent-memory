@@ -70,7 +70,7 @@ export const cursorHistoryCollector: Collector = {
 
     stat.sessions = 0;
     stat.turns = 0;
-    ctx.log(`cursor-history: ${rows.length} fájlesemény ${dirs.length} mappából`);
+    ctx.log(`cursor-history: ${rows.length} file event(s) from ${dirs.length} director${dirs.length === 1 ? "y" : "ies"}`);
     return stat;
   },
 };

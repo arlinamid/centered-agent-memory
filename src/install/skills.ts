@@ -15,10 +15,10 @@ import { SKILL_NAME, type ClientTarget } from "./clients.js";
  */
 
 const DESCRIPTION =
-  "Korábbi beszélgetések előhívása a felhasználó másik AI-eszközeiből (Claude Code, Claude Desktop, " +
-  "Codex, Cursor). Használd, mielőtt egy projekt előzményeiről kérdeznél vagy feltételeznél valamit, " +
-  "és akkor, ha a felhasználó egy korábbi döntésre, megbeszélésre vagy megoldásra hivatkozik: " +
-  "„ahogy megbeszéltük”, „a múltkori”, „amit a Codexszel csináltunk”.";
+  "Recall earlier conversations from the user's other AI tools (Claude Code, Claude Desktop, " +
+  "Codex, Cursor). Use before asking about or assuming a project's history, and when the user " +
+  "refers to a prior decision, discussion or fix: \"as we discussed\", \"the earlier one\", " +
+  "\"what we did with Codex\".";
 
 /** Package root, from either `src/install/` or `dist/install/`. */
 function assetFile(): string {

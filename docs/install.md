@@ -1,245 +1,270 @@
-# Telepítés
+# Install
 
-Egy parancs, ami az összes megtalált ágens-eszközbe beköti a szervert, mellé teszi a használati
-utasítást, ad az álom fázisnak modellt, és beállítja, hogy magától frissüljön.
+One command that wires the server into every agent tool it finds, puts the usage
+instructions next to it, gives the dream phase a model, and sets the index to
+refresh itself.
 
 ```bash
 cam install
 ```
 
-Ha a `cam` még nincs a PATH-on: `node dist/cli.js install`. Előtte a csomagot globálisan kell
-telepíteni; a recept a [README](../README.hu.md#telepítés)-ben van, `npx`-ből pedig szándékosan
-nem megy — [alább](#ideiglenes-csomagmappából-a-telepítő-nem-ír-semmit) az indoklás.
+If `cam` is not on the PATH yet: `node dist/cli.js install`. The package has to
+be installed globally first; the recipe is in the [README](../README.md#install),
+and it deliberately does not work from `npx` — [below](#the-installer-writes-nothing-from-a-temporary-package-directory)
+is why.
 
-**Nézd meg előbb, mit csinálna.** Ez a parancs mások konfigurációs fájljaiba ír és feladatot vesz
-fel az ütemezőbe, ezért mindennek van próbája:
+**Look at what it would do first.** This command writes into other people's
+config files and registers a scheduler job, so everything has a rehearsal:
 
 ```bash
 cam install --dry-run
 ```
 
-A próba ugyanazt a tervet írja ki, amit az éles futás végrehajtana — nem közelítést. Egyetlen fájl
-sem módosul, egyetlen modellt sem hívunk meg.
+The rehearsal prints the same plan the live run would execute — not an
+approximation. No file is modified, no model is called.
 
-## Mi történik
+## What happens
 
-Négy egymástól független rész, mindegyik külön kikapcsolható és külön jelentve:
+Four independent parts, each separately opt-out and separately reported:
 
-| rész | mit csinál | kikapcsolás |
+| part | what it does | opt-out |
 |---|---|---|
-| MCP | felveszi a szervert minden megtalált kliens konfigurációjába | `--no-mcp` |
-| skill | odateszi a használati utasítást, ahol az eszköz olvassa | `--no-skills` |
-| álom | modellt választ a fázishoz egy már telepített ágens-CLI-ból | `--no-dream` |
-| ütemezés | óránkénti szinkron, éjszakai karbantartás | `--no-schedule` |
+| MCP | registers the server in every client config it finds | `--no-mcp` |
+| skill | puts the usage instructions where the tool reads them | `--no-skills` |
+| dream | picks a model for the phase from an agent CLI already installed | `--no-dream` |
+| scheduling | hourly sync, nightly maintenance | `--no-schedule` |
 
-Mindegyik idempotens: a második futás azt írja, hogy nem volt teendő.
+Each is idempotent: a second run reports that there was nothing to do.
 
-**Ami nincs telepítve, azt nem telepítjük.** Egy klienst a saját könyvtára jelent be
-(`~/.codex`, `~/.cursor`, `~/.claude`); ha nincs meg, a parancs kihagyja. Egy nem létező eszköz
-konfigurációs fájljának megírása így nézne ki: egy `~/.codex`, amit soha egyetlen Codex nem írt.
+**What is not installed, we do not install.** A client announces itself by its
+own directory (`~/.codex`, `~/.cursor`, `~/.claude`); if it is missing, the
+command skips it. Writing the config file of a tool that does not exist would
+look like this: a `~/.codex` that no Codex ever wrote.
 
-## Hol lesz az adat
+## Where the data lives
 
-A telepítő **nem mozgat és nem hoz létre indexet** — csak beköti azt, amit a `cam` amúgy is
-használna. Hogy melyik az, azt a telepítő az első sorai közt kiírja (`index: ...`), és a
-`cam doctor` bármikor megismétli.
+The installer **does not move or create an index** — it only wires up what `cam`
+would use anyway. Which that is, the installer prints among its first lines
+(`index: ...`), and `cam doctor` repeats it any time.
 
 | | Windows | macOS / Linux |
 |---|---|---|
-| index | `%LOCALAPPDATA%\centered-agent-memory\hub.sqlite` | `$XDG_DATA_HOME/centered-agent-memory/hub.sqlite`, alapból `~/.local/share/...` |
-| beállítások | `%APPDATA%\centered-agent-memory\config.json` | `$XDG_CONFIG_HOME/centered-agent-memory/config.json`, alapból `~/.config/...` |
-| mentések | az index mellett, `backups/` | ugyanaz |
+| index | `%LOCALAPPDATA%\centered-agent-memory\hub.sqlite` | `$XDG_DATA_HOME/centered-agent-memory/hub.sqlite`, default `~/.local/share/...` |
+| settings | `%APPDATA%\centered-agent-memory\config.json` | `$XDG_CONFIG_HOME/centered-agent-memory/config.json`, default `~/.config/...` |
+| backups | next to the index, `backups/` | the same |
 
-Felhasználói adatmappa, nem a telepítési mappa: egy globális telepítés különben a `node_modules`-ba
-írna, egy `npx` futás pedig két hívás között eldobná az indexet.
+A user data directory, not the install directory: a global install would
+otherwise write into `node_modules`, and an `npx` run would drop the index
+between two calls.
 
-**Egy kivétel van, és szándékos:** ha a checkoutban már van `.data/hub.sqlite`, a `cam` azt használja
-tovább, a felhasználói adatmappa helyett. Enélkül egy `git pull` úgy nézne ki, mintha eltűnt volna az
-egész előzmény, mert közben elmozdult az alapértelmezés. Ez fejlesztés közben kényelmes, üzemre
-viszont nem az: a checkout törlése vagy áthelyezése az indexet is viszi. Ha ezt nem akarod, mozgasd
-át egyszer, és mondd meg, hol van:
+**There is one exception, and it is deliberate:** if the checkout already has
+`.data/hub.sqlite`, `cam` keeps using it instead of the user data directory.
+Without this, a `git pull` would look as if the whole history had vanished,
+because the default had moved in the meantime. Convenient while developing,
+not for production: deleting or moving the checkout takes the index with it.
+If you do not want that, move it once and say where it is:
 
 ```bash
-cam backup "%LOCALAPPDATA%\centered-agent-memory\hub.sqlite"   # ellenőrzött másolat
+cam backup "%LOCALAPPDATA%\centered-agent-memory\hub.sqlite"   # verified copy
 ```
 
-Utána töröld a checkout `.data/` mappáját, és a következő futás már a felhasználói adatmappát
-találja. Tetszőleges helyre a `config.json` `dbPath` mezőjével, egy futásra a `--db`, illetve a
-`CAM_DB` környezeti változóval lehet mutatni.
+Then delete the checkout's `.data/` folder, and the next run will find the user
+data directory. Point at an arbitrary location with the `dbPath` field of
+`config.json`, for one run with `--db`, or with the `CAM_DB` environment
+variable.
 
-Az útvonal-döntés sorrendje, az elsőtől: `--db` → `CAM_DB` → `config.json` `dbPath` → a checkout
-`.data/hub.sqlite`-ja, ha van → felhasználói adatmappa.
+Path decision order, first wins: `--db` → `CAM_DB` → `config.json` `dbPath` →
+the checkout's `.data/hub.sqlite`, if it exists → user data directory.
 
-## MCP-bekötés
+## MCP wiring
 
-| kliens | fájl | formátum |
+| client | file | format |
 |---|---|---|
 | Claude Code | `~/.claude.json` | JSON |
-| Claude Desktop / Cowork | `claude_desktop_config.json` az app-adatkönyvtárban | JSON |
+| Claude Desktop / Cowork | `claude_desktop_config.json` in the app data directory | JSON |
 | Codex | `~/.codex/config.toml` | TOML |
 | Cursor | `~/.cursor/mcp.json` | JSON |
 
-A szerver `cam` néven kerül be, és mindig **abszolút útvonallal** — akkor is, ha a `cam-mcp` éppen
-ott van a `PATH`-on. A klienst nem a te shelled indítja: egy dockból indított asztali alkalmazásnak
-nincs bejelentkezési `PATH`-a, tehát amit a telepítő shellje megtalál, az semmit nem mond arról,
-hogy a kliens mit talál meg. Ha a csomag elmozdul, futtasd újra a `cam install`-t.
+The server is registered as `cam`, always with an **absolute path** — even if
+`cam-mcp` happens to be on the `PATH`. The client is not started by your shell:
+a desktop app launched from a dock has no login `PATH`, so what the installer's
+shell found says nothing about what the client will find. If the package moves,
+run `cam install` again.
 
-### Ideiglenes csomagmappából a telepítő nem ír semmit
+### The installer writes nothing from a temporary package directory
 
-Egy `npx github:...` futás az npm
-gyorsítótárába csomagol ki (`_npx/<hash>`), és a saját `node_modules/.bin`-jét teszi a `PATH`-ra a
-futás idejére. Onnan mindkét lehetséges bejegyzés hazudik: az abszolút útvonal a gyorsítótár
-kitakarításáig él, a puszta `cam-mcp` pedig a folyamat kilépéséig. A parancs ezért felismeri ezt az
-esetet, nem ír semmit, és megmondja, mi kell helyette:
+An `npx github:...` run unpacks into the npm cache (`_npx/<hash>`) and puts its
+own `node_modules/.bin` on the `PATH` for the duration of the run. From there
+both possible entries lie: the absolute path lives until the cache is collected,
+and a bare `cam-mcp` lives until the process exits. The command therefore
+detects this case, writes nothing, and says what is needed instead:
 
 ```bash
 npm i -g centered-agent-memory && cam install
 ```
 
-A meglévő tartalomhoz nem nyúlunk. A JSON-fájlok a saját behúzásukkal íródnak vissza, a TOML-nál
-szövegszinten cseréljük a saját táblánkat, hogy a kommentek és a formázás megmaradjanak. Az első
-változtatás előtt biztonsági másolat készül a fájl mellé (`*.cam-backup-<időbélyeg>`).
+Existing content is left alone. JSON files are written back with their own
+indentation; for TOML we replace our own table at the text level so comments
+and formatting survive. Before the first change a backup is made next to the
+file (`*.cam-backup-<timestamp>`).
 
-**Ha egy konfigurációs fájl sérült, nem írjuk felül.** A parancs kiírja, melyik fájl és mi a baj,
-a többi klienssel folytatja, és `1`-gyel lép ki. Egy elrontott JSON-t nem lehet biztonságosan
-összefésülni, és a kitalálás rosszabb, mint a hibaüzenet.
+**If a config file is corrupt, we do not overwrite it.** The command prints
+which file and what is wrong, continues with the other clients, and exits `1`.
+A broken JSON cannot be merged safely, and guessing is worse than the error
+message.
 
-### Projekt szintű bekötés
+### Project-scoped wiring
 
 ```bash
 cam install --project
 ```
 
-Ilyenkor a repóba ír: `.mcp.json` (Claude Code) és `.cursor/mcp.json` (Cursor). Csak ez a kettő,
-mert csak ez a kettő olvas repónkénti konfigurációt — a Codex globálisan konfigurálja a szervereit,
-a Claude Desktopnak pedig nincs fogalma repóról.
+This writes into the repo: `.mcp.json` (Claude Code) and `.cursor/mcp.json`
+(Cursor). Only these two, because only these two read per-repo configuration —
+Codex configures its servers globally, and Claude Desktop has no notion of a
+repo.
 
-Egyetlen kliensre: `--client claude_code|claude_desktop|codex|cursor`.
+A single client: `--client claude_code|claude_desktop|codex|cursor`.
 
 ## Skill
 
-Az MCP-bekötés attól még nem használja az ágens az indexet: attól használja, hogy tudja, mikor
-érdemes. A skill ezt írja le — mikor nyúljon hozzá, milyen sorrendben, hogyan olvassa a
-megbízhatósági jelzéseket, és mit ne csináljon.
+MCP wiring still does not make the agent use the index: it uses it because it
+knows when it is worth it. The skill describes that — when to reach for it, in
+what order, how to read the confidence signals, and what not to do.
 
-Egy törzsből készül, kliensenként rendereltve `~/.claude/skills/agent-memory/SKILL.md`,
-`~/.codex/skills/…`, `~/.cursor/skills/…` alá. Ami eszközönként eltér, az egyetlen szakasz a végén:
-van-e terminál is, vagy csak az MCP-toolok.
+It is built from one body, rendered per client under
+`~/.claude/skills/agent-memory/SKILL.md`, `~/.codex/skills/…`,
+`~/.cursor/skills/…`. What differs per tool is a single section at the end:
+whether there is a terminal as well, or only the MCP tools.
 
-A Claude Code Desktop ugyanazt a `~/.claude/skills/` mappát olvassa, mint a CLI. A skill oda a
-`cam install`-lal, vagy a [skills](https://skills.sh) CLI-vel kerül:
+Claude Code Desktop reads the same `~/.claude/skills/` folder as the CLI. The
+skill gets there with `cam install`, or with the [skills](https://skills.sh)
+CLI:
 
 ```bash
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban. A klasszikus Claude Desktop /
-Cowork appnak nincs ilyen mappája — Cowork csak a Customize → Skills feltöltőn keresztül
-regisztrál, fájlmásolásra nem. Oda a szerver saját instrukciója jut el, minden válasszal.
+This command looks for `skills/agent-memory/SKILL.md` in the repo. The classic
+Claude Desktop / Cowork app has no such folder — Cowork only registers through
+the Customize → Skills uploader, not by file copy. There the server's own
+instructions arrive, with every response.
 
-## Álom-modell
+## Dream model
 
-Az [álom fázis](memory.md#az-álom-fázis) az egyetlen rész, amihez modell kell. A telepítő nem
-API-kulcsot kér, hanem megnézi, milyen ágens-CLI van már a gépen, és felkínálja őket:
+The [dream phase](memory.md#the-dream-phase-optional) is the only part that needs a
+model. The installer does not ask for an API key; it looks at which agent CLIs
+are already on the machine and offers them:
 
 ```
-álom-modell — melyik eszköz írja az összefoglalókat?
+dream model — which tool should write the summaries?
   1) Codex CLI          C:\...\codex.exe
   2) Claude Code        C:\...\claude.exe
   3) Gemini CLI         node C:\...\bundle\gemini.js
-  0) egyik se (az álom fázis modell nélkül marad)
+  0) none (the dream phase stays without a model)
 ```
 
-Utána a modellt is te választod. A listát onnan vesszük, ahonnan hiteles: a Codex a saját
-`models_cache.json`-jéből, az Antigravity az `agy models`-ből, a Cursor a `--list-models`-ből, a
-Claude a dokumentált aliasaiból (`sonnet`, `opus`, `haiku`, `fable`). A Gemini CLI-nak nincs ilyen
-parancsa; ott beírhatod a nevet, vagy üresen hagyhatod, és marad az eszköz alapértelmezettje — ez
-utóbbi ritkán rossz választás, és sosem avul el.
+Then you pick the model as well. The list comes from where it is authoritative:
+Codex from its own `models_cache.json`, Antigravity from `agy models`, Cursor
+from `--list-models`, Claude from its documented aliases (`sonnet`, `opus`,
+`haiku`, `fable`). The Gemini CLI has no such command; there you can type a
+name, or leave it empty and keep the tool's default — the latter is rarely a
+bad choice, and never goes stale.
 
-Nem interaktív futásnál (szkript, cső) végigpróbálja a talált eszközöket, amíg az egyik nem válaszol.
-Konkrétan: `--dream codex --model gpt-5.6-sol`.
+On a non-interactive run (script, pipe) it tries the tools it found until one
+answers. Concretely: `--dream codex --model gpt-5.6-sol`.
 
-**A választás csak akkor kerül a konfigurációba, ha válaszolt.** A telepítő küld egy rövid promptot,
-és megvárja a választ. Egy rossz kapcsolóval megírt sablon pontosan úgy néz ki, mint egy működő,
-egészen az első éjszakai futásig — ez a harminc másodperc azt a hibát váltja ki egy naplósorra, amit
-senki nem olvas el.
+**The choice only goes into the config if it answered.** The installer sends a
+short prompt and waits for the reply. A template written with the wrong flag
+looks exactly like a working one until the first nightly run fails into a log
+nobody reads — these thirty seconds find that out now.
 
-Amit a sablonok tartalmaznak, és miért:
+What the templates contain, and why:
 
-- **Nincs eszközhozzáférés** (`-s read-only`, `--tools ""`, `--mode ask`, `--approval-mode plan`).
-  Ezek kódoló ágensek: magukra hagyva nekiállnak fájlokat olvasni egy olyan kérdés megválaszolásához,
-  amihez a szöveget épp a kezükbe adtuk.
-- **Nincs session-mentés** (`--ephemeral`, `--no-session-persistence`) azoknál az eszközöknél,
-  amiket a `cam` maga is indexel. Enélkül a következő szinkron beolvasná az álom-promptokat, a
-  következő álom összegezné őket, és az index lassan megtelne a saját tükörképével.
-- **A prompt a stdin-en megy**, mert egy kivonat több ezer karakter, és annak minden platformon
-  rossz helye az argumentumlista.
-- **A válasz fájlba**, ahol az eszköz tudja (`codex exec -o`), mert a stdout-on ott a banner és a
-  tokenszámláló is.
+- **No tool access** (`-s read-only`, `--tools ""`, `--mode ask`, `--approval-mode plan`).
+  These are coding agents: left to themselves they start reading files to answer
+  a question for which we just handed them the text.
+- **No session persistence** (`--ephemeral`, `--no-session-persistence`) on the
+  tools that `cam` itself indexes. Without this the next sync would read the
+  dream prompts, the next dream would summarise them, and the index would
+  slowly fill with its own reflection.
+- **The prompt goes on stdin**, because an excerpt is thousands of characters,
+  and the argument list is the wrong place for that on every platform.
+- **The reply into a file**, where the tool can (`codex exec -o`), because
+  stdout also has the banner and the token counter.
 
-A modell neve minden elkészült összefoglaló mellé bekerül, tehát egy álom mindig meg tudja mondani,
-ki írta.
+The model name is recorded next to every finished summary, so a dream can
+always say who wrote it.
 
-### A program, nem az indító
+### The program, not the launcher
 
-A telepítő nem az `előbb-jön-a-PATH-on` alapján választ. Végignézi az egész `PATH`-t és az eszközök
-saját telepítési helyeit, átolvas az indítókon — a Windows `.cmd`-shim utolsó sora megmondja, mit
-futtatna —, és mindig a valódi programnál köt ki: vagy egy natív futtatható, vagy `node <script>`.
+The installer does not pick by `first-on-the-PATH`. It walks the whole `PATH`
+and the tools' own install locations, reads through the launchers — the last
+line of a Windows `.cmd` shim says what it would run — and always lands on the
+real program: either a native executable, or `node <script>`.
 
-Ennek két oka van. Egy eszköz kétszer is fent lehet, npm-ből és natív kiadásként, más verzióban; a
-`PATH` sorrendje rossz döntőbíró (ezen a fejlesztőgépen épp a shim mögötti npm-verzió volt hibás).
-A másik: amit ide beírunk, azt később egy ütemezett feladat futtatja, aminek nincs shellje és nincs
-`PATH`-a — ott egy abszolút program az egyetlen alak, ami elindul.
+Two reasons. A tool can be installed twice, from npm and as a native release,
+at different versions; `PATH` order is a bad tie-breaker (on this development
+machine the npm version behind the shim was the broken one). The other: what
+we write here is later run by a scheduled task that has no shell and no `PATH`
+— there an absolute program is the only form that starts.
 
-## Ütemezés
+## Scheduling
 
-Az eszköz akkor ér valamit, ha reggelre magától naprakész. A telepítő ezt is felveszi:
+The tool is worth something if it is current by morning on its own. The
+installer registers that too:
 
-| | óránként | naponta 4-kor |
+| | hourly | daily at 4:00 |
 |---|---|---|
-| Windows | `cam-sync` feladat | `cam-maintenance` (konszolidáció, majd megőrzés) |
+| Windows | `cam-sync` task | `cam-maintenance` (consolidation, then retention) |
 | macOS | `io.github.arlinamid.cam.sync` | `.consolidate` 4:00, `.prune` 4:10 |
 | Linux | `cam-sync.timer` | `cam-maintenance.timer` |
 
-Mindhárom platformon be van kapcsolva a kimaradt futás pótlása (`-StartWhenAvailable`,
-`Persistent=true`, `RunAtLoad`): egy alvó gép kihagyott szinkronja különben egyszerűen elveszne.
+All three platforms have catch-up for a missed run turned on
+(`-StartWhenAvailable`, `Persistent=true`, `RunAtLoad`): a sleeping machine's
+skipped sync would otherwise simply be lost.
 
-A részletek, a kézi változat és az ellenőrző parancsok: [`operations.md`](operations.md#ütemezés).
+Details, the manual version, and the check commands:
+[`operations.md`](operations.md#scheduling).
 
-Linuxon egy user-timer leáll, amikor kilépsz, hacsak nincs bekapcsolva a lingering — a telepítő
-kiírja, ha ez a helyzet: `loginctl enable-linger $USER`.
+On Linux a user timer stops when you log out, unless lingering is on — the
+installer prints this when that is the case: `loginctl enable-linger $USER`.
 
-### Egy csomag, egy ütemezés
+### One package, one schedule
 
-A feladatok neve rögzített, tehát két szinkron-feladat nem jöhet létre. Ami létrejöhetne, az
-rosszabb: a második telepítés **átvenné** a meglévőt egy másik példány javára, és az előző úgy
-nézne ki, mintha telepítve volna, miközben semmi nem fut a nevében. A telepítő ezért megnézi,
-kihez tartozik a már regisztrált feladat:
+The job names are fixed, so two sync jobs cannot be created. What could be
+created is worse: the second install would **take over** the existing one for
+another copy, and the previous one would look installed while nothing runs on
+its behalf. The installer therefore checks who the already-registered job
+belongs to:
 
-- **ugyanez a példány** — nincs teendő, a második futás nem ír semmit;
-- **másik példány** — nem ír, megnevezi a most regisztrált parancsot és a sajátját, és `1`-gyel lép
-  ki. Átvétel `--force`-szal, vagy előbb `cam uninstall` a másik példányból.
+- **this same copy** — nothing to do, the second run writes nothing;
+- **a different copy** — does not write, names the currently registered
+  command and its own, and exits `1`. Takeover with `--force`, or first
+  `cam uninstall` from the other copy.
 
-Ez az a hely, ahol egy fejlesztői checkout és egy globális telepítés összeérne: mindkettő tud
-`cam install`-t futtatni, és a különbség csak abban látszik, hogy melyik `cli.js`-t futtatja
-óránként a gép.
+This is where a development checkout and a global install would meet: both can
+run `cam install`, and the difference only shows in which `cli.js` the machine
+runs every hour.
 
-**A háttérfeladat abszolút útvonalat kap, feloldott symlinkekkel.** Egy Node-verziókezelő mozgó
-linket tesz mindkét felébe (`C:\nvm\current\node.exe` és a mellette lévő globális `node_modules`),
-és egy óránként futó feladatnak nem attól kell függenie, hogy épp melyik verzió van kiválasztva egy
-terminálban. Verzióváltás után futtasd újra a `cam install`-t.
+**The background job gets an absolute path, with symlinks resolved.** A Node
+version manager puts a moving link on both sides (`C:\nvm\current\node.exe` and
+the global `node_modules` next to it), and an hourly task must not depend on
+which version happens to be selected in a terminal. After a version change, run
+`cam install` again.
 
-## Ellenőrzés
+## Verification
 
 ```bash
-cam status          # van-e index, mikor frissült
-cam doctor          # integritás, séma, hozzárendelés, méret
+cam status          # is there an index, when did it last refresh
+cam doctor          # integrity, schema, attribution, size
 ```
 
-A kliensekben: indítsd újra az eszközt, és kérdezz rá valamire, amit egy másikkal csináltál. Ha a
-szerver bekerült, a válasz utolsó sorában ott lesz az index kora.
+In the clients: restart the tool, and ask about something you did with another
+one. If the server is registered, the last line of the reply will have the
+index's age.
 
-Az ütemezés ellenőrzése platformonként:
+Checking the schedule, per platform:
 
 ```powershell
 Get-ScheduledTaskInfo -TaskName "cam-sync"          # Windows
@@ -250,16 +275,16 @@ launchctl print gui/$(id -u)/io.github.arlinamid.cam.sync   # macOS
 systemctl --user list-timers cam-sync.timer            # Linux
 ```
 
-## Eltávolítás
+## Uninstall
 
 ```bash
 cam uninstall --dry-run
 cam uninstall
 ```
 
-Kiveszi a szerver-bejegyzést a konfigurációkból (a többi bejegyzést nem bántja), törli a skilleket,
-és leszedi az ütemezett feladatokat.
+Removes the server entry from the configs (leaves the other entries alone),
+deletes the skills, and takes down the scheduled jobs.
 
-**Az indexhez nem nyúl.** Azt a `cam forget` üríti szelektíven, vagy magának a fájlnak a törlése —
-`cam doctor` megmondja, hol van. Ez szándékos: az eltávolítás a bekötést vonja vissza, nem az
-összegyűjtött tudást.
+**It does not touch the index.** That is emptied selectively by `cam forget`,
+or by deleting the file itself — `cam doctor` says where it is. This is
+deliberate: uninstall undoes the wiring, not the collected knowledge.

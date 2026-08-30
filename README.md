@@ -4,7 +4,7 @@ One searchable index over the conversations of **every** AI coding tool on your 
 Claude Desktop / Cowork, Codex and Cursor — organised by project. Usable as a CLI and as an MCP server,
 so any agent can look up what the others already did.
 
-Magyar leírás: [`README.hu.md`](README.hu.md). A `docs/` mappa magyarul van.
+Hungarian overview: [`README.hu.md`](README.hu.md). Hungarian docs: `docs/*.hu.md`.
 
 ## Principles
 
@@ -30,7 +30,7 @@ attribution pass; see the [CHANGELOG](CHANGELOG.md) measurements.
 
 **Says how old it is.** Every MCP response ends with the index's age, so an agent cannot quote a
 six-week-old answer as current. Unattended operation — scheduling, freshness, retention, backup — is
-in [`docs/operations.md`](docs/operations.md) (Hungarian).
+in [`docs/operations.md`](docs/operations.md).
 
 ## Install
 
@@ -60,7 +60,7 @@ needed.
 Codex, Cursor), writes a skill telling that agent when to consult the index, gives the optional
 dream phase a model taken from an agent CLI already on the machine, and schedules the hourly
 refresh. Run it with `--dry-run` first to see the plan; details and opt-outs in
-[`docs/install.md`](docs/install.md) (Hungarian).
+[`docs/install.md`](docs/install.md).
 
 The skill for Claude Code (and Claude Code Desktop, which reads the same folder) can also be
 installed on its own:
@@ -141,7 +141,7 @@ cam prune --quiet               # nightly
 
 Scheduler recipes for Task Scheduler, launchd, systemd timers and cron, plus retention settings,
 backup and restore, and what to do when `cam doctor` complains:
-[`docs/operations.md`](docs/operations.md) (Hungarian).
+[`docs/operations.md`](docs/operations.md).
 
 Retention removes the old recall trace, the surplus run log, and — only if you ask — the sessions of
 sources that vanished. One rule overrides all of it: **the evidence behind a live promotion is never
@@ -168,7 +168,7 @@ cam memory dream [--dry-run]   # optional: a sentence per memory, written by a m
 
 Deterministic and offline: the same database consolidated twice promotes the same set. A promoted
 memory stores no text either — it references a chunk and is rehydrated on read, so the no-duplication
-rule survives the memory layer. Details: [`docs/memory.md`](docs/memory.md) (Hungarian).
+rule survives the memory layer. Details: [`docs/memory.md`](docs/memory.md).
 
 One optional step does use a model: `cam memory dream` asks a configured command to write a sentence
 about each promoted excerpt. It is off by default, never runs from `consolidate`, prints what would
@@ -188,7 +188,7 @@ Seven read-only tools: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `
 Every response — including error responses — ends with a line saying how old the index is:
 
 ```
-— index: 2026-08-29 17:37 UTC (1 perce) · 1643 session · 32054 turn
+— index: 2026-08-29 17:37 UTC (1 min ago) · 1643 session · 32054 turn
 ```
 
 Past the staleness threshold (24 hours by default, `staleAfterHours` in the config) the line says so
@@ -234,6 +234,6 @@ and Linux: path folding is pinned with `CAM_CASE_FOLD` in `vitest.config.ts`, an
 ## Status and plan
 
 What is done: [`CHANGELOG.md`](CHANGELOG.md). What the project still has to contain, in order, and what
-it deliberately will not do: [`docs/roadmap.md`](docs/roadmap.md) (Hungarian).
+it deliberately will not do: [`docs/roadmap.md`](docs/roadmap.md).
 
 MIT licensed — see [`LICENSE`](LICENSE).

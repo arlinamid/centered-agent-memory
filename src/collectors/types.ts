@@ -53,7 +53,7 @@ export function readDirOrNull(dir: string, ctx: CollectorCtx, stat: SyncStat): f
     return fs.readdirSync(dir, { withFileTypes: true });
   } catch (err) {
     stat.errors++;
-    ctx.log(`${dir}: nem olvasható — ${(err as Error).message}`);
+    ctx.log(`${dir}: unreadable — ${(err as Error).message}`);
     return null;
   }
 }

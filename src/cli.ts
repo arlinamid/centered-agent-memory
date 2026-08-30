@@ -220,7 +220,7 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
   return withHubAsync(async (db) => {
     const lock = acquireLock(db, "sync");
     if (!lock.ok) {
-      log.fail(`Már fut egy ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — kilépek.`);
+      log.fail(`Already running: ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — exiting.`);
       return EXIT_OK; // Not a failure: the other run is doing the work.
     }
 
@@ -244,7 +244,7 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
           stat = await c.sync(ctxFor(db, repair));
         } catch (err) {
           errors++;
-          log.fail(`${(c.name ?? c.tool).padEnd(15)} HIBA: ${(err as Error).message}`);
+          log.fail(`${(c.name ?? c.tool).padEnd(15)} ERROR: ${(err as Error).message}`);
           continue;
         }
         turns += stat.turns;
@@ -252,8 +252,8 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
         errors += stat.errors;
         log.status(
           `${(c.name ?? c.tool).padEnd(15)} session:${String(stat.sessions).padStart(4)}` +
-            `  turn:${String(stat.turns).padStart(6)}  változatlan:${String(stat.skipped).padStart(4)}` +
-            `  hiba:${stat.errors}  ${Date.now() - t0} ms`,
+            `  turn:${String(stat.turns).padStart(6)}  unchanged:${String(stat.skipped).padStart(4)}` +
+            `  error:${stat.errors}  ${Date.now() - t0} ms`,
         );
       }
 
@@ -264,34 +264,34 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
         return out;
       };
 
-      phase("cwd-bizonyíték", () => collectCwdEvidence(db));
-      const roots = phase("workspace-gyökerek", () => learnRoots(db));
-      const files = phase("fájlútvonalak", () => resolveFileEvents(db, makeResolver(db)));
-      phase("idő-korreláció", () => correlateTime(db));
-      const attr = phase("hozzárendelés", () => reattribute(db));
+      phase("cwd-evidence", () => collectCwdEvidence(db));
+      const roots = phase("workspace-roots", () => learnRoots(db));
+      const files = phase("file-paths", () => resolveFileEvents(db, makeResolver(db)));
+      phase("time-correlation", () => correlateTime(db));
+      const attr = phase("attribution", () => reattribute(db));
 
       log.detail(
-        `  ${"útvonal-gyorsítótár".padEnd(20)} ${files.cached}/${files.resources} kész, ` +
-          `${files.computed} újonnan feloldva, ${files.resolved} projektre mutat`,
+        `  ${"path-cache".padEnd(20)} ${files.cached}/${files.resources} ready, ` +
+          `${files.computed} newly resolved, ${files.resolved} point to a project`,
       );
 
       db.prepare(
         "update sync_runs set ended_ms = ?, sessions_seen = ?, turns_added = ?, errors = ? where id = ?",
       ).run(Date.now(), sessions, turns, errors, runId);
 
-      log.status(`\ntanult workspace gyökér: ${roots.length}`);
+      log.status(`\nlearned workspace root(s): ${roots.length}`);
       log.status(
-        `projekthez kötve: ${attr.attributed}/${attr.sessions}` +
+        `bound to a project: ${attr.attributed}/${attr.sessions}` +
           ` (${attr.sessions ? Math.round((attr.attributed / attr.sessions) * 100) : 0}%)`,
       );
-      log.status(`${sessions} session, ${turns} új turn, ${Date.now() - started} ms`);
+      log.status(`${sessions} session(s), ${turns} new turn(s), ${Date.now() - started} ms`);
     } finally {
       lock.handle.release();
     }
 
     // A scheduled run learns about a broken source only from the exit code, so
     // this stays visible even under --quiet.
-    if (errors > 0) log.fail(`${errors} hiba a szinkron során`);
+    if (errors > 0) log.fail(`${errors} error(s) during sync`);
     return errors > 0 ? EXIT_FAILED : EXIT_OK;
   });
 }
@@ -314,7 +314,7 @@ function cmdProjects(a: ParsedArgs): number {
       for (const r of rows) {
         log.result(`${r.tool.padEnd(15)} ${String(r.turn_count).padStart(5)}t  ${r.title ?? r.ext_id}`);
       }
-      log.status(`\n${rows.length} projekt nélküli session (a legnagyobbak)`);
+      log.status(`\n${rows.length} unattributed session(s) (the largest)`);
       return EXIT_OK;
     }
 
@@ -327,19 +327,19 @@ function cmdProjects(a: ParsedArgs): number {
     for (const p of projects) {
       log.result(
         `${p.key.padEnd(30)} ${String(p.sessions).padStart(4)} session ${String(p.turns).padStart(7)} turn` +
-          `  utoljára: ${day(p.lastMs)}`,
+          `  last: ${day(p.lastMs)}`,
       );
     }
     const un = db.prepare("select count(*) c from sessions where project_id is null").get() as { c: number };
-    const shown = projects.length < all.length ? ` (${all.length} közül)` : "";
-    log.status(`\n${projects.length} projekt${shown}, ${un.c} session projekt nélkül`);
+    const shown = projects.length < all.length ? ` (of ${all.length})` : "";
+    log.status(`\n${projects.length} project(s)${shown}, ${un.c} session(s) with no project`);
     return EXIT_OK;
   });
 }
 
 function cmdTimeline(a: ParsedArgs): number {
   const [project, ...extra] = a.positional;
-  if (!project || extra.length > 0) return usage("cam timeline <projekt>");
+  if (!project || extra.length > 0) return usage("cam timeline <project>");
   const max = limit(a, 200);
   const sinceMs = dateFlag(a, "since");
   const untilMs = dateFlag(a, "until");
@@ -361,14 +361,14 @@ function cmdTimeline(a: ParsedArgs): number {
 
 function cmdDossier(a: ParsedArgs): number {
   const [project, ...extra] = a.positional;
-  if (!project || extra.length > 0) return usage("cam dossier <projekt>");
+  if (!project || extra.length > 0) return usage("cam dossier <project>");
   const max = limit(a, 8);
   if (a.errors.length > 0) return reportErrors(a);
 
   return withHub((db) => {
     const d = dossier(db, project, max);
     if (!d) {
-      log.fail(`Nincs ilyen projekt: ${project}`);
+      log.fail(`No such project: ${project}`);
       return EXIT_FAILED;
     }
     log.result(has(a, "json") ? JSON.stringify(d, null, 2) : formatDossier(d));
@@ -378,7 +378,7 @@ function cmdDossier(a: ParsedArgs): number {
 
 function cmdRecall(a: ParsedArgs): number {
   const query = a.positional.join(" ");
-  if (!query) return usage('cam recall "<kérdés>"');
+  if (!query) return usage('cam recall "<query>"');
   const max = limit(a, 10);
   const sinceMs = dateFlag(a, "since");
   if (a.errors.length > 0) return reportErrors(a);
@@ -409,14 +409,14 @@ function cmdGet(a: ParsedArgs): number {
 
   const parsed = parseCitation(citation);
   if (!parsed) {
-    log.fail(`Értelmezhetetlen hivatkozás: ${citation}\nA formája tool:sessionId#seqN-M, ahogy a cam recall adja.`);
+    log.fail(`Unreadable citation: ${citation}\nThe form is tool:sessionId#seqN-M, as cam recall prints it.`);
     return EXIT_USAGE;
   }
 
   return withHub((db) => {
     const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
     if (turns.length === 0) {
-      log.fail(`Nincs ilyen session: ${citation}`);
+      log.fail(`No such session: ${citation}`);
       return EXIT_FAILED;
     }
     log.result(has(a, "json") ? JSON.stringify(turns, null, 2) : formatTurns(turns));
@@ -426,7 +426,7 @@ function cmdGet(a: ParsedArgs): number {
 
 function cmdAlias(a: ParsedArgs): number {
   const [alias, key, ...extra] = a.positional;
-  if (!alias || !key || extra.length > 0) return usage("cam alias <mappanév> <projektkulcs>");
+  if (!alias || !key || extra.length > 0) return usage("cam alias <folder> <project-key>");
   return withHub((db) => {
     db.prepare("insert or replace into project_aliases(alias, key, kind) values (?,?, 'manual')").run(
       alias.toLowerCase(),
@@ -434,14 +434,14 @@ function cmdAlias(a: ParsedArgs): number {
     );
     log.status(`alias: ${alias} → ${key}`);
     const stats = reattribute(db);
-    log.status(`újraszámolva: ${stats.attributed}/${stats.sessions}`);
+    log.status(`recomputed: ${stats.attributed}/${stats.sessions}`);
     return EXIT_OK;
   });
 }
 
 function cmdAttribute(a: ParsedArgs): number {
   const [ref, project, ...extra] = a.positional;
-  if (!ref || !project || extra.length > 0) return usage("cam attribute <tool:sessionId> <projektkulcs>");
+  if (!ref || !project || extra.length > 0) return usage("cam attribute <tool:sessionId> <project-key>");
   const [tool, ...rest] = ref.split(":");
   const extId = rest.join(":");
 
@@ -450,7 +450,7 @@ function cmdAttribute(a: ParsedArgs): number {
       | { id: number }
       | undefined;
     if (!s) {
-      log.fail(`Nincs ilyen session: ${ref}`);
+      log.fail(`No such session: ${ref}`);
       return EXIT_FAILED;
     }
     // A manual decision outweighs every inferred signal and survives reattribute.
@@ -459,7 +459,7 @@ function cmdAttribute(a: ParsedArgs): number {
       "insert into path_evidence(session_id, origin, raw_path, project_key, weight) values (?, 'manual', ?, ?, 1000)",
     ).run(s.id, `~manual:${project}`, project);
     const stats = reattribute(db);
-    log.status(`${ref} → ${project}; újraszámolva: ${stats.attributed}/${stats.sessions}`);
+    log.status(`${ref} → ${project}; recomputed: ${stats.attributed}/${stats.sessions}`);
     return EXIT_OK;
   });
 }
@@ -470,10 +470,10 @@ function cmdReattribute(): number {
     // Full recompute: an alias or a new workspace root changes what a path
     // resolves to, and the cache would keep answering with yesterday's verdict.
     const files = resolveFileEvents(db, makeResolver(db), { recompute: true });
-    log.detail(`  ${files.computed} fájlútvonal újra feloldva, ${files.resolved} projektre mutat`);
+    log.detail(`  ${files.computed} file path(s) re-resolved, ${files.resolved} point to a project`);
     correlateTime(db);
     const stats = reattribute(db);
-    log.status(`projekthez kötve: ${stats.attributed}/${stats.sessions}  (${Date.now() - t0} ms)`);
+    log.status(`bound to a project: ${stats.attributed}/${stats.sessions}  (${Date.now() - t0} ms)`);
     for (const [method, n] of Object.entries(stats.byMethod).sort((a, b) => b[1] - a[1])) {
       log.status(`  ${method.padEnd(20)} ${n}`);
     }
@@ -490,7 +490,7 @@ function cmdRebuild(): number {
   return withHub((db) => {
     const lock = acquireLock(db, "rebuild");
     if (!lock.ok) {
-      log.fail(`Már fut egy ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — kilépek.`);
+      log.fail(`Already running: ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — exiting.`);
       return EXIT_OK;
     }
     const t0 = Date.now();
@@ -499,11 +499,11 @@ function cmdRebuild(): number {
         if (done % 5000 === 0 || done === total) log.detail(`  ${done}/${total} chunk`);
       });
       log.status(
-        `újraindexelve: ${stat.indexed}/${stat.chunks} chunk` +
-          `  módosult forrás: ${stat.stale}  hiányzó: ${stat.missing}  ${Date.now() - t0} ms`,
+        `reindexed: ${stat.indexed}/${stat.chunks} chunk(s)` +
+          `  changed source: ${stat.stale}  missing: ${stat.missing}  ${Date.now() - t0} ms`,
       );
       if (stat.missing > 0) {
-        log.status("A hiányzó forrású chunkok kimaradtak az indexből; a turnök 'missing' jelölést kaptak.");
+        log.status("Chunks whose source is missing were left out of the index; those turns are marked 'missing'.");
       }
       return EXIT_OK;
     } finally {
@@ -529,14 +529,14 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
       return withHub((db) => {
         const lock = acquireLock(db, "memory");
         if (!lock.ok) {
-          log.fail(`Már fut egy ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — kilépek.`);
+          log.fail(`Already running: ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — exiting.`);
           return EXIT_OK;
         }
         try {
           const t0 = Date.now();
           const budget = Number(flag(a, "budget") ?? DEFAULT_BUDGET_CHARS);
           const minScore = flag(a, "min-score") ? Number(flag(a, "min-score")) : undefined;
-          if (!Number.isFinite(budget) || budget < 1) return usage("cam memory consolidate --budget <karakter>");
+          if (!Number.isFinite(budget) || budget < 1) return usage("cam memory consolidate --budget <characters>");
           if (minScore !== undefined && (!Number.isFinite(minScore) || minScore < 0 || minScore > 1)) {
             return usage("cam memory consolidate --min-score <0..1>");
           }
@@ -545,13 +545,13 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
             log.result(JSON.stringify(stat, null, 2));
             return EXIT_OK;
           }
-          log.status(`nyom: ${stat.traces} chunk  ·  visszatérő téma: ${stat.topics}  ·  jelölt: ${stat.candidates}`);
+          log.status(`trace: ${stat.traces} chunk(s)  ·  recurring topic(s): ${stat.topics}  ·  candidate(s): ${stat.candidates}`);
           log.status(
-            `promotálva: ${stat.promoted} új, ${stat.refreshed} frissítve, ${stat.demoted} visszavonva, ` +
-              `${stat.evicted} kiesett a budgetből`,
+            `promoted: ${stat.promoted} new, ${stat.refreshed} refreshed, ${stat.demoted} demoted, ` +
+              `${stat.evicted} evicted by the budget`,
           );
           log.status(
-            `hosszú távú memória: ${stat.facts} emlék, ${stat.usedChars}/${stat.budgetChars} karakter ` +
+            `long-term memory: ${stat.facts} fact(s), ${stat.usedChars}/${stat.budgetChars} character(s) ` +
               `(${Date.now() - t0} ms)`,
           );
           return EXIT_OK;
@@ -573,7 +573,7 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
       return withHub((db) => {
         const found = getFact(db, id);
         if (!found) {
-          log.fail(`Nincs ilyen emlék: #${id}`);
+          log.fail(`No such memory: #${id}`);
           return EXIT_FAILED;
         }
         log.result(has(a, "json") ? JSON.stringify(found, null, 2) : formatMemoryFact(found.fact, found.evidence));
@@ -591,7 +591,7 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
 
       return withHubAsync(async (db) => {
         if (forgetRequested) {
-          log.status(`${forgetDreams(db)} álom törölve. A promóciók és a bizonyíték érintetlen.`);
+          log.status(`${forgetDreams(db)} dream(s) dropped. Promotions and evidence are untouched.`);
           return EXIT_OK;
         }
 
@@ -608,17 +608,17 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
         // The disclosure of what leaves the machine is not a progress report:
         // it stays on stderr at every level, including --quiet.
         log.fail(
-          `${items.length} emlék · ${todo.length} új · ${chars} karakter menne ki` +
-            ` a(z) ${dream.model ?? "?"} modellhez (${(dream.command ?? ["—"]).join(" ")})`,
+          `${items.length} fact(s) · ${todo.length} new · ${chars} characters would go out` +
+            ` to model ${dream.model ?? "?"} (${(dream.command ?? ["—"]).join(" ")})`,
         );
 
         if (dryRun) {
           if (has(a, "json")) {
             log.result(JSON.stringify(todo.map((i) => ({ id: i.fact.id, prompt: i.prompt })), null, 2));
           } else if (todo[0]) {
-            log.result("--- az első prompt, szó szerint ---");
+            log.result("--- the first prompt, verbatim ---");
             log.result(todo[0].prompt);
-          } else log.result("Nincs mit küldeni.");
+          } else log.result("Nothing to send.");
           return EXIT_OK;
         }
 
@@ -634,8 +634,8 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
             return stat.failed > 0 ? EXIT_FAILED : EXIT_OK;
           }
           log.status(
-            `álom: ${stat.generated} új, ${stat.cached} megvolt, ${stat.failed} hiba` +
-              `  ·  ${stat.sentChars} karakter ment ki  ·  modell: ${stat.model}`,
+            `dream: ${stat.generated} new, ${stat.cached} already had, ${stat.failed} error(s)` +
+              `  ·  ${stat.sentChars} character(s) sent  ·  model: ${stat.model}`,
           );
           for (const e of stat.errors.slice(0, 5)) log.warn(e);
           // A failure is retryable tomorrow; it must not look like success.
@@ -664,13 +664,13 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
           log.result(JSON.stringify(st, null, 2));
           return EXIT_OK;
         }
-        log.result(`előhívási esemény ${st.events}  ·  különböző kérdés ${st.queries}`);
-        log.result(`nyomot hagyott chunk ${st.traces}  ·  kapun belül ${st.candidates}  ·  téma ${st.topics}`);
+        log.result(`recall events ${st.events}  ·  distinct queries ${st.queries}`);
+        log.result(`traced chunks ${st.traces}  ·  past the gate ${st.candidates}  ·  topics ${st.topics}`);
         log.result(
-          `promotált emlék ${st.facts}  ·  ${st.chars} karakter` +
-            `  ·  álom ${st.dreams}${st.dreamModels.length > 0 ? ` (${st.dreamModels.join(", ")})` : ""}`,
+          `promoted facts ${st.facts}  ·  ${st.chars} characters` +
+            `  ·  dreams ${st.dreams}${st.dreamModels.length > 0 ? ` (${st.dreamModels.join(", ")})` : ""}`,
         );
-        log.result(`utolsó konszolidáció: ${st.lastConsolidatedMs ? day(st.lastConsolidatedMs) : "még nem futott"}`);
+        log.result(`last consolidation: ${st.lastConsolidatedMs ? day(st.lastConsolidatedMs) : "not run yet"}`);
         return EXIT_OK;
       });
 
@@ -682,16 +682,16 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
 function cmdDoctor(): number {
   const c = cfg();
   const configFile = configFilePath();
-  log.status(`adatbázis         ${c.dbPath}`);
-  log.status(`konfiguráció      ${configFile}${fs.existsSync(configFile) ? "" : " (nincs, alapértelmezések)"}`);
+  log.status(`database          ${c.dbPath}`);
+  log.status(`config            ${configFile}${fs.existsSync(configFile) ? "" : " (none, defaults)"}`);
 
   let db: Db;
   try {
     db = openHub(c.dbPath);
   } catch (err) {
     if (err instanceof HubUnreadableError || isCorruption(err)) {
-      log.fail(`  ! az adatbázis nem nyitható meg: ${(err as Error).message}`);
-      log.fail("    A fájl sérült. Mentsd el, töröld, majd: cam sync — a források érintetlenek.");
+      log.fail(`  ! the database cannot be opened: ${(err as Error).message}`);
+      log.fail("    The file is corrupt. Save it, delete it, then: cam sync — sources are untouched.");
       return EXIT_FAILED;
     }
     throw err;
@@ -704,23 +704,23 @@ function cmdDoctor(): number {
     // and take the diagnostic command down with it.
     const problems = quickCheck(db);
     if (problems.length > 0) {
-      log.fail(`  ! sérült adatbázis (${problems.length} hiba):`);
+      log.fail(`  ! corrupt database (${problems.length} error(s)):`);
       for (const p of problems.slice(0, 5)) log.fail(`    ${p}`);
-      log.fail("    Ha csak a szövegindex sérült: cam rebuild — a forrásokból újraépíti.");
-      log.fail("    Ha az adatok is: mentsd el a fájlt, töröld, majd cam sync.");
+      log.fail("    If only the text index is corrupt: cam rebuild — rebuilds it from the sources.");
+      log.fail("    If the data is corrupt too: save the file, delete it, then cam sync.");
       return EXIT_FAILED;
     }
-    log.status("integritás        ok");
+    log.status("integrity         ok");
 
     try {
       initSchema(db);
     } catch (err) {
-      log.fail(`  ! a séma nem frissíthető: ${(err as Error).message}`);
+      log.fail(`  ! the schema cannot be updated: ${(err as Error).message}`);
       return EXIT_FAILED;
     }
 
-    log.status(`séma verzió       ${getMeta(db, "schema_version")}`);
-    log.status(`szabály verzió    ${RULE_VERSION}`);
+    log.status(`schema version    ${getMeta(db, "schema_version")}`);
+    log.status(`rule version      ${RULE_VERSION}`);
     log.status(describeFreshness(freshness(db, Date.now(), c.staleAfterMs)));
 
     const c2 = db
@@ -731,24 +731,24 @@ function cmdDoctor(): number {
       )
       .get() as Record<string, number>;
     log.status(
-      `forrás ${c2.src} · session ${c2.s} · turn ${c2.t} · chunk ${c2.ch} · melléktermék ${c2.art} · fájlesemény ${c2.fe}`,
+      `source ${c2.src} · session ${c2.s} · turn ${c2.t} · chunk ${c2.ch} · artifact ${c2.art} · file event ${c2.fe}`,
     );
 
     const group = (sql: string, label: string): void => {
       const rows = db.prepare(sql).all() as Array<{ k: string; c: number }>;
       if (rows.length > 0) log.status(`  ${label}: ` + rows.map((r) => `${r.k}=${r.c}`).join("  "));
     };
-    group("select status k, count(*) c from sources group by k", "forrás");
+    group("select status k, count(*) c from sources group by k", "source");
     group("select availability k, count(*) c from turns group by k", "turn");
-    group("select confidence k, count(*) c from attribution group by k", "hozzárendelés");
-    group("select tool k, count(*) c from sessions group by k", "eszköz");
+    group("select confidence k, count(*) c from attribution group by k", "attribution");
+    group("select tool k, count(*) c from sessions group by k", "tool");
 
     let healthy = true;
     const drift = db.prepare("select count(*) c from attribution where rule_version <> ?").get(RULE_VERSION) as {
       c: number;
     };
     if (drift.c > 0) {
-      log.status(`  ! ${drift.c} hozzárendelés régi szabályverzióval — futtasd: cam reattribute`);
+      log.status(`  ! ${drift.c} attribution(s) on an old rule version — run: cam reattribute`);
       healthy = false;
     }
 
@@ -762,31 +762,31 @@ function cmdDoctor(): number {
 
     const mem = memoryStatus(db);
     log.status(
-      `memória: ${mem.facts} emlék (${mem.chars} karakter) · ${mem.events} előhívás ${mem.queries} kérdésből` +
-        ` · kapun belül ${mem.candidates}`,
+      `memory: ${mem.facts} fact(s) (${mem.chars} character(s)) · ${mem.events} recall(s) from ${mem.queries} queries` +
+        ` · past the gate ${mem.candidates}`,
     );
     if (mem.facts === 0 && mem.candidates > 0) {
-      log.status("  ! van promotálható nyom — futtasd: cam memory consolidate");
+      log.status("  ! there is promotable trace — run: cam memory consolidate");
     }
 
     const bytes = size(db);
-    log.status(`adatbázis mérete  ${(bytes / 2 ** 20).toFixed(1)} MB`);
+    log.status(`database size     ${(bytes / 2 ** 20).toFixed(1)} MB`);
 
     const lock = db.prepare("select value from meta where key = 'sync_lock'").get() as { value: string } | undefined;
-    if (lock) log.status(`  ! sync zár él: ${lock.value}`);
+    if (lock) log.status(`  ! sync lock is held: ${lock.value}`);
 
     // The FTS index is where corruption shows up first, and it is the one part
     // that has a repair path of its own.
     try {
       const fts = db.prepare("select count(*) c from chunks_fts").get() as { c: number };
       const chunks = c2.ch ?? 0;
-      log.status(`  fts: ok (${fts.c} indexelt chunk)`);
+      log.status(`  fts: ok (${fts.c} indexed chunk(s))`);
       if (chunks > 0 && fts.c === 0) {
-        log.status("  ! üres szövegindex — futtasd: cam rebuild");
+        log.status("  ! empty text index — run: cam rebuild");
         healthy = false;
       }
     } catch (err) {
-      log.status(`  ! fts hibás: ${(err as Error).message} — futtasd: cam rebuild`);
+      log.status(`  ! fts broken: ${(err as Error).message} — run: cam rebuild`);
       healthy = false;
     }
     return healthy ? EXIT_OK : EXIT_FAILED;
@@ -830,7 +830,7 @@ function cmdPrune(a: ParsedArgs): number {
     if (raw === undefined) return undefined;
     const n = Number(raw);
     if (!Number.isInteger(n) || n < 0) {
-      a.errors.push(`a --${name} nem negatív egész szám kell legyen, nem "${raw}"`);
+      a.errors.push(`--${name} must be a non-negative integer, not "${raw}"`);
       return undefined;
     }
     return n;
@@ -845,7 +845,7 @@ function cmdPrune(a: ParsedArgs): number {
   return withHub((db) => {
     const lock = acquireLock(db, "prune");
     if (!lock.ok) {
-      log.fail(`Már fut egy ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — kilépek.`);
+      log.fail(`Already running: ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — exiting.`);
       return EXIT_OK;
     }
     try {
@@ -858,24 +858,24 @@ function cmdPrune(a: ParsedArgs): number {
         return EXIT_OK;
       }
 
-      const verb = dryRun ? "törölhető" : "törölve";
-      log.status(`előhívási esemény ${stat.recallEvents} ${verb}  ·  kérdés ${stat.queries} ${verb}`);
+      const verb = dryRun ? "would delete" : "deleted";
+      log.status(`recall events     ${stat.recallEvents} ${verb}  ·  queries ${stat.queries} ${verb}`);
       if (stat.protectedEvents > 0) {
-        log.status(`  ${stat.protectedEvents} régi esemény maradt: élő promóció bizonyítéka`);
+        log.status(`  ${stat.protectedEvents} old event(s) kept: evidence of a live promotion`);
       }
-      log.status(`szinkron-napló    ${stat.syncRuns} ${verb}`);
+      log.status(`sync log          ${stat.syncRuns} ${verb}`);
       if (stat.missingSessions > 0) {
-        log.status(`hiányzó forrás    ${stat.missingSessions} session (${stat.missingTurns} turn) ${verb}`);
+        log.status(`missing source    ${stat.missingSessions} session(s) (${stat.missingTurns} turn(s)) ${verb}`);
       }
-      log.detail(`  útvonal-gyorsítótár ${stat.resolutionCache} sor ${verb}`);
+      log.detail(`  path-cache ${stat.resolutionCache} row(s) ${verb}`);
       if (vac) {
         log.status(
-          `méret: ${(vac.beforeBytes / 2 ** 20).toFixed(1)} MB → ${(vac.afterBytes / 2 ** 20).toFixed(1)} MB`,
+          `size: ${(vac.beforeBytes / 2 ** 20).toFixed(1)} MB → ${(vac.afterBytes / 2 ** 20).toFixed(1)} MB`,
         );
       } else if (!dryRun) {
-        log.status(`méret: ${(size(db) / 2 ** 20).toFixed(1)} MB (a helyet a --vacuum adja vissza)`);
+        log.status(`size: ${(size(db) / 2 ** 20).toFixed(1)} MB (--vacuum reclaims the space)`);
       }
-      if (dryRun) log.status("Próba: semmi nem törlődött.");
+      if (dryRun) log.status("Dry run: nothing was deleted.");
       return EXIT_OK;
     } finally {
       lock.handle.release();
@@ -897,7 +897,7 @@ function cmdForget(a: ParsedArgs): number {
   const project = flag(a, "project") ?? null;
   const session = flag(a, "session") ?? a.positional[0] ?? null;
   if ((project === null) === (session === null)) {
-    return usage("cam forget --project <kulcs> | cam forget <tool:sessionId>");
+    return usage("cam forget --project <key> | cam forget <tool:sessionId>");
   }
   const dryRun = has(a, "dry-run");
 
@@ -917,15 +917,15 @@ function cmdForget(a: ParsedArgs): number {
       log.result(JSON.stringify(stat, null, 2));
       return EXIT_OK;
     }
-    const what = project ? `projekt ${project}` : `session ${session}`;
+    const what = project ? `project ${project}` : `session ${session}`;
     log.status(
-      `${dryRun ? "elfelejthető" : "elfelejtve"}: ${what} — ${stat.sessions} session, ${stat.turns} turn, ` +
-        `${stat.chunks} chunk, ${stat.facts} emlék, ${stat.artifacts} melléktermék`,
+      `${dryRun ? "would forget" : "forgotten"}: ${what} — ${stat.sessions} session(s), ${stat.turns} turn(s), ` +
+        `${stat.chunks} chunk(s), ${stat.facts} fact(s), ${stat.artifacts} artifact(s)`,
     );
     log.status(
       dryRun
-        ? "Próba: semmi nem törlődött."
-        : "A forrásfájlok érintetlenek; egy következő cam sync újraindexeli őket, ha még megvannak.",
+        ? "Dry run: nothing was deleted."
+        : "Source files are untouched; a later cam sync will reindex them if they are still there.",
     );
     return EXIT_OK;
   });
@@ -939,12 +939,12 @@ function cmdForget(a: ParsedArgs): number {
 async function cmdBackup(a: ParsedArgs): Promise<number> {
   const c = cfg();
   const target = a.positional[0] ?? defaultBackupPath(c.dbPath);
-  if (a.positional.length > 1) return usage("cam backup [<fájl>]");
+  if (a.positional.length > 1) return usage("cam backup [<file>]");
 
   return withHubAsync(async (db) => {
     const res = await backup(db, target);
     if (res.problems.length > 0) {
-      log.fail(`A mentés sérült (${res.problems.length} hiba): ${res.problems.slice(0, 3).join("; ")}`);
+      log.fail(`The backup is corrupt (${res.problems.length} error(s)): ${res.problems.slice(0, 3).join("; ")}`);
       return EXIT_FAILED;
     }
     if (has(a, "json")) {
@@ -952,11 +952,11 @@ async function cmdBackup(a: ParsedArgs): Promise<number> {
       return EXIT_OK;
     }
     log.result(res.file);
-    log.status(`${(res.bytes / 2 ** 20).toFixed(1)} MB, ellenőrizve.`);
+    log.status(`${(res.bytes / 2 ** 20).toFixed(1)} MB, verified.`);
     const p = checkPortability(db);
     log.status(
-      `Másik gépre visszaállítva: másold a helyére, vagy add meg a --db kapcsolóval.` +
-        (p.stamped ? ` Más rendszeren CAM_CASE_FOLD=${p.caseFold ? "1" : "0"} kell hozzá.` : ""),
+      `To restore on another machine: copy it into place, or pass it with --db.` +
+        (p.stamped ? ` On another OS, CAM_CASE_FOLD=${p.caseFold ? "1" : "0"} is required.` : ""),
     );
     return EXIT_OK;
   });
@@ -999,10 +999,10 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
     dryRun,
   });
 
-  const verb = remove ? "eltávolítás" : "telepítés";
-  log.status(`${scope === "project" ? "Projekt" : "Felhasználói"} szintű ${verb}${dryRun ? " (próba)" : ""}`);
+  const verb = remove ? "uninstall" : "install";
+  log.status(`${scope === "project" ? "Project" : "User"}-level ${verb}${dryRun ? " (dry run)" : ""}`);
   if (!remove) {
-    log.status(`szerver-parancs: ${[report.entry.command, ...(report.entry.args ?? [])].join(" ")}`);
+    log.status(`server command:  ${[report.entry.command, ...(report.entry.args ?? [])].join(" ")}`);
     // Where the index lands is not obvious — a checkout that already has one
     // keeps it, everything else goes to the user data directory — and every
     // part of this install (MCP, schedule) will read exactly this file.
@@ -1013,11 +1013,11 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
   let failed = false;
   for (const c of report.clients) {
     if (!c.installed) {
-      log.detail(`${c.name.padEnd(24)} nincs telepítve`);
+      log.detail(`${c.name.padEnd(24)} not installed`);
       continue;
     }
     if (c.error) {
-      log.fail(`${c.name.padEnd(24)} HIBA — ${c.error}`);
+      log.fail(`${c.name.padEnd(24)} ERROR — ${c.error}`);
       failed = true;
       continue;
     }
@@ -1028,32 +1028,32 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
         : // A client with no skill directory is not a failure: the server's own
           // instructions reach it with every response.
           !has(a, "no-skills")
-          ? "skill: nem támogatja"
+          ? "skill: not supported"
           : null,
     ].filter((p): p is string => p !== null);
-    log.status(`${c.name.padEnd(24)} ${parts.join("  ·  ") || "nincs teendő"}`);
+    log.status(`${c.name.padEnd(24)} ${parts.join("  ·  ") || "nothing to do"}`);
     if (c.mcpFile) log.detail(`  ${c.mcpFile}`);
     if (c.skillFile) log.detail(`  ${c.skillFile}`);
   }
-  for (const b of report.backups) log.detail(`biztonsági másolat: ${b}`);
+  for (const b of report.backups) log.detail(`backup: ${b}`);
 
   if (doDream) failed = (await installDream(a, dryRun)) || failed;
-  else if (remove && clearDreamConfig()) log.status("\nálom-modell: a konfigurációból törölve");
+  else if (remove && clearDreamConfig()) log.status("\ndream model: removed from the config");
 
   if (doSchedule) failed = installSchedule(dryRun, remove, has(a, "force")) || failed;
 
   log.status("");
   if (dryRun) {
-    log.status("Próba: egyetlen fájl sem módosult. Futtasd kapcsoló nélkül a tényleges telepítéshez.");
+    log.status("Dry run: no files were changed. Run without --dry-run to apply.");
   } else if (failed) {
     // Partial success is the normal case, and calling it "done" is how a
     // broken entry goes unnoticed for a week. On stderr with the errors it
     // belongs to, so the verdict cannot land above the reason for it.
-    log.fail(`Részben ${remove ? "eltávolítva" : "telepítve"} — a hibásan járt részek kimaradtak.`);
+    log.fail(`Partially ${remove ? "uninstalled" : "installed"} — the parts that failed were skipped.`);
   } else if (remove) {
-    log.status("Kész. Az index érintetlen — azt a cam forget vagy a fájl törlése viszi.");
+    log.status("Done. The index is untouched — cam forget or deleting the file removes it.");
   } else {
-    log.status("Kész. Indítsd újra az ágens-klienseket, hogy felvegyék a szervert.");
+    log.status("Done. Restart the agent clients so they pick up the server.");
   }
   return failed ? EXIT_FAILED : EXIT_OK;
 }
@@ -1071,13 +1071,13 @@ async function installDream(a: ParsedArgs, dryRun: boolean): Promise<boolean> {
   log.status("");
   const found = dreamCandidates();
   if (found.length === 0) {
-    for (const line of noCandidatesHint.split("\n")) log.status(`álom-modell: ${line}`);
+    for (const line of noCandidatesHint.split("\n")) log.status(`dream model: ${line}`);
     return false;
   }
 
   const wanted = flag(a, "dream");
   if (wanted !== undefined && !found.some((c) => c.id === wanted)) {
-    log.fail(`álom-modell: nincs telepítve: ${wanted} (van: ${found.map((c) => c.id).join(", ")})`);
+    log.fail(`dream model: not installed: ${wanted} (have: ${found.map((c) => c.id).join(", ")})`);
     return true;
   }
 
@@ -1090,17 +1090,17 @@ async function installDream(a: ParsedArgs, dryRun: boolean): Promise<boolean> {
 
   if (wanted === undefined && interactive() && !dryRun) {
     const pick = await select(
-      "álom-modell — melyik eszköz írja az összefoglalókat?",
+      "dream model — which tool should write the summaries?",
       found.map((c) => ({ value: c.id, label: c.name, hint: describeBin(c) })),
-      { escape: "egyik se (az álom fázis modell nélkül marad)" },
+      { escape: "none (the dream phase stays without a model)" },
     );
     if (pick === null) {
-      log.status("álom-modell: kihagyva.");
+      log.status("dream model: skipped.");
       return false;
     }
     queue = found.filter((c) => c.id === pick);
   } else {
-    log.status(`álom-modell — megtalálva: ${found.map((c) => c.id).join(", ")}`);
+    log.status(`dream model — found: ${found.map((c) => c.id).join(", ")}`);
   }
 
   if (model === null && queue.length === 1 && interactive() && !dryRun) {
@@ -1124,26 +1124,26 @@ async function installDream(a: ParsedArgs, dryRun: boolean): Promise<boolean> {
 
     log.status(`  ${candidate.name}: ${(dream.command ?? []).join(" ")}`);
     if (dryRun) {
-      log.status("  próba: nem írom a konfigurációba, és nem hívom meg.");
+      log.status("  dry run: not writing the config, and not calling it.");
       return false;
     }
 
-    log.detail("    egy rövid promptot küldök neki…");
+    log.detail("    sending it a short prompt…");
     const probe = await probeDream(dream);
     if (probe.ok) {
       writeDreamConfig(dream);
-      log.status(`  válaszolt ${probe.ms} ms alatt: ${probe.answer.replace(/\s+/g, " ").slice(0, 60)}`);
-      log.status(`  beírva: ${configFilePath()}  ·  használat: cam memory dream`);
-      for (const p of problems) log.detail(`  (kihagyva — ${p})`);
+      log.status(`  answered in ${probe.ms} ms: ${probe.answer.replace(/\s+/g, " ").slice(0, 60)}`);
+      log.status(`  written: ${configFilePath()}  ·  usage: cam memory dream`);
+      for (const p of problems) log.detail(`  (skipped — ${p})`);
       return false;
     }
     problems.push(`${candidate.name}: ${probe.error}`);
-    log.status(`  nem válaszolt (${probe.ms} ms), jöhet a következő`);
+    log.status(`  did not answer (${probe.ms} ms), trying the next`);
   }
 
   for (const p of problems) log.fail(`  ${p}`);
-  log.fail("  egyik sem válaszolt, a konfigurációba nem írtam semmit.");
-  log.fail("  Konkrét eszköz: --dream <id>, modell: --model <név>, kihagyás: --no-dream");
+  log.fail("  none answered; nothing was written to the config.");
+  log.fail("  Specific tool: --dream <id>, model: --model <name>, skip: --no-dream");
   return true;
 }
 
@@ -1154,15 +1154,15 @@ async function installDream(a: ParsedArgs, dryRun: boolean): Promise<boolean> {
  */
 async function chooseModel(candidate: DreamCandidate): Promise<string | null> {
   candidate.models = listModels(candidate);
-  const own = "az eszköz alapértelmezettje";
+  const own = "the tool's default";
 
   if (candidate.models.length === 0) {
-    const typed = await ask(`Modell a ${candidate.name}-hoz (üresen hagyva ${own}): `);
+    const typed = await ask(`Model for ${candidate.name} (leave empty for ${own}): `);
     return typed || null;
   }
 
   const picked = await select(
-    `Modell — a ${candidate.name} ezeket kínálja:`,
+    `Model — ${candidate.name} offers these:`,
     candidate.models.map((m) => ({ value: m.id, label: m.id, hint: m.label })),
     candidate.modelRequired ? {} : { escape: own },
   );
@@ -1172,12 +1172,12 @@ async function chooseModel(candidate: DreamCandidate): Promise<string | null> {
 function installSchedule(dryRun: boolean, remove: boolean, force: boolean): boolean {
   log.status("");
   const plan = schedulePlan({ node: resolved(process.execPath), cli: fileURLToPath(import.meta.url) });
-  log.status(`ütemezés (${plan.mechanism}):`);
+  log.status(`schedule (${plan.mechanism}):`);
 
   if (!remove) {
     const { state, current } = scheduleState(plan);
     if (state === "same") {
-      log.status(`  ${plan.jobs.join(", ")} — már be van állítva, nincs teendő`);
+      log.status(`  ${plan.jobs.join(", ")} — already set up, nothing to do`);
       return false;
     }
     if (state === "different" && !force) {
@@ -1186,10 +1186,10 @@ function installSchedule(dryRun: boolean, remove: boolean, force: boolean): bool
       // so stdout cannot interleave itself into the middle of the reason.
       log.fail(
         [
-          `  ${plan.jobs.join(", ")} — HIBA: már regisztrálva van, de egy másik példányra mutat:`,
-          `    most: ${current}`,
-          `    ez a példány: ${plan.cli}`,
-          "    átvételhez: cam install --force, vagy előbb a másik példányból: cam uninstall",
+          `  ${plan.jobs.join(", ")} — ERROR: already registered, but points at a different copy:`,
+          `    now: ${current}`,
+          `    this copy: ${plan.cli}`,
+          "    to take over: cam install --force, or first from the other copy: cam uninstall",
         ].join("\n"),
       );
       return true;
@@ -1197,7 +1197,7 @@ function installSchedule(dryRun: boolean, remove: boolean, force: boolean): bool
   }
 
   if (dryRun) {
-    for (const f of plan.files) log.status(`  fájl: ${f.path}`);
+    for (const f of plan.files) log.status(`  file: ${f.path}`);
     for (const s of remove ? plan.remove : plan.install) {
       log.status(`  ${s.describe}`);
       log.detail(`    ${s.argv.join(" ")}`);
@@ -1209,60 +1209,60 @@ function installSchedule(dryRun: boolean, remove: boolean, force: boolean): bool
   for (const r of applySchedule(plan, remove)) {
     if (r.ok) log.status(`  ${r.describe}`);
     else {
-      log.fail(`  ${r.describe} — HIBA: ${r.detail}`);
+      log.fail(`  ${r.describe} — ERROR: ${r.detail}`);
       failed = true;
     }
   }
   for (const n of plan.notes) log.warn(n);
-  if (!failed && !remove) log.status("  ellenőrzés: cam status");
+  if (!failed && !remove) log.status("  check: cam status");
   return failed;
 }
 
 function usage(line: string): number {
-  log.fail(`Használat: ${line}`);
+  log.fail(`Usage: ${line}`);
   return EXIT_USAGE;
 }
 
 function reportErrors(a: ParsedArgs): number {
-  for (const e of a.errors) log.fail(`Hiba: ${e}`);
+  for (const e of a.errors) log.fail(`Error: ${e}`);
   return EXIT_USAGE;
 }
 
-const USAGE = `cam — közös kontextus a Claude Code / Claude Desktop / Codex / Cursor beszélgetésekből
+const USAGE = `cam — shared context from Claude Code / Claude Desktop / Codex / Cursor conversations
 
-  cam sync [--repair] [--tool <név>]     források beolvasása (inkrementális)
-  cam projects [--unattributed]          projektek, vagy a be nem sorolt sessionök
-  cam timeline <projekt> [--since d]     idővonal minden eszközből
-  cam dossier <projekt> [--json]         a projekt teljes képe
-  cam recall "<kérdés>" [--project p]    keresés a beszélgetésekben
-  cam get <tool:id[#seqN-M]>             egy találat vagy session teljes szövege
-  cam alias <mappanév> <projekt>         két mappa összevonása egy projektté
-  cam attribute <tool:id> <projekt>      kézi hozzárendelés (felülír mindent)
-  cam reattribute                        újraszámolás tároló-olvasás nélkül
-  cam rebuild                            szövegindex újraépítése a forrásokból
-  cam memory <alparancs>                 hosszú távú memória (lásd lent)
+  cam sync [--repair] [--tool <name>]    read sources (incremental)
+  cam projects [--unattributed]          projects, or unattributed sessions
+  cam timeline <project> [--since d]     timeline across every tool
+  cam dossier <project> [--json]         the full picture of a project
+  cam recall "<query>" [--project p]     search the conversations
+  cam get <tool:id[#seqN-M]>             full text of a hit or session
+  cam alias <folder> <project>           merge two folders into one project
+  cam attribute <tool:id> <project>      manual attribution (overrides everything)
+  cam reattribute                        recompute without reading stores
+  cam rebuild                            rebuild the text index from sources
+  cam memory <subcommand>                long-term memory (see below)
 
-  cam status [--json]                    mikor szinkronizált utoljára az index
-  cam doctor                             állapotjelentés
-  cam prune [--vacuum] [--dry-run]       megőrzési szabály: régi nyom, napló, hiányzó forrás
-  cam forget --project <p> | <tool:id>   egy projekt vagy session elfelejtése
-  cam backup [<fájl>]                    ellenőrzött másolat az indexről
-  cam memory consolidate [--budget N]    az előhívási nyomból promóció
-  cam memory list [--project p]          a promotált emlékek
-  cam memory show <id>                   egy emlék a bizonyítékával
-  cam memory dream [--dry-run]           összefoglaló írása modellel (opcionális)
-  cam memory topics                      visszatérő témák
-  cam memory status                      mennyi nyom gyűlt, mi promotálódott
+  cam status [--json]                    when the index last synced
+  cam doctor                             health report
+  cam prune [--vacuum] [--dry-run]       retention: old traces, logs, missing sources
+  cam forget --project <p> | <tool:id>   forget a project or session
+  cam backup [<file>]                    verified copy of the index
+  cam memory consolidate [--budget N]    promote from the recall trace
+  cam memory list [--project p]          the promoted facts
+  cam memory show <id>                   one fact with its evidence
+  cam memory dream [--dry-run]           write a summary with a model (optional)
+  cam memory topics                      recurring topics
+  cam memory status                      how much trace gathered, what was promoted
 
-  cam install [--dry-run] [--project]    bekötés minden megtalált ágens-eszközbe:
-                                         MCP-szerver, skill, álom-modell, ütemezés
-  cam uninstall [--dry-run]              ugyanez visszafelé; az indexhez nem nyúl
+  cam install [--dry-run] [--project]    wire into every agent tool found:
+                                         MCP server, skill, dream model, schedule
+  cam uninstall [--dry-run]              the same in reverse; does not touch the index
 
-Közös kapcsolók: --json, --limit N, --tool <eszköz>, --include-weak,
-                 --db <útvonal> (az index helye; lásd: cam doctor),
-                 --quiet (csak hiba), --verbose (részletek)
-Kilépési kód: 0 rendben, 1 hiba, 2 hibás használat.
-Ütemezés (Task Scheduler, launchd, systemd, cron): docs/operations.md
+Shared flags: --json, --limit N, --tool <tool>, --include-weak,
+              --db <path> (index location; see: cam doctor),
+              --quiet (errors only), --verbose (details)
+Exit code: 0 ok, 1 error, 2 bad usage.
+Scheduling (Task Scheduler, launchd, systemd, cron): docs/operations.md
 `;
 
 /** Every command returns its exit code; nothing here calls process.exit. */
@@ -1281,14 +1281,14 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
   const raw = SPECS[cmd];
   const spec = raw ? withGlobals(raw) : undefined;
   if (!spec) {
-    log.fail(`Ismeretlen parancs: ${cmd}\n`);
+    log.fail(`Unknown command: ${cmd}\n`);
     log.fail(USAGE);
     return EXIT_USAGE;
   }
 
   const a = parseArgs(rest, spec);
   if (a.errors.length > 0) return reportErrors(a);
-  if (has(a, "quiet") && has(a, "verbose")) return usage("--quiet és --verbose együtt nem megy");
+  if (has(a, "quiet") && has(a, "verbose")) return usage("--quiet and --verbose cannot be used together");
   log.setLogLevel(has(a, "quiet") ? "quiet" : has(a, "verbose") ? "verbose" : "normal");
   cliOverrides = flag(a, "db") ? { dbPath: flag(a, "db") } : {};
 
@@ -1338,8 +1338,8 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
     // A damaged hub is the one failure with a named way out; everything else
     // keeps its stack trace.
     if (err instanceof HubUnreadableError || isCorruption(err)) {
-      log.fail(`Az adatbázis sérült: ${(err as Error).message}`);
-      log.fail("Futtasd: cam doctor — a lehetőségekért; a források érintetlenek.");
+      log.fail(`The database is corrupt: ${(err as Error).message}`);
+      log.fail("Run: cam doctor — for options; sources are untouched.");
       return EXIT_FAILED;
     }
     log.fail(err instanceof Error ? err.stack ?? String(err) : String(err));

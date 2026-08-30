@@ -88,7 +88,7 @@ describe("freshness", () => {
     expect(f.lastEndedMs).toBeNull();
     expect(f.ageMs).toBeNull();
     expect(f.stale).toBe(true);
-    expect(formatFreshness(f)).toContain("még nem futott végig szinkron");
+    expect(formatFreshness(f)).toContain("no sync has finished yet");
   });
 
   it("takes its age from the newest finished run, not the newest row", () => {
@@ -99,7 +99,7 @@ describe("freshness", () => {
     const f = freshness(h.hub, NOW);
     expect(f.ageMs).toBe(2 * 60 * 60 * 1000);
     expect(f.stale).toBe(false);
-    expect(formatFreshness(f)).toContain("2 órája");
+    expect(formatFreshness(f)).toContain("2h ago");
   });
 
   it("counts the runs that never finished, but only once they cannot still be running", () => {
@@ -111,7 +111,7 @@ describe("freshness", () => {
 
   it("carries the last run's errors, because a partial sync looks like a complete one", () => {
     recordRun(NOW - 60_000, 4);
-    expect(formatFreshness(freshness(h.hub, NOW))).toContain("4 hiba");
+    expect(formatFreshness(freshness(h.hub, NOW))).toContain("4 error");
   });
 
   it("honours a configured staleness threshold", () => {
@@ -129,9 +129,9 @@ describe("freshness", () => {
   });
 
   it("rounds the age to the unit the decision is made in", () => {
-    expect(humanAge(30_000)).toBe("épp most");
-    expect(humanAge(90 * 60 * 1000)).toBe("1 órája");
-    expect(humanAge(5 * DAY)).toBe("5 napja");
+    expect(humanAge(30_000)).toBe("just now");
+    expect(humanAge(90 * 60 * 1000)).toBe("1h ago");
+    expect(humanAge(5 * DAY)).toBe("5d ago");
   });
 });
 

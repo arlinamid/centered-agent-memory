@@ -40,7 +40,7 @@ export class HubUnreadableError extends Error {
     readonly dbPath: string,
     readonly detail: string,
   ) {
-    super(`az adatbázis nem olvasható (${dbPath}): ${detail}`);
+    super(`database unreadable (${dbPath}): ${detail}`);
     this.name = "HubUnreadableError";
   }
 }

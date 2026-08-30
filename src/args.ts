@@ -49,7 +49,7 @@ export function parseArgs(argv: ReadonlyArray<string>, spec: FlagSpec): ParsedAr
     const inlineValue = eq === -1 ? null : token.slice(eq + 1);
 
     if (knownBool.has(name)) {
-      if (inlineValue !== null) errors.push(`a --${name} kapcsoló nem vár értéket`);
+      if (inlineValue !== null) errors.push(`--${name} does not take a value`);
       else bools.add(name);
       continue;
     }
@@ -60,14 +60,14 @@ export function parseArgs(argv: ReadonlyArray<string>, spec: FlagSpec): ParsedAr
       }
       const next = argv[i + 1];
       if (next === undefined || next === "--" || next.startsWith("--")) {
-        errors.push(`a --${name} kapcsoló értéket vár`);
+        errors.push(`--${name} requires a value`);
         continue;
       }
       values.set(name, next);
       i++;
       continue;
     }
-    errors.push(`ismeretlen kapcsoló: --${name}`);
+    errors.push(`unknown flag: --${name}`);
   }
 
   return { positional, bools, values, errors };
@@ -87,7 +87,7 @@ export function limit(a: ParsedArgs, fallback: number, max = 1000): number {
   if (raw === undefined) return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) {
-    a.errors.push(`a --limit pozitív egész szám kell legyen, nem "${raw}"`);
+    a.errors.push(`--limit must be a positive integer, not "${raw}"`);
     return fallback;
   }
   return Math.min(n, max);
@@ -99,7 +99,7 @@ export function dateFlag(a: ParsedArgs, name: string): number | null {
   if (raw === undefined) return null;
   const ms = Date.parse(raw);
   if (!Number.isFinite(ms)) {
-    a.errors.push(`a --${name} nem értelmezhető dátum: "${raw}"`);
+    a.errors.push(`--${name} is not a parseable date: "${raw}"`);
     return null;
   }
   return ms;

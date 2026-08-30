@@ -132,7 +132,7 @@ describe("cursor history collector", () => {
     // different fact from one that was never installed, and only the second
     // deserves silence.
     expect(stat.errors).toBe(1);
-    expect(h.logs.some((l) => l.includes("nem olvasható"))).toBe(true);
+    expect(h.logs.some((l) => l.includes("unreadable"))).toBe(true);
     expect(events()).toHaveLength(1);
   });
 

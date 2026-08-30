@@ -120,10 +120,10 @@ const PROVIDERS: Provider[] = [
     // request for one is still open — but its aliases are documented and each
     // always points at the current model, which is what we want anyway.
     models: () => [
-      { id: "sonnet", label: "Sonnet — a napi munka modellje" },
-      { id: "opus", label: "Opus — összetettebb gondolatmenethez" },
-      { id: "haiku", label: "Haiku — gyors és olcsó" },
-      { id: "fable", label: "Fable — a leghosszabb feladatokhoz" },
+      { id: "sonnet", label: "Sonnet — the everyday work model" },
+      { id: "opus", label: "Opus — for more complex reasoning" },
+      { id: "haiku", label: "Haiku — fast and cheap" },
+      { id: "fable", label: "Fable — for the longest tasks" },
     ],
   },
   {
@@ -145,7 +145,7 @@ const PROVIDERS: Provider[] = [
     bin: ["gemini"],
     // -p is what makes it headless, and its text is appended to stdin, so the
     // instruction goes here and the material goes through the pipe.
-    args: ["{modelArgs}", "--approval-mode", "plan", "-o", "text", "-p", "Kövesd a bemeneten kapott utasítást."],
+    args: ["{modelArgs}", "--approval-mode", "plan", "-o", "text", "-p", "Follow the instruction received on stdin."],
     modelArgs: ["-m", "{model}"],
   },
   {
@@ -275,15 +275,15 @@ export function listModels(candidate: DreamCandidate, env = process.env): ModelC
 
 export class DreamModelRequiredError extends Error {
   constructor(candidate: DreamCandidate) {
-    const models = candidate.models.length > 0 ? ` Van: ${candidate.models.map((m) => m.id).join(", ")}` : "";
-    super(`a ${candidate.name} nem tudja, melyik modellt futtassa — add meg: --model <név>.${models}`);
+    const models = candidate.models.length > 0 ? ` Have: ${candidate.models.map((m) => m.id).join(", ")}` : "";
+    super(`${candidate.name} does not know which model to run — pass: --model <name>.${models}`);
     this.name = "DreamModelRequiredError";
   }
 }
 
 export function dreamConfigFor(candidate: DreamCandidate, model: string | null): DreamConfig {
   const p = PROVIDERS.find((x) => x.id === candidate.id);
-  if (!p) throw new Error(`ismeretlen szolgáltató: ${candidate.id}`);
+  if (!p) throw new Error(`unknown provider: ${candidate.id}`);
   if (!model && p.modelRequired) throw new DreamModelRequiredError(candidate);
 
   const args: string[] = [];
@@ -315,7 +315,7 @@ export interface DreamProbe {
   ms: number;
 }
 
-const PROBE_PROMPT = "Válaszolj egyetlen szóval: OK";
+const PROBE_PROMPT = "Reply with a single word: OK";
 
 /**
  * Send one short prompt through the very code path the dream phase uses. A
@@ -330,7 +330,7 @@ export async function probeDream(cfg: DreamConfig, timeoutMs = 60_000): Promise<
     return {
       ok: answer.length > 0,
       answer: answer.slice(0, 200),
-      error: answer.length > 0 ? null : "üres válasz",
+      error: answer.length > 0 ? null : "empty reply",
       ms: Date.now() - started,
     };
   } catch (err) {
@@ -377,15 +377,15 @@ export function describeBin(c: DreamCandidate): string {
     case "script":
       return `node ${c.prefix[0] ?? ""}`;
     case "launcher":
-      return `${c.bin} (indító — a program magát nem találtam)`;
+      return `${c.bin} (launcher — could not find the program itself)`;
     default: {
       const never: never = c.kind;
-      throw new Error(`ismeretlen fajta: ${String(never)}`);
+      throw new Error(`unknown kind: ${String(never)}`);
     }
   }
 }
 
 /** Reported by `cam install` when nothing suitable is installed. */
 export const noCandidatesHint =
-  "nincs telepítve olyan ágens-CLI, amit modellként használni tudnék (codex, claude, cursor-agent, gemini, ollama).\n" +
-  "Az álom fázis enélkül is kihagyható — a memória-réteg modell nélkül működik.";
+  "no agent CLI is installed that I could use as a model (codex, claude, cursor-agent, gemini, ollama).\n" +
+  "The dream phase can be skipped without one — the memory layer works without a model.";

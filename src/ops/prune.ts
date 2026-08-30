@@ -7,7 +7,7 @@ import { pruneResolutionCache } from "../attribution/resolve.js";
  * Three things in this database grow without limit and nothing ever removed
  * them: the recall trace (`recall_events`, one row per hit per search), the run
  * log (`sync_runs`, one row per sync forever), and the sessions of sources that
- * have since disappeared — those keep turning up as "forrás hiányzik" hits that
+ * have since disappeared — those keep turning up as "source missing" hits that
  * can never be read again.
  *
  * One rule constrains all of it: **evidence behind a live promotion is never
@@ -177,21 +177,21 @@ export function forget(db: Db, target: ForgetTarget, opts: { dryRun?: boolean } 
     const project = db.prepare("select id from projects where key = ?").get(target.project) as
       | { id: number }
       | undefined;
-    if (!project) throw new ForgetTargetError(`Nincs ilyen projekt: ${target.project}`);
+    if (!project) throw new ForgetTargetError(`No such project: ${target.project}`);
     ids = (
       db.prepare("select id from sessions where project_id = ?").all(project.id) as Array<{ id: number }>
     ).map((r) => r.id);
   } else if (target.session) {
     const [tool, ...rest] = target.session.split(":");
     const extId = rest.join(":");
-    if (!tool || !extId) throw new ForgetTargetError(`Értelmezhetetlen hivatkozás: ${target.session}`);
+    if (!tool || !extId) throw new ForgetTargetError(`Unreadable citation: ${target.session}`);
     const row = db.prepare("select id from sessions where tool = ? and ext_id = ?").get(tool, extId) as
       | { id: number }
       | undefined;
-    if (!row) throw new ForgetTargetError(`Nincs ilyen session: ${target.session}`);
+    if (!row) throw new ForgetTargetError(`No such session: ${target.session}`);
     ids = [row.id];
   } else {
-    throw new ForgetTargetError("Adj meg projektet vagy sessiont.");
+    throw new ForgetTargetError("Give a project or a session.");
   }
 
   const list = ids.join(",") || "-1";

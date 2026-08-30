@@ -1,7 +1,7 @@
-# Felépítés
+# Architecture
 
 ```
-források (read-only)          →  kollektorok  →  index (SQLite)  →  lekérdezés  →  CLI / MCP
+sources (read-only)           →  collectors  →  index (SQLite)  →  query      →  CLI / MCP
 ~/.claude/projects/*.jsonl       claude-code      sources            recall
 ~/.codex/state_5.sqlite          codex            sessions           timeline
 <appdata>/Cursor/state.vscdb     cursor           turns (locator)    dossier
@@ -11,131 +11,148 @@ források (read-only)          →  kollektorok  →  index (SQLite)  →  leké
                                  artifacts        artifacts
 ```
 
-## A három szabály
+## The three rules
 
-**Hivatkozás, nem másolat.** A `turns` sor azt tárolja, *hol* van a szöveg: fájl + bájt-offset + hossz +
-egy JSON-mutató (`message.content[*].text`), vagy Cursor esetén a `state.vscdb` kulcsa. A `chunks_fts`
-contentless (`content=''`), tehát az invertált index létezik, a szöveg nem. Lekérdezéskor a `Hydrator`
-olvassa vissza a forrásból.
+**Reference, not a copy.** A `turns` row stores *where* the text is: file + byte
+offset + length + a JSON pointer (`message.content[*].text`), or for Cursor the
+`state.vscdb` key. `chunks_fts` is contentless (`content=''`), so the inverted
+index exists and the text does not. At query time the `Hydrator` reads it back
+from the source.
 
-Egyetlen kivétel: a **múlandó** anyag. A `%TEMP%/claude/**` scratchpadet az OS bármikor törli, a Cowork
-kimenetek az app takarításától függnek — ezek `inline_text`-ként bekerülnek (256 KB-ig).
+One exception: **volatile** material. The `%TEMP%/claude/**` scratchpad the OS
+may delete at any time, Cowork outputs that depend on the app's cleanup — these
+go in as `inline_text` (up to 256 KB).
 
-**Nem tippelünk.** Ha egy session projektje nem állapítható meg, `unattributed` marad. Minden verdikt
-mellett ott a módszer és a megbízhatóság, és a `recall` alapból elrejti a gyenge találatokat.
+**No guessing.** If a session's project cannot be determined, it stays
+`unattributed`. Every verdict carries the method and the confidence, and
+`recall` hides weak hits by default.
 
-**Nem írunk a forrásokba.** Minden idegen tároló `openSourceReadonly`-val nyílik (`readonly: true`,
-`fileMustExist: true`). Az `immutable` szándékosan nincs bekapcsolva: az élő WAL miatt szakadt lapokat
-olvasnánk.
+**Never writes to the sources.** Every foreign store is opened with
+`openSourceReadonly` (`readonly: true`, `fileMustExist: true`). `immutable` is
+deliberately not turned on: with a live WAL we would read torn pages.
 
-## Inkrementalitás
+## Incrementality
 
-A `sources` tábla a főkönyv. Egy append-only fájlra:
+The `sources` table is the ledger. For an append-only file:
 
-| állapot | döntés |
+| state | decision |
 |---|---|
-| azonos méret **és** mtime | `skip` — nulla olvasás |
-| nőtt, és a fix ablakú prefix-hash egyezik | `append` a `bytes_indexed`-től |
-| a prefix-hash eltér, vagy zsugorodott | `full` — `status='rotated'`, teljes újraolvasás |
-| a fájl eltűnt | `missing` |
+| same size **and** mtime | `skip` — zero reads |
+| grew, and the fixed-window prefix-hash matches | `append` from `bytes_indexed` |
+| the prefix-hash differs, or it shrank | `full` — `status='rotated'`, full re-read |
+| the file vanished | `missing` |
 
-A prefix-hash **fix ablakot** használ (`min(4096, bytes_indexed)` bájt). Ha a fájl aktuális méretéig
-hashelnénk, minden hozzáfűzés más ablakot fedne le, és minden sync teljes újraolvasás lenne.
+The prefix-hash uses a **fixed window** (`min(4096, bytes_indexed)` bytes). If
+we hashed up to the file's current size, every append would cover a different
+window, and every sync would be a full re-read.
 
-A Cursor nem fájl, hanem kulcs-érték tár, ezért ott `ext_version` = a beszélgetés `lastUpdatedAt`-je.
-Amelyiknek nincs időbélyege, ott a `composerData` sha256-ja a jel — de **csak akkor**, mert egy bubble
-szövegének szerkesztése nem változtatja meg a `composerData`-t (az csak azonosítók listája).
+Cursor is not a file but a key-value store, so there `ext_version` = the
+conversation's `lastUpdatedAt`. Those with no timestamp use the sha256 of
+`composerData` as the signal — but **only then**, because editing a bubble's
+text does not change `composerData` (it is only a list of identifiers).
 
-## Projektfelismerés
+## Project recognition
 
-Nincs bedrótozott gyökérlista. A `ProjectResolver` felfelé sétál az útvonalon:
+There is no hard-wired root list. `ProjectResolver` walks the path upwards:
 
-1. **Tanult gyökér** (`projects.root_path`) — túléli a projekt mozgatását vagy törlését.
-2. **Workspace-gyökér** (`workspace_roots`) — a séta itt megáll, és az alatta lévő mappa a projekt.
-   Ezeket a `detectWorkspaceRoots` tanulja a korpuszból: az a mappa gyűjtő, aminek legalább három
-   **különböző session** cwd-je van a gyerekei között.
-3. **Marker** — `.git`, `package.json`, `pyproject.toml`, `go.mod`, `CMakeLists.txt`, `CLAUDE.md`, …
-   A generikus nevek (`src`, `backend`, `dist`) átugorva.
+1. **Learned root** (`projects.root_path`) — survives the project being moved or deleted.
+2. **Workspace root** (`workspace_roots`) — the walk stops here, and the folder
+   under it is the project. `detectWorkspaceRoots` learns these from the corpus:
+   a folder is a collector if at least three **different sessions** have a cwd
+   among its children.
+3. **Marker** — `.git`, `package.json`, `pyproject.toml`, `go.mod`,
+   `CMakeLists.txt`, `CLAUDE.md`, … Generic names (`src`, `backend`, `dist`)
+   are skipped.
 
-A 2. lépés azért kell, mert egy gyűjtőmappa maga is lehet git-repó, húsz projekttel a hasában — a
-markerek ott mind a gyűjtőmappa nevét adnák vissza, ahány projekt, annyiszor. Fájlrendszeri
-heurisztikával nem szétválasztható: egy nagy projekt fordítva sül el, saját markere nincs, markeres
-almappája sok. Ezért nem a lemez dönt, hanem az, hogy hány különböző session dolgozott alatta.
+Step 2 is needed because a collector folder can itself be a git repo, with
+twenty projects in its belly — the markers would all return the collector
+folder's name, once per project. A filesystem heuristic cannot separate them:
+a large project fails the other way, no marker of its own, many marked
+subfolders. So it is not the disk that decides, but how many different sessions
+worked under it.
 
-Generált nevek (UUID, ≥16 jegyű hex, `job-…-20260826-212306`, `codex-runs`, `worktrees`) sosem
-projektnevek; ilyenkor a séta tovább megy felfelé, így a `codex-runs/<uuid>` a projektjéhez kerül.
+Generated names (UUID, ≥16-digit hex, `job-…-20260826-212306`, `codex-runs`,
+`worktrees`) are never project names; the walk continues upwards, so
+`codex-runs/<uuid>` lands with its project.
 
-## Attribúciós kaszkád
+## Attribution cascade
 
-A bizonyíték (`path_evidence`) külön van a verdikttől (`attribution`). A bizonyíték előállítása drága —
-tárolót kell olvasni hozzá; a verdikt olcsó, tiszta függvénye a bizonyítéknak. Ezért a `cam reattribute`
-másodperc alatt lefut, és egy alias hozzáadása interaktív művelet.
+The evidence (`path_evidence`) is separate from the verdict (`attribution`).
+Producing evidence is expensive — a store has to be read for it; the verdict is
+cheap, a pure function of the evidence. That is why `cam reattribute` finishes
+in a second, and adding an alias is an interactive operation.
 
-| lépcső | forrás | súly | megbízhatóság |
+| step | source | weight | confidence |
 |---|---|---|---|
-| `manual` | `cam attribute` | 1000 | erős |
-| `cwd`, `user_selected_folders` | a session munkakönyvtára / kiválasztott mappái | 3 | erős |
-| `ofs_key` | Cursor `ofsContent` kulcsok (nyitott fájlok) | 2 | erős |
-| `bubble_scan`, `msg_request_ctx` | a beszélgetésben említett útvonalak | 1 | erős |
-| `time_correlation` | Cursor fájltörténet ±30 perc, ≥3 esemény és ≥50% részesedés | 1 | közepes |
-| `time_correlation_weak` | ugyanaz, kevesebb bizonyítékkal | 1 | gyenge |
+| `manual` | `cam attribute` | 1000 | strong |
+| `cwd`, `user_selected_folders` | the session's working directory / selected folders | 3 | strong |
+| `ofs_key` | Cursor `ofsContent` keys (open files) | 2 | strong |
+| `bubble_scan`, `msg_request_ctx` | paths mentioned in the conversation | 1 | strong |
+| `time_correlation` | Cursor file history ±30 min, ≥3 events and ≥50% share | 1 | medium |
+| `time_correlation_weak` | the same, with less evidence | 1 | weak |
 
-A `runner_up_key` mindig íródik: a 6:5 arányban szavazó szál más állat, mint a 6:0.
+`runner_up_key` is always written: a thread that voted 6:5 is a different
+animal from 6:0.
 
-A `manual` és a `time_correlation*` bizonyíték **maga hordozza a verdiktet**: a `raw_path`-uk jelölés
-(`~manual:<kulcs>`, `~time:9/10`), nem útvonal, ezért az újraszámolás nem oldja fel őket még egyszer.
-Enélkül a kézi döntés minden `cam reattribute`-tal elveszne — a `rule_version` 2 pont ezt jelzi.
+`manual` and `time_correlation*` evidence **carries the verdict itself**: their
+`raw_path` is a mark (`~manual:<key>`, `~time:9/10`), not a path, so
+recalculation does not resolve them again. Without this a manual decision would
+be lost on every `cam reattribute` — `rule_version` 2 is the point that marks
+this.
 
-## Keresés
+## Search
 
-FTS5 `unicode61 remove_diacritics 2` tokenizálóval, tehát `arvizturo` megtalálja az `árvíztűrő`-t.
-Stemmer nincs sehol, a magyar meg agglutináló, ezért az 5 karakternél hosszabb tokenek **prefix**-szel
-mennek (`projekt*` → `projektben`, `projektet`).
+FTS5 with the `unicode61 remove_diacritics 2` tokenizer, so `arvizturo` finds
+`árvíztűrő`. There is no stemmer anywhere, and Hungarian is agglutinative, so
+tokens longer than 5 characters go as a **prefix** (`projekt*` → `projektben`,
+`projektet`).
 
-A `snippet()` NULL-t ad contentless táblán, ezért a kivonat és a kiemelés rehidratálásból készül. Az
-ékezet-hajtás **hosszőrző**, különben a jelölés elcsúszna minden ékezet után.
+`snippet()` returns NULL on a contentless table, so the excerpt and the
+highlight are built from rehydration. Diacritic folding is
+**length-preserving**, otherwise the mark would slip after every accent.
 
-## Fájlszerkezet
+## File layout
 
 ```
 src/
-  paths.ts, config.ts        platformfüggő helyek, markerek, kizárt területek
-  db/{schema,open}.ts        séma, hub- és forrás-nyitó, SQLite-képesség ellenőrzés
+  paths.ts, config.ts        platform-dependent locations, markers, excluded areas
+  db/{schema,open}.ts        schema, hub and source openers, SQLite capability check
   index/
-    jsonl.ts                 offset-követő olvasó, mutató-feloldás
-    chunker.ts               turn-határon ablakozó darabolás
-    indexer.ts               session/turn/chunk írás, FTS
-    hydrate.ts               visszaolvasás: ok / stale / missing
-    watermarks.ts            skip / append / full döntés
+    jsonl.ts                 offset-tracking reader, pointer resolution
+    chunker.ts               windowed splitting on turn boundaries
+    indexer.ts               session/turn/chunk write, FTS
+    hydrate.ts               read-back: ok / stale / missing
+    watermarks.ts            skip / append / full decision
   attribution/
-    projkey.ts               marker + gyökér alapú projektfelismerés
-    roots.ts                 workspace-gyökér tanulás
-    evidence.ts              útvonal-kinyerés, bizonyíték írás
-    resolve.ts               kaszkád, idő-korreláció, újraszámolás
-  collectors/                eszközönként egy, közös interfésszel
-  memory/                    konszolidáció, pontozás, promotált emlékek, álom
+    projkey.ts               marker + root based project recognition
+    roots.ts                 workspace-root learning
+    evidence.ts              path extraction, evidence write
+    resolve.ts               cascade, time correlation, recalculation
+  collectors/                one per tool, shared interface
+  memory/                    consolidation, scoring, promoted memories, dream
   ops/
-    freshness.ts             mennyire friss az index (sync_runs)
-    prune.ts                 megőrzés, felejtés, vacuum
-    backup.ts                ellenőrzött online mentés
-  db/portability.ts          betűhajtás-bélyeg: egy átvitt index nem talál némán semmit
-  log.ts                     --quiet / --verbose; a válasz sosem tűnik el
-  search/keywords.ts         HU/EN lekérdezés-elemzés, kiemelés
-  query/                     recall, timeline, dossier, közös renderelés
+    freshness.ts             how fresh the index is (sync_runs)
+    prune.ts                 retention, forget, vacuum
+    backup.ts                verified online backup
+  db/portability.ts          case-fold stamp: a copied index does not silently find nothing
+  log.ts                     --quiet / --verbose; the answer never disappears
+  search/keywords.ts         HU/EN query analysis, highlighting
+  query/                     recall, timeline, dossier, shared rendering
   install/
-    clients.ts               melyik kliens hol tartja a konfigját és a skilljeit
-    mcp.ts                   JSON-merge és TOML tábla-csere, mentéssel
-    skills.ts                a közös skill-törzs renderelése kliensenként
-    locate.ts                a valódi program megkeresése az indítók mögött
-    dream.ts                 ágens-CLI-k mint modell: felderítés, modellek, próba
-    schedule.ts              Task Scheduler / launchd / systemd — terv és végrehajtás
-    prompt.ts                a két kérdés, amit a telepítő feltehet
-  mcp/server.ts              hét read-only tool, mindegyik válaszán az index korával
+    clients.ts               which client keeps its config and skills where
+    mcp.ts                   JSON merge and TOML table replace, with backup
+    skills.ts                rendering the shared skill body per client
+    locate.ts                finding the real program behind the launchers
+    dream.ts                 agent CLIs as a model: discovery, models, probe
+    schedule.ts              Task Scheduler / launchd / systemd — plan and apply
+    prompt.ts                the two questions the installer may ask
+  mcp/server.ts              seven read-only tools, each response carrying the index's age
   cli.ts
-assets/skill-body.md         a skill törzse; a {{SURFACE}} helyére a kliens kerül
-skills/agent-memory/SKILL.md a nyilvános, felfedezhető skill (`npx skills add`)
+assets/skill-body.md         the skill body; {{SURFACE}} is replaced with the client
+skills/agent-memory/SKILL.md the public, discoverable skill (`npx skills add`)
 ```
 
-Az `install/` szándékosan **terv és végrehajtás** kettéválasztva: minden rész előbb kiszámolja, mit
-csinálna, és csak utána ír. Ettől a `--dry-run` nem közelítés, hanem ugyanaz a terv, és ettől
-tesztelhető egyetlen gépről a három platform ütemezés-receptje is.
+`install/` is deliberately split into **plan and apply**: every part first
+computes what it would do, and only then writes. That is why `--dry-run` is not
+an approximation but the same plan, and why the three platforms' scheduler
+recipes can be tested from a single machine.

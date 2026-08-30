@@ -25,7 +25,7 @@ export const cursorCollector: Collector = {
       // Same trap as Codex: a renamed store must be visible as a warning, not
       // as a quiet zero.
       if (fs.existsSync(path.dirname(ctx.roots.cursorStateDb))) {
-        ctx.log(`cursor: nincs meg a ${ctx.roots.cursorStateDb} — új Cursor-verzió más nevű tárolóval?`);
+        ctx.log(`cursor: ${ctx.roots.cursorStateDb} not found — new Cursor version with a different store name?`);
       }
       return stat;
     }

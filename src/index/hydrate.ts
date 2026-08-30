@@ -6,7 +6,7 @@ import { pluck, readLineAt, sha256 } from "./jsonl.js";
 export type Availability = "ok" | "stale" | "missing";
 
 /** What a turn reads as once its source is gone. Shown to the user, never indexed. */
-export const MISSING_MARK = "[forrás hiányzik]";
+export const MISSING_MARK = "[source missing]";
 
 export interface TurnRow {
   id: number;

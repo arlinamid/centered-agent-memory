@@ -1,433 +1,520 @@
-# Terv
+# Plan
 
-Mit kell tartalmaznia a projektnek, milyen sorrendben, és mit nem csinálunk.
+What the project has to contain, in what order, and what we will not do.
 
-A mérföldkövek sorrendje kötelezettség: mindegyik lezárja az előzőt, és mindegyiknél ott van, hogy
-**mikor kész** — ellenőrizhető feltétellel, nem érzésre. A „Távlati irányok" szakasz ezzel szemben
-nem kötelezettség; ott az van, amerre az eszköz mehet, ha érdemes lesz.
+The order of the milestones is a commitment: each one closes the previous, and
+each one says **when it is done** — with a checkable condition, not a feeling.
+The "Further directions" section, by contrast, is not a commitment; that is
+where the tool may go if it becomes worth it.
 
-Fájlokra név szerint hivatkozunk (modul és függvény), nem sorszámmal — a sorszám hetek alatt elavul,
-a név nem.
+We refer to files by name (module and function), not by line number — a line
+number goes stale in weeks, a name does not.
 
-## Hol tart most
+## Where it stands
 
-Mért állapot a referenciagépen, 2026-08-29:
+Measured state on the reference machine, 2026-08-29:
 
 | | |
 |---|---|
-| session | 1 643 |
-| turn | 32 054 |
-| chunk | 16 448 |
-| melléktermék | 451 |
-| projekt | 133 |
-| projekthez kötve | 1 387 / 1 643 (84%) |
-| adatbázis | 57,6 MB |
-| teszt | 454 zöld |
-| ismételt sync — kollektorok | ~330 ms |
-| ismételt sync — végig (attribúcióval) | ~4,6 s |
+| session | 1,643 |
+| turn | 32,054 |
+| chunk | 16,448 |
+| artifact | 451 |
+| project | 133 |
+| attributed to a project | 1,387 / 1,643 (84%) |
+| database | 57.6 MB |
+| test | 454 green |
+| repeat sync — collectors | ~330 ms |
+| repeat sync — end to end (with attribution) | ~4.6 s |
 
-Részletek: [`CHANGELOG.md`](../CHANGELOG.md). Felépítés: [`architecture.md`](architecture.md).
-Üzemeltetés: [`operations.md`](operations.md).
+Details: [`CHANGELOG.md`](../CHANGELOG.md). Architecture:
+[`architecture.md`](architecture.md). Operations:
+[`operations.md`](operations.md).
 
-**Kész (M1–M6):** hét kollektor, tizennyolc CLI-parancs, hét MCP-tool, inkrementális index,
-projektfelismerés autodetektálással, attribúciós kaszkád, teljes szövegű keresés magyar kezeléssel,
-telepíthető csomag, a determinisztikus memória-réteg, a felügyelet nélküli üzem (ütemezés,
-frissesség-jelzés, megőrzés, mentés), a bekötés egyetlen paranccsal minden megtalált
-ágens-eszközbe, és a nyilvános kiadás három platformon ellenőrzött CI-vel. Ezen felül egyetlen
-opcionális, alapból kikapcsolt lépés használ modellt: az álom fázis.
-
----
-
-## Alapelvek, amik nem változnak
-
-**Hivatkozás, nem másolat.** Egy turn azt tárolja, *hol* van a szövege (fájl + bájt-offset +
-JSON-mutató, vagy SQLite-kulcs); a `chunks_fts` contentless. A találatok szövege lekérdezéskor
-olvasódik vissza a forrásból, és ha a forrás azóta megváltozott vagy eltűnt, azt a válasz kiírja.
-
-**Nem tippelünk.** Amelyik session projektje nem állapítható meg, `unattributed` marad. Minden verdikt
-mellett ott a módszer és a megbízhatóság; a gyenge találatok alapból ki vannak szűrve.
-
-**Nem írunk a forrásokba.** Minden idegen tároló read-only nyílik. Ez nem fegyelem kérdése, hanem
-szerkezeti garancia (`openSourceReadonly`).
-
-### Szándékosan alvó részek
-
-Ezek **nem hiányok** — ne „javítsd ki" őket:
-
-- **`chunk_embeddings`** — a tábla létezik, üres. A szemantikus keresésre vár (lásd Távlati irányok).
-  Amíg nincs embedding, addig sem tölteni, sem olvasni nem kell.
-- ~~**`recall_events`**~~ — már nem alszik: az M3 memória-rétege ebből promótál
-  ([`memory.md`](memory.md)). Jól tette, hogy az első naptól gyűlt.
+**Done (M1–M6):** seven collectors, eighteen CLI commands, seven MCP tools, an
+incremental index, project recognition with autodetect, an attribution
+cascade, full-text search with Hungarian handling, an installable package, the
+deterministic memory layer, unattended operation (scheduling, freshness
+signal, retention, backup), wiring with a single command into every agent tool
+found, and a public release with CI checked on three platforms. On top of
+that, a single optional, off-by-default step uses a model: the dream phase.
 
 ---
 
-## M1.5 — Megszilárdítás ✅
+## Principles that will not change
 
-**Cél volt:** ami ma van, az legyen igaz, tesztelt és üzembiztos.
+**Reference, not a copy.** A turn stores *where* its text is (file + byte
+offset + JSON pointer, or an SQLite key); `chunks_fts` is contentless. Hit
+text is read back from the source at query time, and if the source has since
+changed or vanished, the response says so.
 
-Lezárva. A tételes lista a [`CHANGELOG.md`](../CHANGELOG.md) „M1.5 — megszilárdítás" szakaszában van;
-itt csak az marad, ami a mérföldkő feltétele volt:
+**No guessing.** A session whose project cannot be determined stays
+`unattributed`. Every verdict carries the method and the confidence; weak hits
+are filtered out by default.
 
-- `cam recall --json "kérdés"` és `cam timeline --subagents <projekt>` működik — az argumentum-elemzés
-  parancsonként tudja, melyik kapcsoló vár értéket (`src/args.ts`), és az elgépelt kapcsoló hiba.
-- A `--limit` mind a négy lekérdező parancsban él.
-- Kilépési kód: `0` / `1` (hiba) / `2` (hibás használat). Az ütemezett `cam sync` észreveszi, ha
-  elromlott.
-- Két egyidejű `cam sync` közül a második kilép; a törlés-majd-újratöltés mindenhol tranzakcióban van.
-- Sérült adatbázison a `cam doctor` lefut, diagnosztizál, és `cam rebuild`-et javasol. A `cam rebuild` a
-  contentless szövegindexet a forrásokból építi újra.
-- A README és az `architecture.md` állításai megfelelnek a kódnak; a `turns.inline_text` és a két nem
-  használt locator-fajta a típusnál és a sémában is meg van jelölve fenntartottként.
-- 255 teszt zöld, köztük a terv által megnevezett vakfoltok: CLI, argumentum-elemző, zár, attribúciós
-  kaszkád, Cursor-fájltörténet, migráció, chunker, `recall` megbízhatósági aszimmetriája, `stale` út.
-- Az útvonal-hajtás (`CAM_CASE_FOLD`) rögzítve a tesztkészletben, a POSIX útvonal-kinyerés kijavítva,
-  a verziózott tárolónév eltűnése figyelmeztet.
+**Never writes to the sources.** Every foreign store is opened read-only. This
+is not a matter of discipline, but a structural guarantee
+(`openSourceReadonly`).
 
-**Ami ebből még nyitva van:** a CI (`.github/workflows/ci.yml`) meg van írva, de a
-Linux- és macOS-futás csak az első push után igazolható. Amíg nem futott le zölden, a hordozhatóság
-állítás, nem tény.
+### Deliberately dormant parts
 
----
+These are **not gaps** — do not "fix" them:
 
-## M2 — Kiadás ✅
-
-**Cél volt:** más gépén is telepíthető, önálló eszköz. Részletek a
-[`CHANGELOG.md`](../CHANGELOG.md) „M2 — Kiadható csomag" szakaszában.
-
-A mérföldkő feltételei, mérve:
-
-- Becsomagolt tarballból üres projektbe telepítve a `cam` elindul és kiírja a súgót; a `cam-mcp`
-  válaszol az `initialize` kérésre.
-- Két egymás utáni futás ugyanazt az indexet látja: az alapértelmezett hely a felhasználói adatmappa
-  (`LOCALAPPDATA`, illetve `XDG_DATA_HOME`), nem a telepítési mappa.
-- `npm pack`: 62 fájl, 157,5 kB — dist JS, `docs/`, `assets/skill.md`, README(-ek), CHANGELOG, LICENSE.
-  Se forrás, se teszt, se source map. (M2-nél 41 fájl, 76 kB; a különbség az M4 és az M5.)
-- A dokumentációban nincs másolandó gépspecifikus útvonal. Az M5 óta ez erősebb: az abszolút
-  útvonalat nem a felhasználó másolja be, hanem a `cam install` írja oda, arról a gépről, ahol fut.
-  A repó egyetlen fájljában sincs valódi felhasználónév, gépspecifikus mappa vagy projektnév — a
-  tesztfixtúrák kitalált útvonalakkal dolgoznak.
-
-**Egy szándékos eltérés a tervtől:** a `private: true` **marad**, azután is, hogy a repó nyilvános
-lett. A terv a mező megszüntetését írta elő, de az a nyilvános **npm registryre** vonatkozott, nem a
-repó láthatóságára. A kiadási csatorna továbbra is a GitHub release és a tarball; a mező így pontosan
-egy dolgot csinál, és azt jól: megakadályoz egy véletlen `npm publish`-t. Ha valaha tényleg felmegy a
-registryre, ez az egy sor törlendő.
+- **`chunk_embeddings`** — the table exists, empty. It waits for semantic
+  search (see Further directions). Until there is an embedding, it should be
+  neither filled nor read.
+- ~~**`recall_events`**~~ — no longer dormant: the M3 memory layer promotes
+  from it ([`memory.md`](memory.md)). It was right that it collected from the
+  first day.
 
 ---
 
-## M3 — Memória-réteg ✅
+## M1.5 — Consolidation ✅
 
-**Cél volt:** a hub ne csak megtalálja a múltat, hanem tanuljon is belőle — modell nélkül.
+**The goal was:** what exists today should be true, tested, and operationally
+sound.
 
-Kész, a terv szerinti szerkezettel: rövid táv (`recall_events` + `memory_queries`), konszolidáció
-(Light → REM → Deep), promóciós pontszám a megadott súlyokkal és kapukkal, hosszú táv karakter-budgettel,
-`cam memory` parancsok és `cam_memory` MCP-tool. Hogyan működik: [`memory.md`](memory.md).
+Closed. The itemised list is in the [`CHANGELOG.md`](../CHANGELOG.md) M1.5
+section; what remains here is only what the milestone required:
 
-A mérföldkő feltételei:
+- `cam recall --json "question"` and `cam timeline --subagents <project>`
+  work — argument parsing knows per command which flags take a value
+  (`src/args.ts`), and a mistyped flag is an error.
+- `--limit` is live on all four query commands.
+- Exit code: `0` / `1` (failure) / `2` (bad usage). A scheduled `cam sync`
+  notices when something broke.
+- Of two concurrent `cam sync` runs the second exits; delete-then-reload is
+  in a transaction everywhere.
+- On a corrupt database `cam doctor` runs, diagnoses, and suggests
+  `cam rebuild`. `cam rebuild` rebuilds the contentless text index from the
+  sources.
+- The claims in the README and `architecture.md` match the code;
+  `turns.inline_text` and the two unused locator kinds are marked reserved
+  in both the type and the schema.
+- 255 tests green, including the blind spots the plan named: CLI, argument
+  parser, lock, attribution cascade, Cursor file history, migration, chunker,
+  the confidence asymmetry of `recall`, the `stale` path.
+- Path folding (`CAM_CASE_FOLD`) pinned in the test suite, POSIX path
+  extraction fixed, the disappearance of a versioned store name warned.
 
-- **Egy promotált tény a bizonyítékával együtt megjeleníthető.** A `cam memory show <id>` kiírja a
-  pontszám mind a hat összetevőjét, és soronként azt, hogy melyik kérdés hányszor és mikortól meddig
-  hívta elő.
-- **A pipeline hálózat nélkül végigfut.** Semmi nem hálózik benne; a valódi indexen 7–19 ms.
-- **Ugyanabból az adatbázisból kétszer futtatva ugyanaz a promóció jön ki.** Tesztelve; ehhez a
-  promóció kora a nyomból származik, nem az órából — enélkül egy kiesett, majd újra promotált emlék a
-  sor elejére ugrana, és a két futás eltérne.
-
-Két dolog, ami menet közben derült ki:
-
-- **A `recall_events` csak a kérdés hasht tárolta**, márpedig „milyen kérdésekre jött elő" hash-sel nem
-  megmutatható. Ezért új tábla (`memory_queries`) őrzi a kérdés szövegét és a belőle kiparsolt
-  szavakat. Ez bővíti azt, ami az adatbázisban van — lásd az Adatvédelem szakaszt —, és kikapcsolható
-  (`logQuery: false`), a hash marad.
-- **A 0,8-as kapu szigorúbb, mint amilyennek látszik.** A legkisebb átmenő nyom három kérdés három
-  napon, jó találati pontszámmal (0,834). Kis korpuszon a bm25 nem szór, ezért a tesztek a
-  referenciagépen mért 0,90–0,93-as relevanciával dolgoznak, nem fixtúrán mérttel.
-
----
-
-## M4 — Üzemeltetés ✅
-
-**Cél volt:** felügyelet nélkül is használható maradjon. Hogyan üzemeltesd:
-[`operations.md`](operations.md). Tételes lista a [`CHANGELOG.md`](../CHANGELOG.md) „M4 —
-Üzemeltetés" szakaszában.
-
-A mérföldkő feltételei, mérve:
-
-- **A sync felügyelet nélkül fut, és hibát nem nulla kilépési kóddal jelez.** Ütemezési minta mind a
-  négy platformra ([`operations.md`](operations.md)), és `--quiet`, ami hiba esetén beszél, egyébként
-  hallgat. A `--quiet` a parancs *válaszát* nem nyeli el — egy `cam recall --json --quiet`, ami
-  semmit nem ír ki, csapda lenne.
-- **Minden MCP-válasz tartalmazza az index korát.** Nem fegyelemből: a tool-regisztráció egy
-  burkolón megy át, tehát nincs mód olyan toolt regisztrálni, amiről lemarad. A hibaválaszokon is
-  rajta van. Ellenőrizve valódi stdio-klienssel mind a hét toolon (`scripts/mcp-smoke.ts`).
-- **Az adatbázis mérete korlátos: a megőrzési szabály mérhetően fog.** `cam prune` a nyomra, a
-  futásnaplóra és az eltűnt forrású sessionökre, `cam prune --vacuum` a helyért, `cam forget` egy
-  projektre vagy sessionre. A `--dry-run` ugyanazokat a számokat adja, mint az éles futás.
-
-Öt dolog, ami menet közben derült ki:
-
-- **A `cam recall` hivatkozásait CLI-ból nem lehetett megnyitni.** A `cam_get` MCP-tool megvolt, a
-  CLI-párja nem — a keresés fele terminálból zsákutcába vezetett, és ez csak valódi adaton, egy
-  „mit beszéltünk erről legutóbb" kérdésnél derült ki, mert a tesztek mindkét felületet külön-külön
-  hajtották meg, a kettő közti aszimmetriát nem nézte senki. A `cam get` ezt pótolja; a
-  hivatkozás-elemző és a turn-renderelő átkerült a lekérdező rétegbe, hogy a két felület ne
-  térhessen el.
-
-- **A `resolveFileEvents` nem a feloldás miatt volt lassú, hanem az írás miatt.** A gyanú a 6 064
-  útvonal újra-feloldása volt; a valóság az, hogy a régi kód 6 064 külön `UPDATE`-et adott ki a
-  `file_events` táblára, aminek nem volt indexe a `resource` oszlopon — 6 064 teljes tábla-scan
-  34 567 soron. Mérve a referenciagép indexén: **14 982 ms → 228 ms**. Az index adja a nagyját, a
-  `path_keys` gyorsítótár a maradékot (804 ms → 128 ms a teljes fázisra). Az ismételt sync ezzel
-  ~26 s-ról ~4,6 s-ra ment le, amiből ~3,5 s a hozzárendelés — a következő szűk keresztmetszet ott
-  van, nem itt.
-- **A megőrzés nem törölhet mindent, ami régi.** Egy promotált emlék állítása az, hogy meg tudja
-  mutatni, mikor és milyen kérdésekre jött elő. Ha a prune kiürítené a `recall_events`-ét, az
-  állítás hamissá válna, miközben az emlék ott marad. Ezért élő promóció bizonyítéka korra való
-  tekintet nélkül marad; elengedni csak a visszavonás tudja.
-- **A hiányzó forrás nem elég ok a törlésre.** Egy fel nem csatolt külső meghajtó pontosan úgy néz
-  ki, mint egy véglegesen eltűnt forrás. A `missingDays` ezért alapból `0`: kikapcsolva.
-- **A `sync_runs.sources_synced` sosem forrásokat számolt, hanem sessionöket.** A frissesség-jelentés
-  hozta elő. Az oszlop marad (nem törlünk és nem nevezünk át), az új futások a `sessions_seen`-be
-  írnak.
-
-**Egy szándékos kiterjesztés a terven túl:** a Távlati irányoknál szereplő betűhajtás-bélyeg
-bekerült. A `cam backup` nélküle olyan másolatot ad, ami másik platformon némán semmit nem talál, és
-ez pont az a hiba, amit a mentés funkció megjelenése behoz.
+**What of this is still open:** the CI (`.github/workflows/ci.yml`) is
+written, but the Linux and macOS runs can only be confirmed after the first
+push. Until they have run green, portability is a claim, not a fact.
 
 ---
 
-## M5 — Bekötés ✅
+## M2 — Release ✅
 
-**Cél volt:** ne a felhasználón múljon négy kliens négyféle konfigurációja. Hogyan:
-[`install.md`](install.md). Tételes lista a [`CHANGELOG.md`](../CHANGELOG.md) „Telepítés" szakaszában.
+**The goal was:** installable on someone else's machine, a standalone tool.
+Details in the [`CHANGELOG.md`](../CHANGELOG.md) M2 section.
 
-Ez a mérföldkő nem volt a tervben, és a helye mégis egyértelmű: az M2 azt érte el, hogy a csomag
-más gépére **telepíthető**, nem azt, hogy ott használatba is kerül. A kettő között négy kézzel
-szerkesztendő konfigurációs fájl van, és pontosan ott áll meg egy egyébként kész eszköz.
+The milestone conditions, measured:
 
-A mérföldkő feltételei, mérve:
+- Installed from a packed tarball into an empty project, `cam` starts and
+  prints the help; `cam-mcp` answers the `initialize` request.
+- Two successive runs see the same index: the default location is the user
+  data directory (`LOCALAPPDATA`, or `XDG_DATA_HOME`), not the install
+  directory.
+- `npm pack`: 62 files, 157.5 kB — dist JS, `docs/`, `assets/skill.md`,
+  README(s), CHANGELOG, LICENSE. No source, no test, no source map. (At M2:
+  41 files, 76 kB; the difference is M4 and M5.)
+- The documentation has no machine-specific path to copy. Since M5 this is
+  stronger: the absolute path is not copied in by the user, but written by
+  `cam install`, from the machine it runs on. No file in the repo contains a
+  real username, machine-specific folder, or project name — the test fixtures
+  work with invented paths.
 
-- **Egy parancs, és a szerver mind a négy kliensben ott van.** A `--dry-run` ugyanazt a tervet írja
-  ki, amit az éles futás végrehajt — ugyanabból a függvényből, nem külön ágból. A második futás
-  „unchanged"-et ír, és nem készít újabb mentést.
-- **Idegen konfiguráció nem sérül.** Valódi Cursor-konfigurációval mérve: 10 szerver → 11, a
-  meglévők és a bennük lévő tokenek változatlanul, mentés a művelet előtt. A Codex TOML-jában a
-  csere szövegszintű, tehát a kommentek és a formázás megmaradnak. Sérült konfigurációt nem írunk
-  felül: a parancs megnevezi, folytatja a többivel, és `1`-gyel lép ki.
-- **A bekötött parancs tényleg elindul.** Ellenőrizve valódi stdio-klienssel, a konfigurációba írt
-  parancssorral, mind a hét toolon (`scripts/mcp-smoke.ts`).
-- **Az ütemezés nem csak regisztrálódik, hanem le is fut, és a jó indexet írja.** Globális
-  telepítésből felvéve, kézzel indítva: `LastTaskResult: 0`, és a futás 205 új turnt írt a
-  felhasználói adatmappa indexébe. A második `cam install` „nincs teendő"-t mond; egy másik
-  példányból futtatva nem veszi át a feladatot, hanem megnevezi a jelenlegi gazdát és kilép.
-  A `cam uninstall` nyom nélkül leszedi.
-- **Az álom-modell csak akkor kerül a konfigurációba, ha válaszolt.** A telepítő küld egy rövid
-  promptot, és a hibát megnevezve hagyja üresen a beállítást, ha nem jött válasz.
-
-Öt dolog, ami menet közben derült ki:
-
-- **A globálisan telepített CLI semmit nem csinált, és nullával lépett ki.** A belépéspont-vizsgálat
-  nyersen hasonlította az `import.meta.url`-t a `process.argv[1]`-hez, a Node viszont az elsőt
-  feloldott symlinkekkel adja vissza. Egy Node-verziókezelő pontosan ide tesz linket
-  (`C:\nvm\current` → `…\nvm\v22.21.1`), tehát a két érték soha nem egyezett meg. A checkoutból
-  minden működött, a telepített példány néma no-op volt — és mivel a kilépési kód nulla, ütemezett
-  feladatként ez óránkénti sikeres futásnak látszott, üres eredménnyel. Ez a hiba pontosan a
-  telepítéssel jött be használatba, és pontosan azon a felületen, amit a tesztkészlet nem
-  hajthatott meg: minden teszt a forrásból importál, ahol nincs symlink az útvonalban.
-
-- **Az `npx`-ből való telepítés nem javítható, csak megtagadható.** A terv belépéspontja az
-  `npx github:...` volt, és mindkét lehetséges bejegyzés hazugság onnan: az `npx` az npm
-  gyorsítótárába csomagol ki, amit az npm később kitakarít, és a saját `node_modules/.bin`-jét
-  teszi a `PATH`-ra a futás idejére. Lemérve: `npm exec` alatt a `_npx/<hash>/node_modules/.bin`
-  tényleg ott van a `PATH`-on, tehát egy „a `cam-mcp` elérhető, írjuk be így" döntés pont a
-  legrosszabbat választaná. Ez a hibafajta nem a telepítéskor jelentkezik, hanem hetekkel később,
-  némán. A telepítő ezért felismeri az ideiglenes csomagmappát, nem ír semmit, és `npm i -g`-t
-  javasol. Ugyanez az érv szüntette meg a puszta `cam-mcp` bejegyzést a tartós telepítéseknél is:
-  a klienst nem a telepítő shellje indítja.
-
-- **A `PATH` sorrendje rossz döntőbíró.** Egy eszköz kétszer is fent lehet — npm-ből és natív
-  kiadásként, más verzióban —, és a fejlesztőgépen épp az elöl álló npm-shim mögötti Codex volt
-  hibás. Windowson ráadásul egy npm-es CLI három fájl (`tool`, `tool.cmd`, `tool.ps1`), és egyik sem
-  a program: a Node 18.20 óta shell nélkül el sem indítja őket. A keresés ezért végignézi az egész
-  `PATH`-t, átolvas az indítókon, és vagy natív futtathatónál, vagy `node <szkript>`-nél köt ki. Nem
-  kozmetika: amit ide beírunk, azt később egy ütemezett feladat futtatja, aminek nincs shellje és
-  nincs `PATH`-a.
-- **Az álom vissza tudná etetni magát.** A Codex és a Claude Code alapból session-fájlt ír, amit a
-  `cam` maga is indexel — enélkül a következő szinkron beolvasná az álom-promptokat, a következő
-  álom összegezné őket, és az index lassan megtelne a saját tükörképével. Ezért `--ephemeral` és
-  `--no-session-persistence` minden olyan sablonban, ahol a `cam`-nek van kollektora az eszközhöz.
-  Ugyanez az ok írja elő az eszközhozzáférés kikapcsolását: ezek kódoló ágensek, és magukra hagyva
-  fájlokat kezdenek olvasni egy olyan kérdéshez, amihez a szöveget épp a kezükbe adtuk.
-- **Az `appSupportDir` a környezeti változót használta a kapott profil helyett.** Az `APPDATA` és az
-  `XDG_CONFIG_HOME` a futó folyamat profilját írja le; más home-mal hívva némán ide irányítottak
-  vissza. Egy fixture-be irányított telepítés így a valódi Claude Desktop-konfigba írt volna — a
-  teszt hozta elő, ami egy üres ideiglenes home-ban is telepítettnek látta a Claude Desktopot.
+**One deliberate departure from the plan:** `private: true` **stays**, even
+after the repo became public. The plan prescribed removing the field, but that
+was about the public **npm registry**, not repo visibility. The release
+channel is still the GitHub release and the tarball; the field thus does
+exactly one thing, and does it well: it prevents an accidental `npm publish`.
+If it ever actually goes on the registry, that is the one line to delete.
 
 ---
 
-## Az álom fázis — a terven kívül, szándékosan ✅
+## M3 — Memory layer ✅
 
-A terv azt mondta, generatív összefoglaló csak kifejezett opt-innal lehet. Ez az.
+**The goal was:** the hub should not only find the past, but learn from it —
+without a model.
 
-Az M3 megindokolta, miért nem modell dönti el, mi kerül a hosszú távú memóriába: a mért hibamód az,
-hogy egy LLM-függő pipeline egyszer csak nem termel semmit (a Codex sajátja ezen a gépen 58 jobból
-17-nél elhasalt, és július óta áll). Ez az érv a **döntésre** vonatkozik, nem a leírásra. Amit a
-determinizmus nem tud megadni, az egy mondat arról, hogy egy előhívott részlet miről szól — a
-`cam memory dream` ezt írja meg, és semmi mást nem csinál: nem promotál, nem von vissza, egyetlen
-bizonyíték-táblát sem ír. Hogyan: [`memory.md`](memory.md#az-álom-fázis-opcionális).
+Done, with the structure the plan specified: short term (`recall_events` +
+`memory_queries`), consolidation (Light → REM → Deep), a promotion score with
+the given weights and gates, long term with a character budget, `cam memory`
+commands and a `cam_memory` MCP tool. How it works:
+[`memory.md`](memory.md).
 
-Amitől ez nem mond ellent a fenti indoklásnak:
+The milestone conditions:
 
-- **A mag nem függ tőle.** Ha soha nem futtatod, semmi nem hiányzik; ha elszáll, semmi nem áll meg.
-  Minden hiba emlékenként van feljegyezve, a parancs nem nulla kóddal lép ki, és holnap
-  újrapróbálható.
-- **A modell konfiguráció, nem kód.** Bármilyen parancs jó, ami promptot olvas és szöveget ír, tehát
-  modellt cserélni nem fordítás — és nincs beépített szolgáltató, akihez alapból csatlakozna.
-- **Az adatvédelmi állítás nem lett gyengébb, csak pontosabb.** A parancs küldés előtt kiírja, hány
-  karakter megy ki és hova, `--quiet` mellett is; a `--dry-run` a pontos promptot mutatja, és nem
-  indít el semmit.
-- **A generált szöveg mindig meg van jelölve.** A modell neve ott van az álommondat mellett a
-  `cam memory list`, a `cam memory show` és a `cam_memory` kimenetében is. Származtatott szöveg, ami
-  tévedhet, és bármikor eldobható: `cam memory dream forget`.
+- **A promoted fact can be displayed together with its evidence.**
+  `cam memory show <id>` prints all six components of the score, and row by
+  row which question recalled it how many times and from when to when.
+- **The pipeline runs end to end without a network.** Nothing in it
+  networks; 7–19 ms on the real index.
+- **Running twice from the same database produces the same promotion.**
+  Tested; for this the age of a promotion comes from the trace, not from the
+  clock — without that a dropped, then re-promoted memory would jump to the
+  front of the queue, and the two runs would differ.
 
----
+Two things that came out along the way:
 
-## M6 — Nyilvánosság ✅
-
-**Kész, mert:** a repó nyilvános, mind a három platformon zöld a CI, és a `v0.5.0` release
-tarballja mind a háromon feltelepült, mielőtt létrejött.
-
-Ez a mérföldkő nem volt a tervben, mert a projekt egyetlen gépre készült. A nyilvánosság
-mindössze két dolgot követel meg, de mindkettőt szigorúan: hogy semmi ne kerüljön ki a szerző
-gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
-
-**Mérhető feltétel:**
-
-- Nincs a repóban valódi felhasználónév, gépspecifikus útvonal, projektnév vagy adatfájl. Nem
-  szemre: a `check-privacy.mjs` minden CI-futásban ellenőrzi, és bukik, ha talál.
-- A tag mögötti tarball mind a három platformon feltelepül, és a telepített példány **válaszol**
-  (nem csak elindul).
-- A csomagban nincs forrás, teszt, source map.
-- A verzió a `package.json`-ban, a `SERVER_VERSION`-ben és a changelogban ugyanaz.
-- A telepítés nem igényel C++ fordítót egyetlen platformon sem.
-
-**Amit közben megtudtunk:**
-
-- **A denylist önmagát írja ki.** Az első privacy-ellenőrzés a szerző nevére és a valódi
-  projektnevekre grepelt. Ez egy nyilvános fájlban pont azokat a karakterláncokat teszi közzé,
-  amiket ki akar zárni. A használható változat strukturális: minden home-könyvtár nevének
-  **helyőrzőnek kell látszania**. Nem a rossz eseteket sorolja fel, hanem a jó eset alakját írja
-  le — így nem évül el, és nem szivárogtat.
-- **A working tree kitakarítása nem elég.** A régi commitok diffje ugyanazokat a nyomokat viszi,
-  és egy `git grep $(git rev-list --all)` mindet előhozza. Nyolc commitnál a legolcsóbb és
-  egyetlen maradéktalan megoldás az új, egyetlen commitból induló nyilvános történet.
-- **A `cam --help` nem bizonyít semmit.** Az M5-ben megtalált néma no-op (az entry-point ellenőrzés
-  feloldott útvonalat hasonlított feloldatlanhoz) a súgót is átengedte volna. A CI ezért azt kéri
-  számon, hogy a `cam status` **kiír-e bármit** — egy nulla kóddal kilépő, néma parancsot csak így
-  lehet elkapni.
-- **Az `npm link` nem telepítés.** A globális teszt tarballból telepít, mert a `link` és az
-  `install -g .` is visszalinkel a checkoutra; egy ilyen „telepítés" arról semmit nem mond, hogy a
-  csomag megáll-e a maga lábán.
-- **Az első futás három hibát talált, és mind a három olyan platformon volt, amit fejlesztés
-  közben nem tudtam futtatni.** Egy Node 24-es natív összeomlás a `better-sqlite3`-ban (11 → 13,
-  N-API), egy teszt, ami platformot nézett a beállítás helyett, és egy fixtúra, ami feloldatlan
-  tempkönyvtárral dolgozott ott, ahol a `/var` symlink. Egyik sem derült volna ki abból, hogy
-  „nálam megy" — ez a mátrix egész indoklása, egyetlen futásban.
-- **Egy zöld lépés, ami semmit nem bizonyított.** Betettem a CI-ba egy második tesztfutást
-  megfordított útvonal-hajtással, és zöld volt — mert a `vitest.config.ts` `env`-je felülírta a
-  shellét, tehát kétszer ugyanaz futott. Amikor a felülírás javítása után végre tényleg lefutott,
-  32 teszt bukott el, és egyik sem termékhiba: a suite szándékosan rögzíti a hajtást, hogy
-  platformfüggetlen legyen, tehát szó szerinti kis betűs útvonalakat állít. A lépést kivettem,
-  nem zöldre erőltettem — a hajtás ott van lefedve, ahol értelme van (`normalizePath` paraméterrel,
-  mindkét értékre).
-- **A második futás egy olyan hibát talált, ami a felhasználókat is érte volna.** A natív
-  függőség minden platformra hoz prebuildet, az npm mégis lefuttatja rá a beépített
-  `node-gyp rebuild`-et; a node-gyp pedig Windowson akkor is Visual Studiót keres, ha a
-  `binding.gyp` üres projektet állítana elő. Fordító nélküli gépen ez a telepítést buktatja el egy
-  fordításon, amire nincs is szükség. A CI és a README is `--ignore-scripts`-tel telepít — ez a
-  helyi gépen sosem tűnt volna fel, mert az npm 11 alapból amúgy is blokkolja a telepítő
-  szkripteket.
+- **`recall_events` only stored the question hash**, and "on which questions
+  it came up" cannot be shown with a hash. So a new table (`memory_queries`)
+  keeps the question text and the words parsed out of it. This expands what
+  is in the database — see the Privacy section — and can be turned off
+  (`logQuery: false`), the hash stays.
+- **The 0.8 gate is stricter than it looks.** The smallest passing trace is
+  three questions on three days, with a good hit score (0.834). On a small
+  corpus bm25 does not spread, so the tests work with the 0.90–0.93
+  relevance measured on the reference machine, not one measured on a
+  fixture.
 
 ---
 
-## Távlati irányok
+## M4 — Operations ✅
 
-**Ezek nem kötelezettségek.** Akkor kerülnek sorra, ha a napi használat megkívánja.
+**The goal was:** remain usable unattended. How to operate it:
+[`operations.md`](operations.md). Itemised list in the
+[`CHANGELOG.md`](../CHANGELOG.md) M4 section.
 
-- **Szemantikus keresés.** A `chunk_embeddings` erre vár. Rank-fúzió az FTS mellé; a kutatás szerint az
-  FTS és vektor hibridje olcsó és gyors (~21 ms 50 ezer chunknál), a gráf-alapú memória viszont drága
-  és lassú. Lokális modell vagy szolgáltatás — utóbbi ellentmond a „semmi nem hagyja el a gépet"
-  elvnek, ezért csak kifejezett opt-innal.
-- **Több gép közti szinkron.** A case-fold bélyeg az M4-gyel bekerült (`meta.path_case_fold`), tehát
-  a másolt adatbázis már nem ad némán üres eredményt: a `cam doctor` és a `cam_status` megmondja, mi
-  a baj. Ami hiányzik, az a tényleges összefésülés két gép indexe között — az nem másolás, hanem
-  konfliktuskezelés.
-- **További eszközök**: Gemini CLI, Windsurf, Zed. A kollektor-interfész ehhez készült. A Gemini CLI
-  itt két külön dolog: az M5 óta *modellként* felismerjük (álom fázis), de *forrásként* nem — a
-  beszélgetéseit nem indexeljük.
-- **A melléktermékek bevonása a keresésbe.** Az `artifacts.inline_text` ma 264 sornyi másolt
-  scratchpad- és Cowork-tartalmat őriz, amit **semmi nem olvas** — a `cam recall` nem talál bele.
+The milestone conditions, measured:
 
----
+- **Sync runs unattended, and reports a failure with a non-zero exit code.**
+  A scheduling recipe for all four platforms
+  ([`operations.md`](operations.md)), and `--quiet`, which speaks on error
+  and otherwise stays silent. `--quiet` does not swallow the command's
+  *answer* — a `cam recall --json --quiet` that printed nothing would be a
+  trap.
+- **Every MCP response contains the index's age.** Not as a matter of
+  discipline: tool registration goes through a wrapper, so there is no way
+  to register a tool that omits it. It is on the error responses too.
+  Checked with a real stdio client on all seven tools
+  (`scripts/mcp-smoke.ts`).
+- **The database size is bounded: the retention rule measurably bites.**
+  `cam prune` on the trace, the run log, and sessions whose source vanished,
+  `cam prune --vacuum` for the space, `cam forget` for a project or session.
+  `--dry-run` gives the same numbers as the live run.
 
-## Amit nem csinálunk
+Five things that came out along the way:
 
-- Nem chat-kliens: a hub nem indít és nem folytat beszélgetést.
-- Sosem ír a forrás-tárolókba.
-- A beszélgetések tartalma nem megy felhőbe.
-- Nincs telemetria.
+- **`cam recall` citations could not be opened from the CLI.** The
+  `cam_get` MCP tool existed, its CLI counterpart did not — half of search
+  from a terminal was a dead end, and this only came out on real data, on a
+  "what did we last say about this" question, because the tests exercised
+  both surfaces separately and nobody looked at the asymmetry between them.
+  `cam get` fills this; the citation parser and the turn renderer moved into
+  the query layer so the two surfaces cannot diverge.
 
----
+- **`resolveFileEvents` was slow not because of resolution, but because of
+  writing.** The suspicion was the re-resolution of 6,064 paths; the reality
+  was that the old code issued 6,064 separate `UPDATE`s against the
+  `file_events` table, which had no index on the `resource` column — 6,064
+  full table scans over 34,567 rows. Measured on the reference machine's
+  index: **14,982 ms → 228 ms**. The index does most of it, the `path_keys`
+  cache the rest (804 ms → 128 ms for the whole phase). Repeat sync went
+  from ~26 s to ~4.6 s, of which ~3.5 s is attribution — the next bottleneck
+  is there, not here.
+- **Retention cannot delete everything that is old.** A promoted memory's
+  claim is that it can show when and on which questions it came up. If prune
+  emptied its `recall_events`, the claim would become false while the memory
+  stayed. So the evidence behind a live promotion stays regardless of age;
+  only demotion can let it go.
+- **A missing source is not enough reason to delete.** An unmounted external
+  drive looks exactly like a source that is gone for good. `missingDays` is
+  therefore `0` by default: off.
+- **`sync_runs.sources_synced` never counted sources, it counted sessions.**
+  The freshness report brought it out. The column stays (we do not delete
+  and do not rename), new runs write into `sessions_seen`.
 
-## Adatvédelem és megőrzés
-
-Ez az eszköz a felhasználó **teljes beszélgetés-történetét** indexeli, ezért érdemes pontosan tudni,
-mi kerül az adatbázisba.
-
-**Ami benne van:** locatorok (fájl és offset, vagy SQLite-kulcs), a teljes szövegű index (contentless
-FTS — invertált index, szöveg nélkül), metaadat (címek, időbélyegek, munkakönyvtárak),
-projekt-bizonyíték (fájlútvonalak), a múlandó melléktermékek inline másolata, és **a saját keresési
-kérdéseid szövege** (`memory_queries`) — az M3 óta, mert a promóció bizonyítékát meg kell tudni
-mutatni. Ez utóbbi kikapcsolható: a `recall` `logQuery: false`-szal csak a kérdés hashét írja fel.
-
-**Ami nincs benne:** a beszélgetések szövege. Az a forrásokban marad; a hub csak megtalálja.
-
-**Ami elhagyja a gépet:** alapból semmi; a mag nem hálózik. Egyetlen kivétel van, és az kifejezett
-opt-in: a `cam memory dream` a beállított modellnek elküldi a promotált részleteket. Nincs
-alapértelmezett modell, a `consolidate` sosem hívja, és a parancs **küldés előtt** kiírja, hány
-karakter megy ki és hova — `--quiet` mellett is. Amíg nem állítasz be modellt, ez a mondat úgy igaz,
-ahogy le van írva. Részletek: [`memory.md`](memory.md#az-álom-fázis-opcionális).
-
-**Törlés:** az egész index eldobható (`.data/hub.sqlite`), a forrásokat ez nem érinti. Szemcsésen:
-`cam forget --project <kulcs>` vagy `cam forget <tool:sessionId>` egy projektet vagy sessiont felejt
-el, `cam prune` pedig a régi keresési nyomot és a futásnaplót viszi. Mindkettő csak az indexből
-töröl — a beszélgetések fájljai máséi, és egy következő `cam sync` újraindexeli őket, ha még
-megvannak. Részletek: [`operations.md`](operations.md).
-
----
-
-## Ötödik eszköz bekötése
-
-1. Implementáld a `Collector` interfészt (`src/collectors/types.ts`). Minden út, adatbázis-nyitó és óra
-   a `CollectorCtx`-en át érkezik — a kollektor sosem hívja közvetlenül az `os.homedir()`-t.
-2. Vízjel: fájl alapú forrásnál `classifyFile`, verzió alapúnál `ext_version`. A cél, hogy a
-   változatlan forrás nulla olvasásba kerüljön.
-3. Locator, ne másolat: a turn a szöveg helyét tárolja, és a `Hydrator`-nak vissza kell tudnia olvasni.
-4. Bizonyíték: ha a forrásnak van munkakönyvtára, az a `cwd`; ha nincs, útvonalak a tartalomból
-   (`replaceEvidence`).
-5. Fixtúra: a tárolót **futásidőben** építsd fel a valódi DDL-lel (lásd `test/helpers/`), ne
-   commitolj bináris mintát — így a fixtúra nem sodródhat el az olvasó kódtól.
-6. Dokumentáld a formátumot és a buktatóit a [`sources.md`](sources.md)-ben.
+**One deliberate extension beyond the plan:** the case-fold stamp from
+Further directions went in. Without it `cam backup` produces a copy that
+silently finds nothing on another platform, and that is exactly the failure
+the appearance of the backup feature introduces.
 
 ---
 
-## Verziózás és migráció
+## M5 — Wiring ✅
 
-- **SemVer.** A séma és a CLI felülete a szerződés.
-- **Séma:** minden DDL feltételes létrehozás, tehát új tábla, index és trigger magától megjelenik.
-  Oszlopot csak a `src/db/migrate.ts` tud hozzáadni — additívan és idempotensen. Oszlopot **nem
-  törlünk** és nem nevezünk át; ha kell, újat veszünk fel.
-- **Attribúció:** a `rule_version` jelzi, ha a kaszkád szabályai változtak. A `cam doctor` kiírja az
-  eltérést, és a `cam reattribute` javítja — tároló-olvasás nélkül.
-- **Teljes újraindexelés** akkor és csak akkor kell, ha egy locator jelentése változik meg. Ilyenkor a
-  `cam sync --repair` a kijelölt út, és a CHANGELOG-ban külön ki kell mondani.
+**The goal was:** four clients' four kinds of configuration should not be on
+the user. How: [`install.md`](install.md). Itemised list in the
+[`CHANGELOG.md`](../CHANGELOG.md) Install section.
+
+This milestone was not in the plan, and its place is obvious anyway: M2
+achieved that the package is **installable** on someone else's machine, not
+that it actually gets used there. Between the two there are four config files
+to edit by hand, and that is exactly where an otherwise finished tool stops.
+
+The milestone conditions, measured:
+
+- **One command, and the server is in all four clients.** `--dry-run` prints
+  the same plan the live run would execute — from the same function, not a
+  separate branch. A second run prints `unchanged`, and does not make another
+  backup.
+- **Foreign configuration is not damaged.** Measured on a real Cursor
+  config: 10 servers → 11, the existing ones and the tokens in them
+  unchanged, a backup before the operation. In the Codex TOML the replace is
+  at the text level, so comments and formatting survive. A corrupt config is
+  not overwritten: the command names it, continues with the others, and
+  exits `1`.
+- **The wired command actually starts.** Checked with a real stdio client,
+  with the command line written into the config, on all seven tools
+  (`scripts/mcp-smoke.ts`).
+- **The schedule is not only registered, it also runs, and writes the right
+  index.** Registered from a global install, started by hand:
+  `LastTaskResult: 0`, and the run wrote 205 new turns into the user data
+  directory's index. The second `cam install` says `nothing to do`; run from
+  another copy it does not take the job over, but names the current owner
+  and exits. `cam uninstall` takes it down without a trace.
+- **The dream model only goes into the config if it answered.** The
+  installer sends a short prompt, and leaves the setting empty naming the
+  error if no reply came.
+
+Five things that came out along the way:
+
+- **The globally installed CLI did nothing, and exited zero.** The entry-
+  point check compared `import.meta.url` raw against `process.argv[1]`, but
+  Node returns the first with symlinks resolved. A Node version manager puts
+  a link exactly there (`C:\nvm\current` → `…\nvm\v22.21.1`), so the two
+  values never matched. From the checkout everything worked, the installed
+  copy was a silent no-op — and because the exit code was zero, as a
+  scheduled task this looked like a successful hourly run, with an empty
+  result. This bug came into use exactly with the install, and exactly on
+  the surface the test suite could not exercise: every test imports from
+  source, where there is no symlink in the path.
+
+- **Install from `npx` cannot be fixed, only refused.** The plan's entry
+  point was `npx github:...`, and both possible entries from there are a
+  lie: `npx` unpacks into the npm cache, which npm later collects, and puts
+  its own `node_modules/.bin` on the `PATH` for the duration of the run.
+  Measured: under `npm exec` the `_npx/<hash>/node_modules/.bin` really is
+  on the `PATH`, so a " `cam-mcp` is available, write it that way" decision
+  would pick exactly the worst option. This kind of failure does not show
+  up at install time, but weeks later, silently. The installer therefore
+  detects the temporary package directory, writes nothing, and suggests
+  `npm i -g`. The same argument also killed the bare `cam-mcp` entry for
+  durable installs: the client is not started by the installer's shell.
+
+- **`PATH` order is a bad tie-breaker.** A tool can be installed twice —
+  from npm and as a native release, at different versions — and on the
+  development machine the Codex behind the npm shim that stood in front was
+  the broken one. On Windows, moreover, an npm CLI is three files (`tool`,
+  `tool.cmd`, `tool.ps1`), and none of them is the program: since Node
+  18.20 it will not even start them without a shell. The search therefore
+  walks the whole `PATH`, reads through the launchers, and lands on either
+  a native executable or `node <script>`. Not cosmetics: what we write here
+  is later run by a scheduled task that has no shell and no `PATH`.
+- **The dream could feed itself back.** Codex and Claude Code write a
+  session file by default, which `cam` itself indexes — without this the
+  next sync would read the dream prompts, the next dream would summarise
+  them, and the index would slowly fill with its own reflection. Hence
+  `--ephemeral` and `--no-session-persistence` in every template where
+  `cam` has a collector for the tool. The same reason requires turning off
+  tool access: these are coding agents, and left to themselves they start
+  reading files for a question to which we just handed them the text.
+- **`appSupportDir` used the environment variable instead of the given
+  profile.** `APPDATA` and `XDG_CONFIG_HOME` describe the running process's
+  profile; called with another home they silently redirected back here. A
+  fixture-directed install would thus have written into the real Claude
+  Desktop config — the test brought it out, seeing Claude Desktop as
+  installed even in an empty temporary home.
+
+---
+
+## The dream phase — outside the plan, on purpose ✅
+
+The plan said a generative summary can only be an explicit opt-in. This is
+that.
+
+M3 explained why a model does not decide what goes into long-term memory: the
+measured failure mode is that an LLM-dependent pipeline simply stops
+producing (Codex's own failed on this machine on 17 of 58 jobs, and has been
+stopped since July). That argument is about the **decision**, not the
+description. What determinism cannot give is a sentence about what a recalled
+excerpt is about — `cam memory dream` writes that, and does nothing else: it
+does not promote, does not demote, writes no evidence table. How:
+[`memory.md`](memory.md#the-dream-phase-optional).
+
+What keeps this from contradicting the reasoning above:
+
+- **The core does not depend on it.** If you never run it, nothing is
+  missing; if it fails, nothing stops. Every error is recorded per memory,
+  the command exits non-zero, and it can be retried tomorrow.
+- **The model is configuration, not code.** Any command that reads a prompt
+  and writes text will do, so changing models is not a compile — and there
+  is no built-in provider it would connect to by default.
+- **The privacy claim did not get weaker, only more precise.** The command
+  prints before sending how many characters go out and where, even with
+  `--quiet`; `--dry-run` shows the exact prompt and starts nothing.
+- **Generated text is always labelled.** The model name is next to the dream
+  sentence in the output of `cam memory list`, `cam memory show`, and
+  `cam_memory`. Derived text, which can be wrong, and droppable at any time:
+  `cam memory dream forget`.
+
+---
+
+## M6 — Going public ✅
+
+**Done, because:** the repo is public, CI is green on all three platforms, and
+the `v0.5.0` release tarball installed on all three before it was created.
+
+This milestone was not in the plan, because the project was built for a single
+machine. Going public demands only two things, but both strictly: that
+nothing leave the author's machine, and that what we release we do not merely
+hope works.
+
+**Checkable condition:**
+
+- There is no real username, machine-specific path, project name, or data
+  file in the repo. Not by eye: `check-privacy.mjs` checks every CI run, and
+  fails if it finds one.
+- The tarball behind the tag installs on all three platforms, and the
+  installed copy **answers** (does not merely start).
+- The package has no source, test, or source map.
+- The version is the same in `package.json`, `SERVER_VERSION`, and the
+  changelog.
+- Install does not require a C++ compiler on any platform.
+
+**What we learned along the way:**
+
+- **The denylist writes itself out.** The first privacy check grepped for
+  the author's name and the real project names. In a public file that
+  publishes exactly the strings it wants to exclude. The usable version is
+  structural: every home-directory name has to **look like a placeholder**.
+  It does not list the bad cases, it describes the shape of the good case —
+  so it does not go stale, and does not leak.
+- **Cleaning the working tree is not enough.** The diffs of old commits
+  carry the same traces, and a `git grep $(git rev-list --all)` brings them
+  all up. At eight commits the cheapest and only complete solution is a new
+  public history that starts from a single commit.
+- **`cam --help` proves nothing.** The silent no-op found in M5 (the
+  entry-point check compared a resolved path to an unresolved one) would
+  have let the help through too. CI therefore requires that `cam status`
+  **print something** — a command that exits zero and stays silent can only
+  be caught that way.
+- **`npm link` is not an install.** The global test installs from a tarball,
+  because both `link` and `install -g .` link back to the checkout; such an
+  "install" says nothing about whether the package stands on its own.
+- **The first run found three bugs, and all three were on a platform I
+  could not run during development.** A Node 24 native crash in
+  `better-sqlite3` (11 → 13, N-API), a test that looked at the platform
+  instead of the setting, and a fixture that worked with an unresolved temp
+  directory where `/var` is a symlink. None of these would have come out of
+  "it works on my machine" — that is the whole justification of the matrix,
+  in a single run.
+- **A green step that proved nothing.** I put a second test run into CI
+  with path-folding reversed, and it was green — because the `env` of
+  `vitest.config.ts` overrode the shell's, so the same thing ran twice.
+  When after fixing the override it finally actually ran, 32 tests failed,
+  and none of them was a product bug: the suite deliberately pins the fold
+  so it is platform-independent, so it asserts literally lowercased paths.
+  I took the step out, I did not force it green — the fold is covered where
+  it makes sense (`normalizePath` with a parameter, both values).
+- **The second run found a bug that would have hit users too.** The native
+  dependency ships a prebuild for every platform, yet npm still runs the
+  built-in `node-gyp rebuild` on it; and node-gyp on Windows looks for
+  Visual Studio even when `binding.gyp` would produce an empty project. On
+  a machine without a compiler this fails the install on a compile that is
+  not needed. CI and the README both install with `--ignore-scripts` —
+  this would never have shown up on the local machine, because npm 11
+  blocks install scripts by default anyway.
+
+---
+
+## Further directions
+
+**These are not commitments.** They come up if daily use demands them.
+
+- **Semantic search.** `chunk_embeddings` is waiting for this. Rank fusion
+  next to FTS; the research says an FTS and vector hybrid is cheap and fast
+  (~21 ms at 50 thousand chunks), while graph-based memory is expensive and
+  slow. A local model or a service — the latter contradicts the "nothing
+  leaves the machine" principle, so only as an explicit opt-in.
+- **Sync across machines.** The case-fold stamp went in with M4
+  (`meta.path_case_fold`), so a copied database no longer returns a silent
+  empty result: `cam doctor` and `cam_status` say what is wrong. What is
+  missing is the actual merge between two machines' indexes — that is not
+  a copy, but conflict handling.
+- **Further tools**: Gemini CLI, Windsurf, Zed. The collector interface was
+  built for this. Gemini CLI is two separate things here: since M5 we
+  recognise it *as a model* (dream phase), but not *as a source* — we do
+  not index its conversations.
+- **Bringing artifacts into search.** `artifacts.inline_text` today holds
+  264 rows of copied scratchpad and Cowork content that **nothing reads** —
+  `cam recall` does not find into it.
+
+---
+
+## What we will not do
+
+- Not a chat client: the hub does not start and does not continue a conversation.
+- Never writes to the source stores.
+- Conversation content does not go to the cloud.
+- No telemetry.
+
+---
+
+## Privacy and retention
+
+This tool indexes the user's **entire conversation history**, so it is worth
+knowing exactly what goes into the database.
+
+**What is in it:** locators (file and offset, or an SQLite key), the full-text
+index (contentless FTS — an inverted index, without the text), metadata
+(titles, timestamps, working directories), project evidence (file paths), an
+inline copy of the volatile artifacts, and **the text of your own search
+queries** (`memory_queries`) — since M3, because the evidence behind a
+promotion has to be showable. The last of these can be turned off: `recall`
+with `logQuery: false` writes only the question hash.
+
+**What is not in it:** the text of the conversations. That stays in the
+sources; the hub only finds it.
+
+**What leaves the machine:** by default nothing; the core does not network.
+There is one exception, and it is an explicit opt-in: `cam memory dream` sends
+the promoted excerpts to the configured model. There is no default model,
+`consolidate` never calls it, and the command prints **before sending** how
+many characters go out and where — even with `--quiet`. Until you configure a
+model, this sentence is true as written. Details:
+[`memory.md`](memory.md#the-dream-phase-optional).
+
+**Deletion:** the whole index can be dropped (`.data/hub.sqlite`), this does
+not touch the sources. Granularly: `cam forget --project <key>` or
+`cam forget <tool:sessionId>` forgets a project or a session, and `cam prune`
+takes the old search trace and the run log. Both delete only from the index —
+the conversation files belong to someone else, and a later `cam sync`
+reindexes them if they are still there. Details:
+[`operations.md`](operations.md).
+
+---
+
+## Wiring a fifth tool
+
+1. Implement the `Collector` interface (`src/collectors/types.ts`). Every
+   path, database opener, and clock arrives through `CollectorCtx` — the
+   collector never calls `os.homedir()` directly.
+2. Watermark: `classifyFile` for a file-based source, `ext_version` for a
+   version-based one. The goal is that an unchanged source costs zero reads.
+3. Locator, not a copy: the turn stores the text's location, and the
+   `Hydrator` has to be able to read it back.
+4. Evidence: if the source has a working directory, that is the `cwd`; if
+   not, paths from the content (`replaceEvidence`).
+5. Fixture: build the store **at runtime** from the real DDL (see
+   `test/helpers/`), do not commit a binary sample — so the fixture cannot
+   drift from the reader code.
+6. Document the format and its traps in [`sources.md`](sources.md).
+
+---
+
+## Versioning and migration
+
+- **SemVer.** The schema and the CLI surface are the contract.
+- **Schema:** every DDL is a conditional create, so a new table, index, and
+  trigger appear on their own. A column can only be added by
+  `src/db/migrate.ts` — additively and idempotently. We **do not delete** a
+  column and do not rename one; if needed, we add a new one.
+- **Attribution:** `rule_version` signals when the cascade rules have
+  changed. `cam doctor` prints the drift, and `cam reattribute` fixes it —
+  without reading any store.
+- **A full reindex** is needed if and only if a locator's meaning changes.
+  Then `cam sync --repair` is the designated path, and it has to be said
+  separately in the CHANGELOG.

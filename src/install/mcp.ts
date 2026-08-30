@@ -46,8 +46,8 @@ export function ephemeralRoot(root = installRoot()): boolean {
 export class EphemeralInstallError extends Error {
   constructor(readonly root: string) {
     super(
-      `ideiglenes csomagmappából fut (${root}) — innen nem lehet tartós bekötést írni.\n` +
-        "Telepítsd előbb tartósan, aztán futtasd újra:  npm i -g centered-agent-memory && cam install",
+      `running from a temporary package directory (${root}) — cannot write a lasting install from here.\n` +
+        "Install it permanently first, then run again:  npm i -g centered-agent-memory && cam install",
     );
     this.name = "EphemeralInstallError";
   }
@@ -98,7 +98,7 @@ function detectIndent(text: string): string | number {
 
 export class ConfigParseError extends Error {
   constructor(file: string, detail: string) {
-    super(`nem értelmezhető konfiguráció: ${file} (${detail})`);
+    super(`unreadable configuration: ${file} (${detail})`);
     this.name = "ConfigParseError";
   }
 }
@@ -115,7 +115,7 @@ export function upsertJson(text: string, file: string, key: string, entry: Serve
   } else {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("nem objektum");
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
       doc = parsed as Record<string, unknown>;
     } catch (err) {
       throw new ConfigParseError(file, (err as Error).message);

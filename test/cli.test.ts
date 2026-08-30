@@ -157,7 +157,7 @@ describe("argument handling", () => {
     expect(await run(["recall", "--json", "arvizturo"])).toBe(EXIT_OK);
     const hits = JSON.parse(stdout()) as Array<{ snippet: string }>;
     expect(hits.length).toBeGreaterThan(0);
-    expect(stderr()).not.toContain("Használat");
+    expect(stderr()).not.toContain("Usage");
   });
 
   it("does not let --subagents swallow the project name", async () => {
@@ -176,13 +176,13 @@ describe("argument handling", () => {
   it("rejects an unknown flag instead of ignoring the typo", async () => {
     await seed();
     expect(await run(["recall", "--projct", "demo", "arvizturo"])).toBe(EXIT_USAGE);
-    expect(stderr()).toContain("ismeretlen kapcsoló: --projct");
+    expect(stderr()).toContain("unknown flag: --projct");
   });
 
   it("reports a value flag left without a value", async () => {
     await seed();
     expect(await run(["recall", "arvizturo", "--project"])).toBe(EXIT_USAGE);
-    expect(stderr()).toContain("--project kapcsoló értéket vár");
+    expect(stderr()).toContain("--project requires a value");
   });
 
   it("rejects a --limit that is not a positive integer", async () => {
@@ -238,7 +238,7 @@ describe("--limit", () => {
 describe("exit codes", () => {
   it("returns a usage code for an unknown subcommand", async () => {
     expect(await run(["szinkron"])).toBe(EXIT_USAGE);
-    expect(stderr()).toContain("Ismeretlen parancs");
+    expect(stderr()).toContain("Unknown command");
   });
 
   it("prints the help and succeeds when asked for it", async () => {
@@ -256,7 +256,7 @@ describe("exit codes", () => {
     fs.mkdirSync(path.dirname(roots.codexStateDb), { recursive: true });
     fs.writeFileSync(roots.codexStateDb, "ez nem sqlite fájl");
     expect(await run(["sync", "--tool", "codex"])).toBe(EXIT_FAILED);
-    expect(stderr()).toContain("hiba");
+    expect(stderr()).toContain("error");
   });
 
   it("succeeds on a sync with nothing to do", async () => {
@@ -282,9 +282,9 @@ describe("exit codes", () => {
     // Each collector reported for itself, so the run walked all of them
     // instead of stopping at the first absent store.
     for (const name of ["claude_code", "codex", "cowork", "cursor", "claude-desktop", "cursor-history", "artifacts"]) {
-      expect(stdout()).toMatch(new RegExp(`^${name}\\s+session:\\s*0\\b.*hiba:0`, "m"));
+      expect(stdout()).toMatch(new RegExp(`^${name}\\s+session:\\s*0\\b.*error:0`, "m"));
     }
-    expect(stderr()).not.toContain("HIBA");
+    expect(stderr()).not.toContain("ERROR");
 
     // And the run is on record as clean, which is what a scheduled sync reads.
     const last = withHub((db) => db.prepare("select errors, ended_ms from sync_runs order by id desc limit 1").get()) as {
@@ -306,7 +306,7 @@ describe("concurrency", () => {
         .run(JSON.stringify({ pid: process.ppid, host: os.hostname(), startedMs: Date.now(), what: "sync" })),
     );
     expect(await run(["sync", "--tool", "codex"])).toBe(EXIT_OK);
-    expect(stderr()).toContain("Már fut egy sync");
+    expect(stderr()).toContain("Already running: sync");
     // The first run's lock is left alone.
     const held = withHub((db) => db.prepare("select value from meta where key = 'sync_lock'").get());
     expect(held).toBeDefined();
@@ -340,7 +340,7 @@ describe("memory", () => {
   it("says plainly that there is nothing to show yet", async () => {
     await seed();
     expect(await run(["memory", "list"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("Nincs promotált emlék");
+    expect(stdout()).toContain("No promoted memories");
   });
 
   it("consolidates, lists, and shows a memory with its evidence", async () => {
@@ -348,7 +348,7 @@ describe("memory", () => {
     await trace();
 
     expect(await run(["memory", "consolidate"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("promotálva:");
+    expect(stdout()).toContain("promoted:");
 
     out = [];
     expect(await run(["memory", "list", "--json"])).toBe(EXIT_OK);
@@ -357,7 +357,7 @@ describe("memory", () => {
 
     out = [];
     expect(await run(["memory", "show", String(facts[0]!.id)])).toBe(EXIT_OK);
-    expect(stdout()).toContain("Bizonyíték");
+    expect(stdout()).toContain("Evidence");
     expect(stdout()).toContain("docker compose");
     expect(stdout()).toContain("árvíztűrő");
   });
@@ -419,7 +419,7 @@ describe("memory dream", () => {
   it("refuses to send anything until a model is configured", async () => {
     await promoted();
     expect(await run(["memory", "dream"])).toBe(EXIT_USAGE);
-    expect(stderr()).toContain("nincs beállítva");
+    expect(stderr()).toContain("none is configured");
     expect(dreams()).toBe(0);
   });
 
@@ -429,9 +429,9 @@ describe("memory dream", () => {
     configure(["cam-nincs-ilyen-parancs-xyz"]);
 
     expect(await run(["memory", "dream", "--dry-run"])).toBe(EXIT_OK);
-    expect(stderr()).toContain("karakter menne ki");
-    expect(stdout()).toContain("az első prompt");
-    expect(stdout()).toContain("Ne találj ki semmit");
+    expect(stderr()).toContain("characters would go out");
+    expect(stdout()).toContain("the first prompt");
+    expect(stdout()).toContain("Invent nothing");
     expect(dreams()).toBe(0);
   });
 
@@ -439,7 +439,7 @@ describe("memory dream", () => {
     await promoted();
     configure(["cam-nincs-ilyen-parancs-xyz"]);
     expect(await run(["memory", "dream", "--dry-run", "--quiet"])).toBe(EXIT_OK);
-    expect(stderr()).toContain("karakter menne ki");
+    expect(stderr()).toContain("characters would go out");
   });
 
   it("writes a digest, names its author, and does not pay for it twice", async () => {
@@ -470,7 +470,7 @@ describe("memory dream", () => {
     await promoted();
     configure([process.execPath, "-e", "process.exit(3)"]);
     expect(await run(["memory", "dream"])).toBe(EXIT_FAILED);
-    expect(stderr() + stdout()).toContain("3 kóddal");
+    expect(stderr() + stdout()).toContain("exited with code 3");
     expect(dreams()).toBe(0);
   });
 
@@ -483,7 +483,7 @@ describe("memory dream", () => {
     out = [];
     err = [];
     expect(await run(["memory", "dream", "forget"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("álom törölve");
+    expect(stdout()).toContain("dream(s) dropped");
     expect(dreams()).toBe(0);
     expect(withHub((db) => (db.prepare("select count(*) c from memory_facts").get() as { c: number }).c)).toBeGreaterThan(0);
   });
@@ -537,8 +537,8 @@ describe("every command", () => {
       out = [];
       err = [];
       expect(await run(c.argv)).toBe(c.exit ?? EXIT_OK);
-      expect(stderr()).not.toContain("Ismeretlen parancs");
-      expect(stderr()).not.toContain("Használat:");
+      expect(stderr()).not.toContain("Unknown command");
+      expect(stderr()).not.toContain("Usage:");
     });
   }
 
@@ -593,11 +593,11 @@ describe("get", () => {
   it("separates a malformed citation from one that simply is not there", async () => {
     await seed();
     expect(await run(["get", "ez-nem-hivatkozás"])).toBe(EXIT_USAGE);
-    expect(stderr()).toContain("Értelmezhetetlen hivatkozás");
+    expect(stderr()).toContain("Unreadable citation");
 
     err = [];
     expect(await run(["get", "claude_code:00000000-0000-0000-0000-000000000000"])).toBe(EXIT_FAILED);
-    expect(stderr()).toContain("Nincs ilyen session");
+    expect(stderr()).toContain("No such session");
   });
 
   it("says which turn lost its source instead of dropping it", async () => {
@@ -605,7 +605,7 @@ describe("get", () => {
     fs.rmSync(path.join(roots.claudeProjects, "C--work-demo", `${SID}.jsonl`));
     expect(await run(["get", `claude_code:${SID}`])).toBe(EXIT_OK);
     expect(stdout()).toContain("(missing)");
-    expect(stdout()).toContain("[forrás hiányzik]");
+    expect(stdout()).toContain("[source missing]");
   });
 });
 
@@ -613,7 +613,7 @@ describe("status", () => {
   it("admits that a never-synced index has no age", async () => {
     await seed();
     expect(await run(["status"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("még nem futott végig");
+    expect(stdout()).toContain("no finished run yet");
   });
 
   it("reports the age of the last finished sync", async () => {
@@ -660,11 +660,11 @@ describe("prune", () => {
   it("reclaims the file's free space only when asked", async () => {
     await seed();
     expect(await run(["prune"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("a helyet a --vacuum adja vissza");
+    expect(stdout()).toContain("--vacuum reclaims the space");
 
     out = [];
     expect(await run(["prune", "--vacuum"])).toBe(EXIT_OK);
-    expect(stdout()).toMatch(/méret: .* MB → .* MB/);
+    expect(stdout()).toMatch(/size: .* MB → .* MB/);
   });
 
   it("rejects a retention setting that is not a number", async () => {
@@ -685,7 +685,7 @@ describe("forget", () => {
     ).loc_path;
 
     expect(await run(["forget", "--project", "demo"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("elfelejtve");
+    expect(stdout()).toContain("forgotten");
     expect(fs.existsSync(file)).toBe(true);
 
     out = [];
@@ -708,7 +708,7 @@ describe("forget", () => {
   it("fails on something that is not in the index", async () => {
     await seed();
     expect(await run(["forget", "--project", "nincs-ilyen"])).toBe(EXIT_FAILED);
-    expect(stderr()).toContain("Nincs ilyen projekt");
+    expect(stderr()).toContain("No such project");
   });
 });
 
@@ -754,7 +754,7 @@ describe("output level", () => {
     fs.writeFileSync(roots.codexStateDb, "ez nem sqlite fájl");
     expect(await run(["sync", "--tool", "codex", "--quiet"])).toBe(EXIT_FAILED);
     expect(stdout()).toBe("");
-    expect(stderr()).toContain("hiba");
+    expect(stderr()).toContain("error");
   });
 
   it("never swallows the answer, which is what the command was run for", async () => {
@@ -765,8 +765,8 @@ describe("output level", () => {
 
   it("adds per-phase detail under --verbose", async () => {
     expect(await run(["sync", "--tool", "codex", "--verbose"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("hozzárendelés");
-    expect(stdout()).toContain("útvonal-gyorsítótár");
+    expect(stdout()).toContain("attribution");
+    expect(stdout()).toContain("path-cache");
   });
 
   it("does not carry a level over to the next command", async () => {
@@ -774,7 +774,7 @@ describe("output level", () => {
     expect(await run(["projects", "--quiet"])).toBe(EXIT_OK);
     out = [];
     expect(await run(["projects"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("projekt nélkül");
+    expect(stdout()).toContain("with no project");
   });
 
   it("refuses to be both quiet and verbose", async () => {
@@ -786,14 +786,14 @@ describe("doctor", () => {
   it("reports a healthy hub", async () => {
     await seed();
     expect(await run(["doctor"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("integritás        ok");
+    expect(stdout()).toContain("integrity         ok");
     expect(stdout()).toContain("fts: ok");
   });
 
   it("diagnoses a damaged file instead of throwing a stack trace", async () => {
     fs.writeFileSync(dbPath, "SQLite format 3 ez nem az\u0000" + "x".repeat(4096));
     expect(await run(["doctor"])).toBe(EXIT_FAILED);
-    expect(stderr()).toMatch(/sérült|nem nyitható/);
+    expect(stderr()).toMatch(/corrupt|cannot be opened/);
     expect(stderr()).not.toContain("at Object.");
   });
 
@@ -814,7 +814,7 @@ describe("rebuild", () => {
 
     out = [];
     expect(await run(["rebuild"])).toBe(EXIT_OK);
-    expect(stdout()).toContain("újraindexelve");
+    expect(stdout()).toContain("reindexed");
 
     out = [];
     expect(await run(["recall", "--json", "arvizturo"])).toBe(EXIT_OK);
@@ -835,7 +835,7 @@ describe("rebuild", () => {
     const p = withHub((db) => db.prepare("select distinct loc_path from turns").get()) as { loc_path: string };
     fs.rmSync(p.loc_path);
     expect(await run(["rebuild"])).toBe(EXIT_OK);
-    expect(stdout()).toMatch(/hiányzó: [1-9]/);
+    expect(stdout()).toMatch(/missing: [1-9]/);
     // The turns learned about it, so a later query is honest about the gap.
     const missing = withHub(
       (db) => db.prepare("select count(*) c from turns where availability = 'missing'").get() as { c: number },

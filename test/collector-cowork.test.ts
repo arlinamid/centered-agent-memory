@@ -289,6 +289,6 @@ describe("artifacts collector", () => {
     // Counted rather than swallowed, so `cam sync` says so instead of quietly
     // reporting that there are no plans.
     expect(stat.errors).toBe(1);
-    expect(h.logs.some((l) => l.includes("nem olvasható"))).toBe(true);
+    expect(h.logs.some((l) => l.includes("unreadable"))).toBe(true);
   });
 });

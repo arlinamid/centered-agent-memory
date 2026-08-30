@@ -118,5 +118,5 @@ export function acquireLock(
 
 export function describeHolder(h: LockHolder, nowMs = Date.now()): string {
   const age = Math.max(0, Math.round((nowMs - h.startedMs) / 1000));
-  return `pid ${h.pid} @ ${h.host || "?"}, ${age} s óta`;
+  return `pid ${h.pid} @ ${h.host || "?"}, for ${age}s`;
 }

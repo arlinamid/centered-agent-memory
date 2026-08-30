@@ -39,7 +39,7 @@ const T0 = Date.parse("2026-08-01T10:00:00.000Z");
 function fakeModel(behaviour: "echo" | "fail" | "empty" | "slow"): string[] {
   const file = path.join(scriptDir, `${behaviour}.mjs`);
   const bodies = {
-    echo: 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write("ÁLOM: "+s.split("--- részlet ---")[1].trim().slice(0,40))});',
+    echo: 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write("ÁLOM: "+s.split("--- excerpt ---")[1].trim().slice(0,40))});',
     fail: 'process.stderr.write("a modell nem elérhető\\n");process.exit(3);',
     empty: 'process.stdin.on("data",()=>{}).on("end",()=>process.stdout.write("   "));',
     slow: "setTimeout(()=>process.stdout.write('késő'), 5000);",
@@ -109,7 +109,7 @@ describe("configuration", () => {
   it("takes any command: the model is configuration, not code", async () => {
     const provider = commandProvider({ provider: "command", model: "teszt-modell", command: fakeModel("echo") });
     expect(provider.model).toBe("teszt-modell");
-    expect(await provider.generate("--- részlet ---\nvalami szöveg")).toContain("ÁLOM:");
+    expect(await provider.generate("--- excerpt ---\nvalami szöveg")).toContain("ÁLOM:");
   });
 });
 
@@ -118,7 +118,8 @@ describe("the prompt", () => {
     const fact = listFacts(h.hub)[0]!;
     const prompt = buildPrompt(fact, ["docker compose", "arvizturo"], 4000);
     expect(prompt).toContain(`[cam-dream v${PROMPT_VERSION}`);
-    expect(prompt).toContain("Ne találj ki semmit");
+    expect(prompt).toContain("Invent nothing");
+    expect(prompt).toContain("--- excerpt ---");
     expect(prompt).toContain("docker compose");
     expect(prompt).toContain("árvíztűrő");
   });
@@ -187,7 +188,7 @@ describe("generating", () => {
     const stat = await runDream(h.hub, { config: config("fail"), nowMs: T0 });
     expect(stat.generated).toBe(0);
     expect(stat.failed).toBeGreaterThan(0);
-    expect(stat.errors[0]).toContain("3 kóddal");
+    expect(stat.errors[0]).toContain("exited with code 3");
     expect(memoryStatus(h.hub).dreams).toBe(0);
 
     // Nothing was cached, so tomorrow's run tries again.
@@ -204,7 +205,7 @@ describe("generating", () => {
   it("gives up on a model that hangs", async () => {
     const stat = await runDream(h.hub, { config: config("slow", { timeoutMs: 300 }), nowMs: T0 });
     expect(stat.failed).toBeGreaterThan(0);
-    expect(stat.errors[0]).toContain("időtúllépés");
+    expect(stat.errors[0]).toContain("timed out");
   });
 
   it("never touches the evidence or the promotions", async () => {
@@ -231,8 +232,8 @@ describe("presentation", () => {
 
     const found = getFact(h.hub, facts[0]!.id)!;
     const out = formatMemoryFact(found.fact, found.evidence);
-    expect(out).toContain("Álom — teszt-modell írta, nem a forrás");
-    expect(out).toContain("## Szöveg"); // the source is still shown, unaltered
+    expect(out).toContain("Dream — written by teszt-modell, not the source");
+    expect(out).toContain("## Text"); // the source is still shown, unaltered
     expect(out).toContain("árvíztűrő");
   });
 });

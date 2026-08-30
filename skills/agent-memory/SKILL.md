@@ -1,90 +1,103 @@
 ---
 name: agent-memory
 description: >-
-  Korábbi beszélgetések előhívása a felhasználó másik AI-eszközeiből (Claude Code, Claude
-  Desktop, Codex, Cursor). Használd, mielőtt egy projekt előzményeiről kérdeznél vagy
-  feltételeznél valamit, és akkor, ha a felhasználó egy korábbi döntésre, megbeszélésre vagy
-  megoldásra hivatkozik: „ahogy megbeszéltük”, „a múltkori”, „amit a Codexszel csináltunk”.
+  Recall earlier conversations from the user's other AI tools (Claude Code, Claude Desktop,
+  Codex, Cursor). Use before asking about or assuming a project's history, and when the user
+  refers to a prior decision, discussion or fix: "as we discussed", "the earlier one", "what
+  we did with Codex".
 ---
-# Korábbi beszélgetések előhívása
+# Recalling earlier conversations
 
-A `cam` index a felhasználó **másik AI-eszközeivel** folytatott beszélgetéseiről: Claude Code,
-Claude Desktop / Cowork, Codex és Cursor. Csak olvas, egyik eszköz tárolóját sem módosítja.
+The `cam` index holds conversations the user had with their **other AI tools**:
+Claude Code, Claude Desktop / Cowork, Codex and Cursor. It is read-only and
+does not modify any of those stores.
 
-Ebben a beszélgetésben nem látod, mit csinált a felhasználó tegnap egy másik eszközzel. Az index
-látja. Ez a különbség a „nem tudom, kérdezzük meg" és a „megnézem" között.
+In this conversation you cannot see what the user did yesterday in another
+tool. The index can. That is the difference between "I don't know, let's ask"
+and "I'll look it up".
 
-## Mikor nyúlj hozzá
+## When to use it
 
-Kérdezés vagy feltételezés **előtt**:
+**Before** asking or assuming:
 
-- Ismeretlen projektben kezdesz dolgozni → `dossier`, mielőtt bármit állítanál róla.
-- A felhasználó úgy hivatkozik valamire, mintha tudnád: „ahogy megbeszéltük", „a múltkori
-  megoldás", „amit a Codexszel csináltunk" → `recall` a szavaira.
-- Azt akarod kérdezni, „csináltuk-e már ezt" vagy „miért így van ez" → először nézd meg.
-- Egy döntés indoklása kell, és a kódban nincs benne → `recall`, majd `get` a találatra.
+- Starting work in an unfamiliar project → `dossier` before claiming anything
+  about it.
+- The user refers to something as if you already know: "as we discussed",
+  "the earlier fix", "what we did with Codex" → `recall` their words.
+- You are about to ask "have we done this" or "why is it this way" → look first.
+- You need the reason for a decision and it is not in the code → `recall`,
+  then `get` the hit.
 
-Ne használd, ha a válasz a nyitott fájlokban vagy a repóban ott van. Az index a **múltról** tud,
-nem a jelen munkaterületről.
+Do not use it when the answer is in the open files or the repository. The
+index knows about the **past**, not the current workspace.
 
-## Munkamenet
+## Workflow
 
-1. **`projects`** — melyik projektkulcsokat ismeri az index. A kulcs mappanévből jön, nem
-   feltétlenül az, aminek hívod.
-2. **`dossier <projekt>`** — eszközönkénti számok, időtartomány, legnagyobb sessionök, legutóbbi
-   témák. Egy hívás, és tudod, mi történt eddig.
-3. **`recall "<kérdés>"`** — teljes szövegű keresés. Ékezetre érzéketlen (`arvizturo` megtalálja az
-   `árvíztűrő`-t), az 5 betűnél hosszabb szavak prefixként illeszkednek, tehát a magyar toldalékolás
-   nem akadály. Szűkíts `project`-tel, ha tudod, melyik projektről van szó.
-4. **`get <hivatkozás>`** — a találat teljes szövege. A `recall` `tool:sessionId#seqN-M` alakú
-   hivatkozást ad; ezt add vissza változtatás nélkül.
-5. **`timeline <projekt>`** — időrend, ha az érdekel, mi mikor történt, nem az, hogy mi hangzott el.
+1. **`projects`** — which project keys the index knows. The key comes from a
+   folder name and is not necessarily what you call the project.
+2. **`dossier <project>`** — per-tool counts, date range, largest sessions,
+   recent topics. One call, and you know what happened so far.
+3. **`recall "<query>"`** — full-text search. Accent-insensitive
+   (`arvizturo` finds `árvíztűrő`); words longer than 5 letters match as a
+   prefix, so inflection is not a barrier. Narrow with `project` when you
+   know which project it is.
+4. **`get <citation>`** — the full text of a hit. `recall` returns a
+   `tool:sessionId#seqN-M` citation; pass it back unchanged.
+5. **`timeline <project>`** — chronological order, when you care about when
+   something happened rather than what was said.
 
-A `memory` külön dolog: azt adja vissza, ami a **korábbi kereséseidben** többször, több napon,
-többféle kérdésre előjött, a promóció bizonyítékával együtt. Nem összefoglaló, hanem nyom.
+`memory` is a different thing: it returns what **your earlier searches**
+brought up more than once, across days and questions, with the promotion
+evidence. It is a trail, not a summary.
 
-## Amit a válaszokból ki kell olvasnod
+## How to read the answers
 
-**Megbízhatóság.** Minden találat mellett ott a projekt-hozzárendelés erőssége: `strong` (a session
-munkakönyvtárából vagy a beszélgetésben szereplő útvonalakból), `medium` (fájlszerkesztési
-idő-korrelációból), `weak` (ugyanaz, kevés bizonyítékkal, alapból szűrve), `none`. A `medium` és a
-`weak` tévedhet — ha egy ilyen találatra hivatkozol, mondd meg, hogy időbeli egybeesés alapján
-tartozik a projekthez.
+**Confidence.** Every hit carries a project-attribution strength: `strong`
+(from the session working directory or paths mentioned in the conversation),
+`medium` (from overlapping file-edit times), `weak` (the same, thin evidence,
+filtered by default), `none`. `medium` and `weak` can be wrong — if you cite
+one, say it belongs to the project by time overlap.
 
-**Forrás-állapot.** Az index hivatkozásokat tárol, nem másolatokat, és a szöveget lekérdezéskor
-olvassa vissza. Ha a forrás azóta megváltozott (`stale`) vagy eltűnt (`missing`), a válasz ezt
-kiírja. Ne add tovább változatlanként.
+**Source state.** The index stores locators, not copies, and re-reads the text
+at query time. If the source has changed (`stale`) or vanished (`missing`),
+the answer says so. Do not pass it on as unchanged.
 
-**Az index kora.** Minden válasz utolsó sora megmondja, mikor szinkronizált utoljára az index. Ha
-`ELAVULT`-ot ír, akkor az azóta folytatott beszélgetések **nincsenek benne**. Ilyenkor mondd meg a
-felhasználónak, és javasold a `cam sync`-et — ne idézd a régi adatot frissként.
+**Index age.** The last line of every answer says when the index last synced.
+If it says `STALE`, conversations since then are **not in it**. Tell the user,
+and suggest `cam sync` — do not quote old data as current.
 
-**Generált mondat.** Ha egy emlék mellett `[modellnév]` jelölésű mondat áll, azt egy modell írta a
-részletről, nem a felhasználó mondta. Forrásként ne idézd.
+**Generated sentence.** If a memory is followed by a sentence tagged
+`[model-name]`, a model wrote that about the excerpt; the user did not say it.
+Do not quote it as a source.
 
-## Idézés
+## Citation
 
-Mindig add meg a hivatkozást, amit a keresés adott, és mondd meg, melyik eszközből és mikorról való:
+Always include the citation the search returned, and say which tool and when
+it is from:
 
-> A Docker-portot 3000-ről 80-ra a júniusi Cursor-beszélgetésben állítottátok át
+> You moved the Docker port from 3000 to 80 in the June Cursor conversation
 > (`cursor:9f2a…#seq12-18`, 2025-06-07).
 
-Ha nincs találat, mondd ki, hogy nincs. Az index hiánya nem bizonyítja, hogy a dolog nem történt meg
-— lehet, hogy egy nem indexelt eszközben van, vagy a session projekt nélkül maradt
-(`projects --unattributed`).
+If there is no hit, say so. An empty index does not prove the thing never
+happened — it may live in a tool that is not indexed, or the session may have
+no project (`projects --unattributed`).
 
-## Amit ne csinálj
+## What not to do
 
-- **Ne írj bele.** Nincs író művelet, és a forrásokat sem szabad módosítani.
-- **Ne keresd végig találomra.** Egy `dossier` többet mond három vaktában lőtt `recall`-nál.
-- **Ne másold ki tömegével a régi beszélgetéseket a válaszodba.** Hivatkozz, és a lényeget írd le.
-- **Ne feltételezd, hogy a felhasználó emlékszik rá.** Ha a múltból idézel, mondd meg, honnan.
+- **Do not write.** There is no write operation, and the source stores must
+  not be modified.
+- **Do not search at random.** One `dossier` says more than three blind
+  `recall`s.
+- **Do not dump old conversations into the reply.** Cite, and write the point.
+- **Do not assume the user remembers.** If you quote the past, say where
+  from.
 
-## Ez a felület
+## This surface
 
-Az `cam_*` MCP-toolok mellett ugyanez a terminálból is megvan, ha a `cam` a PATH-on van:
-`cam projects`, `cam dossier <projekt>`, `cam recall "<kérdés>"`, `cam get <hivatkozás>`,
-`cam timeline <projekt>`, `cam memory list`. Mindegyik ért `--json`-t. A renderelés közös, tehát
-ugyanazt kapod, mint a toolokból.
+The `cam_*` MCP tools are also available from the terminal if `cam` is on PATH:
+`cam projects`, `cam dossier <project>`, `cam recall "<query>"`, `cam get <citation>`,
+`cam timeline <project>`, `cam memory list`. Each accepts `--json`. Rendering is shared,
+so you get the same text as from the tools.
 
-Ha az index elavult, a `cam sync` frissíti. Ez az egyetlen írási művelet, és csak az indexet írja.
+If the index is stale, `cam sync` refreshes it. That is the only write, and it writes
+only the index.

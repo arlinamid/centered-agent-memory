@@ -214,7 +214,7 @@ describe("promotion", () => {
     fs.rmSync(path);
     const after = getFact(h.hub, id)!.fact;
     expect(after.availability).toBe("missing");
-    expect(after.text).toContain("forrás hiányzik");
+    expect(after.text).toContain("source missing");
   });
 
   it("takes a promotion back when the trace stops clearing the gates", () => {

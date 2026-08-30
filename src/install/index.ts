@@ -73,7 +73,7 @@ function editFor(target: ClientTarget, entry: ServerEntry, remove: boolean): Edi
         : upsertToml(text, `mcp_servers.${SERVER_KEY}`, entry);
     default: {
       const never: never = target.mcpFormat;
-      throw new Error(`ismeretlen formátum: ${String(never)}`);
+      throw new Error(`unknown format: ${String(never)}`);
     }
   }
 }

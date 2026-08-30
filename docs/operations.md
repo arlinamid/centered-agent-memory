@@ -1,53 +1,59 @@
-# Üzemeltetés
+# Operations
 
-Hogyan fut ez felügyelet nélkül: ütemezés, frissesség, megőrzés, mentés.
+How this runs unattended: scheduling, freshness, retention, backup.
 
-Az eszköz akkor ér valamit, ha reggelre magától naprakész. Ez a szakasz azt írja le, hogyan éri el ezt
-mind a négy platformon, honnan tudod meg, ha elromlott, és mit kell csinálni azzal, hogy az adatbázis
-egyébként örökké nőne.
+The tool is worth something if it is current by morning on its own. This
+section describes how it gets there on all four platforms, how you find out
+when it has broken, and what to do about the fact that the database would
+otherwise grow forever.
 
-## A napi futás
+## The daily run
 
-Három parancs, ebben a sorrendben. Mindegyik idempotens, és mindegyik önmagában is futtatható.
+Three commands, in this order. Each is idempotent, and each can be run on its
+own.
 
 ```bash
-cam sync --quiet                # források beolvasása (inkrementális)
-cam memory consolidate --quiet  # az előhívási nyomból promóció
-cam prune --quiet               # megőrzési szabály
+cam sync --quiet                # read the sources (incremental)
+cam memory consolidate --quiet  # promotion from the recall trace
+cam prune --quiet               # retention rule
 ```
 
-A `--quiet` azt jelenti, hogy **hiba esetén beszél, egyébként hallgat** — ez teszi olvashatóvá egy
-ütemezett feladat naplóját. Amit a `--quiet` sosem nyel el: a parancs válaszát (a `cam recall --json`
-kimenetét például nem) és a hibaüzeneteket.
+`--quiet` means it **speaks on error, otherwise stays silent** — that is what
+makes a scheduled task's log readable. What `--quiet` never swallows: the
+command's answer (the output of `cam recall --json`, for example) and error
+messages.
 
-Kilépési kód a szerződés:
+Exit code is the contract:
 
-| kód | mit jelent | mit csinálj |
+| code | what it means | what to do |
 |---|---|---|
-| `0` | rendben | semmit |
-| `1` | hiba — egy forrás nem volt olvasható, vagy az adatbázis sérült | nézd meg a `stderr`-t, majd `cam doctor` |
-| `2` | hibás használat (elgépelt kapcsoló) | javítsd a parancssort |
+| `0` | ok | nothing |
+| `1` | failure — a source could not be read, or the database is corrupt | look at `stderr`, then `cam doctor` |
+| `2` | bad usage (mistyped flag) | fix the command line |
 
-Egy összeomlott vagy megölt futás nem wedge-eli be a hubot: a zár egy óra után elévül, és két egyidejű
-`cam sync` közül a második kilép `0`-val, mert a másik épp elvégzi a munkát.
+A crashed or killed run does not wedge the hub: the lock expires after an hour,
+and of two concurrent `cam sync` runs the second exits `0`, because the other
+one is doing the work.
 
-Mennyi ideig tart: a referenciagépen egy változatlan korpusz ismételt szinkronja ~4,6 s, ebből ~3,5 s a
-hozzárendelés. Az első futás egy új gépen ennél sokkal hosszabb.
+How long it takes: on the reference machine a repeat sync of an unchanged
+corpus is ~4.6 s, of which ~3.5 s is attribution. The first run on a new
+machine is much longer than that.
 
-## Ütemezés
+## Scheduling
 
-A `cam install` mindezt felveszi magától, a platformnak megfelelő módon — óránkénti szinkron,
-éjszakai karbantartás —, és a `cam uninstall` leszedi; lásd [`install.md`](install.md#ütemezés). Az
-alábbi receptek azt írják le, mit csinál, és hogyan állítsd be kézzel, ha másképp akarod.
+`cam install` registers all of this on its own, in the way the platform
+expects — hourly sync, nightly maintenance — and `cam uninstall` takes it
+down; see [`install.md`](install.md#scheduling). The recipes below describe
+what it does, and how to set it up by hand if you want it differently.
 
 ### Windows — Task Scheduler
 
-Óránként, bejelentkezett felhasználóként. Ablak nélkül futtatjuk, mert egy óránként felvillanó
-konzolablak fél nap alatt elviselhetetlen:
+Hourly, as the logged-in user. We run it without a window, because a console
+window flashing every hour becomes unbearable within half a day:
 
 ```powershell
-# A cam a PATH-on egy .cmd shim, amit a node nem tud szkriptként futtatni; a
-# feladatnak a mögötte lévő JS-t kell megadni. Az útvonalat a cam doctor kiírja.
+# cam on the PATH is a .cmd shim that node cannot run as a script; the
+# task has to be given the JS behind it. cam doctor prints the path.
 $cam  = "$env:APPDATA\npm\node_modules\centered-agent-memory\dist\cli.js"
 $node = (Get-Command node).Source
 $action  = New-ScheduledTaskAction -Execute $node `
@@ -59,20 +65,21 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
             -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName "cam-sync" -Action $action -Trigger $trigger `
-  -Settings $settings -Description "Centered Agent Memory: beszélgetés-index frissítése"
+  -Settings $settings -Description "Centered Agent Memory: refresh the conversation index"
 ```
 
-`-StartWhenAvailable` a lényeg: enélkül egy alvó gép kihagyott futása egyszerűen elvész.
-`-MultipleInstances IgnoreNew` ugyanazt teszi, amit a hub zárja, csak egy réteggel feljebb.
+`-StartWhenAvailable` is the point: without it a sleeping machine's missed run
+is simply lost. `-MultipleInstances IgnoreNew` does the same thing the hub
+lock does, one layer up.
 
-Ellenőrzés és napló:
+Check and log:
 
 ```powershell
-Get-ScheduledTaskInfo -TaskName "cam-sync"   # LastRunTime, LastTaskResult (0 = rendben)
-Start-ScheduledTask   -TaskName "cam-sync"   # futtasd most
+Get-ScheduledTaskInfo -TaskName "cam-sync"   # LastRunTime, LastTaskResult (0 = ok)
+Start-ScheduledTask   -TaskName "cam-sync"   # run it now
 ```
 
-Napi karbantartás külön feladatként, hajnalra:
+Daily maintenance as a separate task, for the small hours:
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute $node -Argument "`"$cam`" prune --quiet"
@@ -106,11 +113,11 @@ Register-ScheduledTask -TaskName "cam-prune" -Action $action `
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.arlinamid.cam.sync.plist
-launchctl kickstart -p gui/$(id -u)/io.github.arlinamid.cam.sync   # futtasd most
+launchctl kickstart -p gui/$(id -u)/io.github.arlinamid.cam.sync   # run it now
 ```
 
-A `cam` teljes útvonalát írd bele: a launchd környezetében nincs shell-profil, tehát nincs `PATH` sem.
-`which cam` megmondja, hova települt.
+Write the full path of `cam` into it: a launchd environment has no shell
+profile, so no `PATH` either. `which cam` says where it was installed.
 
 ### Linux — systemd timer
 
@@ -118,7 +125,7 @@ A `cam` teljes útvonalát írd bele: a launchd környezetében nincs shell-prof
 
 ```ini
 [Unit]
-Description=Centered Agent Memory: beszélgetés-index frissítése
+Description=Centered Agent Memory: refresh the conversation index
 
 [Service]
 Type=oneshot
@@ -129,7 +136,7 @@ ExecStart=%h/.local/bin/cam sync --quiet
 
 ```ini
 [Unit]
-Description=cam sync óránként
+Description=cam sync hourly
 
 [Timer]
 OnBootSec=5min
@@ -147,73 +154,77 @@ systemctl --user list-timers cam-sync.timer
 journalctl --user -u cam-sync.service -n 50
 ```
 
-A `Persistent=true` a `-StartWhenAvailable` megfelelője: a kikapcsolt gép alatt kimaradt futás a
-következő indításkor bepótlódik.
+`Persistent=true` is the equivalent of `-StartWhenAvailable`: a run missed
+while the machine was off is made up on the next start.
 
-Ha a gép nem marad bejelentkezve, `loginctl enable-linger $USER` kell hozzá, különben a user-timerek
-kilépéskor leállnak.
+If the machine does not stay logged in, `loginctl enable-linger $USER` is
+needed, otherwise the user timers stop on logout.
 
-### Bárhol — cron
+### Anywhere — cron
 
 ```cron
-# m  h  dom mon dow  parancs
+# m  h  dom mon dow  command
   17 *  *   *   *    /home/me/.local/bin/cam sync --quiet
   40 4  *   *   *    /home/me/.local/bin/cam memory consolidate --quiet && /home/me/.local/bin/cam prune --quiet
   10 5  *   *   0    /home/me/.local/bin/cam backup --quiet
 ```
 
-A cronnak minimális `PATH`-a van, ezért teljes útvonalat írj. A `--quiet` miatt csak akkor kapsz
-levelet, ha tényleg történt valami — ez a különbség aközött, hogy elolvasod-e a cron-levelet vagy sem.
+cron has a minimal `PATH`, so write a full path. Because of `--quiet` you only
+get mail when something actually happened — that is the difference between
+reading the cron mail and not.
 
-## Frissesség
+## Freshness
 
-A hosszú távú kockázat nem az, hogy az index elromlik, hanem hogy csendben megáll, és az ágens hetekkel
-későbbi kérdésekre régi adatból válaszol abban a hitben, hogy friss.
+The long-term risk is not that the index breaks, but that it stops silently,
+and the agent answers questions weeks later from old data in the belief that
+it is current.
 
-Ezért **minden MCP-válasz utolsó sorában** ott az index kora:
+That is why **the last line of every MCP response** carries the index's age:
 
 ```
-— index: 2026-08-29 17:37 UTC (1 perce) · 1643 session · 32054 turn
+— index: 2026-08-29 17:37 UTC (1 min ago) · 1643 session · 32054 turn
 ```
 
-Ha az index a küszöbnél régebbi, a sor `ELAVULT, futtasd: cam sync`-et ír, és a szerver instrukciója
-megmondja az ágensnek, hogy ilyenkor szóljon a felhasználónak, ne pedig idézze a régi adatot frissként.
-Ugyanez a küszöb hajtja a `cam_status` toolt és a `cam status` parancsot.
+If the index is older than the threshold, the line says `STALE, run: cam sync`,
+and the server's instructions tell the agent to report that to the user rather
+than quote the old data as current. The same threshold drives the `cam_status`
+tool and the `cam status` command.
 
 ```bash
-cam status          # mikor futott utoljára, mit tartalmaz
-cam status --json   # ugyanaz gépnek: ageMs, stale, errors, unfinished
+cam status          # when it last ran, what it holds
+cam status --json   # the same for a machine: ageMs, stale, errors, unfinished
 ```
 
-A küszöb alapból 24 óra, a konfigurációs fájlban átállítható:
+The threshold is 24 hours by default, overridable in the config file:
 
 ```json
 { "staleAfterHours": 6 }
 ```
 
-Egy monitorozó szkriptnek ennyi elég:
+For a monitoring script this is enough:
 
 ```bash
 cam status --json | node -e 'process.stdin.on("data",d=>process.exit(JSON.parse(d).stale?1:0))'
 ```
 
-A kor a `sync_runs` tábla legutóbbi **befejezett** futásából jön, nem a legutóbbi sorból: egy elszállt
-futás nem teheti frissnek az indexet. A félbeszakadt futásokat a `cam status` és a `cam doctor` külön
-kiírja.
+The age comes from the most recent **finished** run in the `sync_runs` table,
+not the most recent row: a crashed run cannot make the index look fresh.
+Interrupted runs are printed separately by `cam status` and `cam doctor`.
 
-## Megőrzés
+## Retention
 
-Három dolog nőne korlátlanul: az előhívási nyom (`recall_events`, keresésenként több sor), a futásnapló
-(`sync_runs`, örökre), és azok a sessionök, amiknek a forrása időközben eltűnt — utóbbiak örökké
-„forrás hiányzik" találatként jönnének elő.
+Three things would grow without bound: the recall trace (`recall_events`,
+several rows per search), the run log (`sync_runs`, forever), and the sessions
+whose source has since vanished — the last of these would keep coming up as
+`source missing` hits.
 
 ```bash
-cam prune --dry-run     # mit törölne, egy sor sem törlődik
-cam prune               # a megőrzési szabály alkalmazása
-cam prune --vacuum      # és a fájlból is add vissza a helyet
+cam prune --dry-run     # what it would delete, no row is deleted
+cam prune               # apply the retention rule
+cam prune --vacuum      # and give the space back from the file as well
 ```
 
-Alapértelmezés, a konfigurációs fájlban felülírható:
+Defaults, overridable in the config file:
 
 ```json
 {
@@ -225,79 +236,85 @@ Alapértelmezés, a konfigurációs fájlban felülírható:
 }
 ```
 
-| beállítás | mit szabályoz |
+| setting | what it controls |
 |---|---|
-| `recallDays` | ennél régebbi előhívási esemény törlődik |
-| `keepRuns` | ennyi legutóbbi szinkron-futás marad meg a naplóból |
-| `missingDays` | ennyi napja hiányzó forrású sessionök törlése; `0` kikapcsolja |
+| `recallDays` | recall events older than this are deleted |
+| `keepRuns` | this many most recent sync runs stay in the log |
+| `missingDays` | delete sessions whose source has been missing this many days; `0` turns it off |
 
-Parancssorból is: `--recall-days`, `--keep-runs`, `--missing-days`.
+From the command line as well: `--recall-days`, `--keep-runs`, `--missing-days`.
 
-**Egy szabály felülír mindent: élő promóció bizonyítéka nem törölhető.** Egy promotált emlék állítása
-az, hogy meg tudja mutatni, mikor és milyen kérdésekre jött elő; ha a megőrzés kiürítené ezt, az állítás
-hamissá válna. Ezért egy `memory_facts`-ban szereplő chunk nyoma korra való tekintet nélkül marad, és
-csak a visszavonás (a konszolidáció dolga, nem a prune-é) engedi el.
+**One rule overrides everything: the evidence behind a live promotion cannot be
+deleted.** A promoted memory's claim is that it can show when and on which
+questions it came up; if retention emptied that, the claim would become false.
+So the trace of a chunk that appears in `memory_facts` stays regardless of age,
+and only demotion (consolidation's job, not prune's) lets it go.
 
-A `missingDays` azért `0` alapból, mert a forrás hiányozhat azért is, mert egy külső meghajtó nincs
-felcsatolva — egy elhamarkodott törlés olyan indexet dobna el, ami magától visszajött volna.
+`missingDays` is `0` by default because a source may be missing because an
+external drive is not mounted — a hasty delete would throw away an index that
+would have come back on its own.
 
-A hely visszaadása külön kapcsoló (`--vacuum`), mert az egész fájlt újraírja, és egy éjszakánkénti
-prune-nak nem kell ezt minden alkalommal megfizetnie.
+Giving the space back is a separate flag (`--vacuum`), because it rewrites the
+whole file, and a nightly prune should not pay that every time.
 
-### Egy projekt vagy session elfelejtése
+### Forgetting a project or session
 
 ```bash
-cam forget --project <kulcs>
-cam forget <tool:sessionId>       # ahogy a cam recall hivatkozik rá
-cam forget --project <kulcs> --dry-run
+cam forget --project <key>
+cam forget <tool:sessionId>       # as cam recall cites it
+cam forget --project <key> --dry-run
 ```
 
-Ez az **indexből** töröl, nem a történelemből: a beszélgetés fájljai máséi, azokhoz nem nyúlunk, tehát
-egy következő `cam sync` újraindexeli őket, ha még megvannak. Ha véglegesen el akarod tüntetni,
-a forrást magát kell törölnöd (vagy a `roots` alól kivenned), és utána `cam forget`-elned.
+This deletes from the **index**, not from history: the conversation files
+belong to someone else, we do not touch them, so a later `cam sync` reindexes
+them if they are still there. If you want them gone for good, you have to
+delete the source itself (or take it out from under `roots`), and then
+`cam forget`.
 
-Egy projekt elfelejtése viszi a sessionjeit, a turnjeit, a chunkjait, a szövegindex-sorait és a belőlük
-promotált emlékeket is.
+Forgetting a project takes its sessions, turns, chunks, text-index rows, and
+the memories promoted from them.
 
-## Mentés és költöztetés
+## Backup and moving
 
 ```bash
-cam backup                    # dátumozott fájl az index mellé, backups/ alá
+cam backup                    # dated file next to the index, under backups/
 cam backup /media/nas/hub.sqlite
 cam backup --json             # { file, bytes, problems, caseFold }
 ```
 
-Nem `cp`: WAL módban a legfrissebb írások egy `-wal` oldalfájlban vannak, és egy naiv másolat épp azokat
-hagyja el — hibaüzenet nélkül. A `cam backup` az SQLite online backup API-ját használja, utána megnyitja
-a másolatot, `quick_check`-eli, és összecsukja a WAL-t, hogy a mentés **egyetlen önálló fájl** legyen.
-Ha az ellenőrzés hibát talál, a parancs `1`-gyel lép ki, és nem nevezi mentésnek.
+Not `cp`: in WAL mode the newest writes live in a `-wal` side file, and a
+naive copy leaves exactly those behind — with no error message. `cam backup`
+uses the SQLite online backup API, then opens the copy, `quick_check`s it, and
+checkpoints the WAL so the backup is **a single standalone file**. If the check
+finds an error, the command exits `1` and does not call it a backup.
 
-Visszaállítás: másold a helyére (`cam doctor` kiírja, hova), vagy nyisd meg ott, ahol van:
-`cam recall "kérdés" --db /media/nas/hub.sqlite`.
+Restore: copy it into place (`cam doctor` prints where), or open it where it
+is: `cam recall "question" --db /media/nas/hub.sqlite`.
 
-**Másik gépre költöztetve figyelj a betűhajtásra.** Windowson és macOS-en az útvonalak kisbetűsítve
-tárolódnak, Linuxon betűhelyesen; egy átvitt index emiatt némán semmit nem találna. Az index ezért
-megjelöli magát, a `cam doctor` és a `cam_status` pedig összeveti a futó rendszerrel, és megmondja, mit
-kell beállítani:
+**When moving to another machine, watch the case-fold.** On Windows and macOS
+paths are stored lowercased, on Linux verbatim; a copied index would therefore
+silently find nothing. The index stamps itself, and `cam doctor` and
+`cam_status` compare that with the running system and say what to set:
 
 ```bash
 CAM_CASE_FOLD=1 cam reattribute --db /media/nas/hub.sqlite
 ```
 
-## Ha valami elromlott
+## If something broke
 
 ```bash
-cam doctor        # integritás, séma, frissesség, hozzárendelés-sodródás, méret
+cam doctor        # integrity, schema, freshness, attribution drift, size
 ```
 
-| amit kiír | mit tegyél |
+| what it prints | what to do |
 |---|---|
-| `sérült adatbázis` | ha csak a szövegindex: `cam rebuild`; ha az adatok is: mentsd el a fájlt, töröld, `cam sync` |
-| `üres szövegindex` | `cam rebuild` — a forrásokból építi újra |
-| `N hozzárendelés régi szabályverzióval` | `cam reattribute` — tároló-olvasás nélkül |
-| `az index … készült` (betűhajtás) | `CAM_CASE_FOLD=…`, lásd fent |
-| `N félbeszakadt futás` | `cam prune` takarítja a naplót |
-| `sync zár él` | egy órán belül elévül; ha nem, a folyamat tényleg fut |
+| `corrupt database` | if only the text index: `cam rebuild`; if the data too: save the file, delete it, `cam sync` |
+| `empty text index` | `cam rebuild` — rebuilds it from the sources |
+| `N attribution(s) on an old rule version` | `cam reattribute` — without reading any store |
+| `the index was written …` (case-fold) | `CAM_CASE_FOLD=…`, see above |
+| `N interrupted run(s)` | `cam prune` cleans the log |
+| `sync lock is held` | expires within an hour; if not, the process is actually running |
 
-A források egyik esetben sem sérülnek: minden idegen tároló read-only nyílik, és a legrosszabb, ami
-történhet, hogy az indexet elölről kell építeni.
+The sources are not damaged in any of these cases: every foreign store is
+opened read-only, and the worst that can happen is that the index has to be
+built from scratch.

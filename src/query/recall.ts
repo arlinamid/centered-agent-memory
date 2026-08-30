@@ -246,7 +246,7 @@ export function getTurns(
         seq: r.seq,
         role: r.role,
         tsMs: r.ts_ms,
-        text: resolved.text ?? "[forrás hiányzik]",
+        text: resolved.text ?? "[source missing]",
         availability: resolved.status,
       };
     });

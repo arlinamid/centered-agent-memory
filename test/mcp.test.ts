@@ -79,7 +79,7 @@ describe("mcp server", () => {
     expect(client.getServerCapabilities()).toMatchObject({ tools: { listChanged: true } });
     const instructions = client.getInstructions() ?? "";
     expect(instructions).toContain("Claude Code");
-    expect(instructions).toContain("Csak olvas");
+    expect(instructions).toContain("Read-only");
   });
 
   it("exposes exactly the seven read-only tools", async () => {
@@ -118,7 +118,7 @@ describe("mcp server", () => {
     const text = textOf(res);
     expect(text).toContain("# demo");
     expect(text).toContain("claude_code");
-    expect(text).toContain("Projekt-hozzárendelés");
+    expect(text).toContain("Attribution");
   });
 
   it("reports an unknown project as an error, with the known ones listed", async () => {
@@ -130,7 +130,7 @@ describe("mcp server", () => {
   it("returns a timeline", async () => {
     const res = await client.callTool({ name: "cam_timeline", arguments: { project: "demo" } });
     expect(textOf(res)).toContain("claude_code");
-    expect(textOf(res)).toContain("session — demo");
+    expect(textOf(res)).toContain("session(s) — demo");
   });
 
   it("searches accent-insensitively and cites the hit", async () => {
@@ -144,12 +144,12 @@ describe("mcp server", () => {
 
   it("finds an agglutinated Hungarian form by prefix", async () => {
     const res = await client.callTool({ name: "cam_recall", arguments: { query: "projekt" } });
-    expect(textOf(res)).not.toContain("Nincs találat");
+    expect(textOf(res)).not.toContain("No hits");
   });
 
   it("says so plainly when nothing matches", async () => {
     const res = await client.callTool({ name: "cam_recall", arguments: { query: "zzzznincsilyen" } });
-    expect(textOf(res)).toContain("Nincs találat");
+    expect(textOf(res)).toContain("No hits");
   });
 
   it("expands a citation into the full text", async () => {
@@ -180,13 +180,13 @@ describe("cam_timeline", () => {
     expect(textOf(all)).toContain("claude_code");
 
     const other = await client.callTool({ name: "cam_timeline", arguments: { project: "demo", tools: ["codex"] } });
-    expect(textOf(other)).toContain("Nincs indexelt session");
+    expect(textOf(other)).toContain("No indexed sessions");
 
     const future = await client.callTool({
       name: "cam_timeline",
       arguments: { project: "demo", since: "2030-01-01" },
     });
-    expect(textOf(future)).toContain("Nincs indexelt session");
+    expect(textOf(future)).toContain("No indexed sessions");
   });
 
   it("ignores a date it cannot read rather than returning nothing", async () => {
@@ -210,13 +210,13 @@ describe("cam_memory", () => {
   it("explains an empty memory instead of looking broken", async () => {
     const res = await client.callTool({ name: "cam_memory", arguments: {} });
     expect(res.isError).toBeFalsy();
-    expect(textOf(res)).toContain("Nincs promotált emlék");
+    expect(textOf(res)).toContain("No promoted memories");
   });
 
   it("lists what the searches promoted", async () => {
     promote();
     const res = await client.callTool({ name: "cam_memory", arguments: {} });
-    expect(textOf(res)).toContain("emlék");
+    expect(textOf(res)).toContain("memor");
     expect(textOf(res)).toContain("claude_code:");
   });
 
@@ -226,21 +226,21 @@ describe("cam_memory", () => {
     const res = await client.callTool({ name: "cam_memory", arguments: { id } });
     expect(res.isError).toBeFalsy();
     const text = textOf(res);
-    expect(text).toContain("Bizonyíték");
-    expect(text).toContain("Pontszám összetevői");
+    expect(text).toContain("Evidence");
+    expect(text).toContain("Score components");
     expect(text).toContain("arvizturo");
   });
 
   it("returns the recurring topics on request", async () => {
     promote();
     const res = await client.callTool({ name: "cam_memory", arguments: { topics: true } });
-    expect(textOf(res)).toMatch(/kérdés|Nincs visszatérő téma/);
+    expect(textOf(res)).toMatch(/quer(y|ies)|No recurring topics/);
   });
 
   it("reports an unknown memory as an error", async () => {
     const res = await client.callTool({ name: "cam_memory", arguments: { id: 9999 } });
     expect(res.isError).toBe(true);
-    expect(textOf(res)).toContain("Nincs ilyen emlék");
+    expect(textOf(res)).toContain("No such memory");
   });
 
   /**
@@ -293,7 +293,7 @@ describe("index age", () => {
       const res = await client.callTool({ name: t.name, arguments: args! });
       expect(res.isError, `${t.name} failed`).toBeFalsy();
       expect(textOf(res), t.name).toContain("— index:");
-      expect(textOf(res), t.name).toContain("1 perce");
+      expect(textOf(res), t.name).toContain("1 min ago");
     }
   });
 
@@ -309,21 +309,21 @@ describe("index age", () => {
     recordSync(NOW - 3 * 24 * 60 * 60 * 1000);
     await reconnect({ nowMs: () => NOW });
     const res = await client.callTool({ name: "cam_recall", arguments: { query: "arvizturo" } });
-    expect(textOf(res)).toContain("ELAVULT");
-    expect(textOf(res)).toContain("3 napja");
+    expect(textOf(res)).toContain("STALE");
+    expect(textOf(res)).toContain("3d ago");
   });
 
   it("does not call a never-synced index fresh", async () => {
     await reconnect({ nowMs: () => NOW });
     const res = await client.callTool({ name: "cam_projects", arguments: {} });
-    expect(textOf(res)).toContain("még nem futott végig szinkron");
+    expect(textOf(res)).toContain("no sync has finished yet");
   });
 
   it("reports the errors of the last run rather than hiding them", async () => {
     recordSync(NOW - 60_000, 3);
     await reconnect({ nowMs: () => NOW });
     const res = await client.callTool({ name: "cam_projects", arguments: {} });
-    expect(textOf(res)).toContain("3 hiba az utolsó szinkronban");
+    expect(textOf(res)).toContain("3 error(s) in the last sync");
   });
 });
 
@@ -334,10 +334,10 @@ describe("cam_status", () => {
     const res = await client.callTool({ name: "cam_status", arguments: {} });
     expect(res.isError).toBeFalsy();
     const text = textOf(res);
-    expect(text).toContain("utolsó szinkron");
+    expect(text).toContain("last sync");
     expect(text).toContain("claude_code=1");
     expect(text).toMatch(/\d+ session · \d+ turn/);
-    expect(text).toContain("memória");
+    expect(text).toContain("memory");
   });
 
   it("warns about an index written with the other path-folding convention", async () => {
