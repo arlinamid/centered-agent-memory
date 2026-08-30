@@ -173,6 +173,19 @@ describe("skills", () => {
     expect(text).not.toContain("{{SURFACE}}");
   });
 
+  it("ships a discoverable skill so `npx skills add` can find it", () => {
+    // The skills CLI looks for `<name>/SKILL.md` with `name` and `description`
+    // in the frontmatter. The installer template is `assets/skill-body.md`
+    // (not named SKILL.md — on a case-insensitive disk the CLI would treat
+    // that as a broken skill and skip it with a warning).
+    const published = path.join(process.cwd(), "skills", SKILL_NAME, "SKILL.md");
+    expect(fs.existsSync(published)).toBe(true);
+    const text = fs.readFileSync(published, "utf8");
+    expect(text).toMatch(/^---\nname: agent-memory\n/);
+    expect(text).toContain("description:");
+    expect(text).not.toContain("{{SURFACE}}");
+  });
+
   it("tells a terminal-less client not to promise a sync it cannot run", () => {
     const targets = clientTargets("user", home, cwd);
     const desktop = renderSkill(targets.find((t) => t.id === "claude_desktop")!, "{{SURFACE}}");

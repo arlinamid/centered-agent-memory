@@ -65,6 +65,13 @@ Codex, Cursor), melléteszi a használati utasítást, ad az álom fázisnak mod
 ágens-CLI-k közül, és beállítja az óránkénti frissítést. Előbb nézd meg, mit csinálna: `--dry-run`.
 Részletek és kikapcsolók: [`docs/install.md`](docs/install.md).
 
+A Claude Code (és a Claude Code Desktop, ami ugyanazt a mappát olvassa) skilljét külön is
+fel lehet tenni:
+
+```bash
+npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
+```
+
 **`npx`-ből nem telepíthető, szándékosan.** Az `npx` az npm gyorsítótárába csomagol ki, amit az npm
 később kitakarít — az onnan beírt bekötés némán elromlana. A telepítő ezt felismeri, nem ír semmit,
 és `npm i -g`-t javasol. Egyszeri lekérdezésre az `npx` jó (az index a felhasználói adatmappában

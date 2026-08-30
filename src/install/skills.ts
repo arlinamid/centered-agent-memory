@@ -22,7 +22,7 @@ const DESCRIPTION =
 
 /** Package root, from either `src/install/` or `dist/install/`. */
 function assetFile(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "skill.md");
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "skill-body.md");
 }
 
 export function skillBody(): string {

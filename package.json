@@ -30,6 +30,7 @@
   "files": [
     "dist/**/*.js",
     "assets/",
+    "skills/",
     "docs/",
     "README.md",
     "README.hu.md",

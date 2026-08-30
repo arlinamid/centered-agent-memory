@@ -62,6 +62,13 @@ dream phase a model taken from an agent CLI already on the machine, and schedule
 refresh. Run it with `--dry-run` first to see the plan; details and opt-outs in
 [`docs/install.md`](docs/install.md) (Hungarian).
 
+The skill for Claude Code (and Claude Code Desktop, which reads the same folder) can also be
+installed on its own:
+
+```bash
+npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
+```
+
 **It deliberately cannot be installed through `npx`.** `npx` unpacks into the npm cache, which npm
 later collects, so an entry written from there would break silently. The installer detects this,
 writes nothing, and points at `npm i -g` instead. `npx` is fine for a one-off query — the index

@@ -86,8 +86,11 @@ function userTargets(home: string): ClientTarget[] {
       installed: fs.existsSync(desktopHome),
       mcpFile: path.join(desktopHome, "claude_desktop_config.json"),
       mcpFormat: "json",
-      // The desktop app has no skill directory: its only channel is the
-      // server's own instructions, which every response already carries.
+      // Claude Code Desktop reads `~/.claude/skills/` — that is the
+      // `claude_code` target, installed by `npx skills add … --agent claude-code`.
+      // The original Desktop / Cowork app has no skill directory we can write:
+      // Cowork only registers a skill through its Customize UI, not by scanning
+      // a folder. Its channel here is the server's own instructions.
       skillFile: null,
       surface: MCP_ONLY_SURFACE,
     },

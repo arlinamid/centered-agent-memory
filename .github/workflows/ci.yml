@@ -154,7 +154,7 @@ jobs:
               console.error("nem való a csomagba:\n  " + banned.join("\n  "));
               process.exit(1);
             }
-            for (const want of ["dist/cli.js", "dist/mcp/server.js", "assets/skill.md", "LICENSE"]) {
+            for (const want of ["dist/cli.js", "dist/mcp/server.js", "assets/skill-body.md", "skills/agent-memory/SKILL.md", "LICENSE"]) {
               if (!files.includes(want)) {
                 console.error("hiányzik a csomagból: " + want);
                 process.exit(1);

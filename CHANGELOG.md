@@ -7,6 +7,26 @@ Formátum: [Keep a Changelog](https://keepachangelog.com/), verziózás: [SemVer
 > **Törő változás:** a támogatott Node-küszöb 22-ről **24-re** emelkedett. Aki Node 22-n futtatja,
 > annak frissítenie kell, mielőtt a következő kiadásra vált.
 
+### A skill a `npx skills add` paranccsal is feltehető
+
+**Miből jött:** a Claude Code Desktop a `~/.claude/skills/` mappát olvassa, és oda a [skills](https://skills.sh)
+CLI telepít: `npx skills add <repo> --skill <név> --agent claude-code`. A mi skillünk viszont
+`assets/skill.md` volt, helyőrzővel — a CLI ezt nem találja.
+
+- **`skills/agent-memory/SKILL.md`** a felfedezhető, frontmatteres, kész skill. Ettől működik:
+
+  ```
+  npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
+  ```
+
+- **A klasszikus Desktop / Cowork ettől még nem kap skillt.** Nincs `claude-desktop` ügynök a
+  skills CLI-ben, és a Cowork nem olvassa be a mappába másolt fájlt — csak a Customize UI
+  feltöltőjét. A `cam install` oda továbbra is csak az MCP-t köti be.
+- **A `cam install` nem hívja az `npx`-et.** Az a nyilvános, hálózatos út. A saját telepítő
+  offline, és ugyanoda ír.
+- **A törzs átnevezve `assets/skill-body.md`-re.** Windowson a `skill.md` ugyanaz, mint a
+  `SKILL.md`, ezért a skills CLI a sablont is skillnek nézte, és figyelmeztetéssel kihagyta.
+
 ### Node 24 a küszöb, és a CI végre nem EOL futtatókörnyezeten indul
 
 **Miből jött:** a CI minden jobja figyelmeztetett, hogy az actionök Node 20-at céloznak. Kiderült,

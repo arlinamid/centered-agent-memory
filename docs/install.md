@@ -124,8 +124,18 @@ megbízhatósági jelzéseket, és mit ne csináljon.
 
 Egy törzsből készül, kliensenként rendereltve `~/.claude/skills/agent-memory/SKILL.md`,
 `~/.codex/skills/…`, `~/.cursor/skills/…` alá. Ami eszközönként eltér, az egyetlen szakasz a végén:
-van-e terminál is, vagy csak az MCP-toolok. A Claude Desktop nem kap skillt — nincs hova; oda a
-szerver saját instrukciója jut el, minden válasszal.
+van-e terminál is, vagy csak az MCP-toolok.
+
+A Claude Code Desktop ugyanazt a `~/.claude/skills/` mappát olvassa, mint a CLI. A skill oda a
+`cam install`-lal, vagy a [skills](https://skills.sh) CLI-vel kerül:
+
+```bash
+npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
+```
+
+Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban. A klasszikus Claude Desktop /
+Cowork appnak nincs ilyen mappája — Cowork csak a Customize → Skills feltöltőn keresztül
+regisztrál, fájlmásolásra nem. Oda a szerver saját instrukciója jut el, minden válasszal.
 
 ## Álom-modell
 

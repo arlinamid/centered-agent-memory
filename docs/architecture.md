@@ -132,7 +132,8 @@ src/
     prompt.ts                a két kérdés, amit a telepítő feltehet
   mcp/server.ts              hét read-only tool, mindegyik válaszán az index korával
   cli.ts
-assets/skill.md              a skill törzse; a {{SURFACE}} helyére a kliens kerül
+assets/skill-body.md         a skill törzse; a {{SURFACE}} helyére a kliens kerül
+skills/agent-memory/SKILL.md a nyilvános, felfedezhető skill (`npx skills add`)
 ```
 
 Az `install/` szándékosan **terv és végrehajtás** kettéválasztva: minden rész előbb kiszámolja, mit
