@@ -1,7 +1,16 @@
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** Every source we can index. */
-export const TOOL_IDS = ["claude_code", "claude_desktop", "cowork", "codex", "cursor"] as const;
+export const TOOL_IDS = [
+  "claude_code",
+  "claude_desktop",
+  "cowork",
+  "codex",
+  "cursor",
+  "gemini_cli",
+  "antigravity",
+  "devin",
+] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
 /**
@@ -106,6 +115,11 @@ CREATE TABLE IF NOT EXISTS turns (
   loc_len      INTEGER,
   loc_key      TEXT,
   loc_field    TEXT,
+  -- Only for the sqlite_row locator: which table and column the key
+  -- addresses. A store that is not a single key/value table (Devin's
+  -- message_nodes) cannot be described by loc_key alone.
+  loc_table    TEXT,
+  loc_column   TEXT,
   inline_text  TEXT,
   availability TEXT NOT NULL DEFAULT 'ok',
   UNIQUE(session_id, seq)

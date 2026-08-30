@@ -524,6 +524,9 @@ describe("every command", () => {
     // developer's own machine is not something a test may depend on.
     { argv: ["install", "--dry-run", "--no-schedule"] },
     { argv: ["uninstall", "--dry-run", "--no-schedule"] },
+    // Dry run only: this is the command that can reach the network, and a dry
+    // run is precisely the promise that it does not.
+    { argv: ["update", "--dry-run"] },
   ];
 
   it("covers the whole command surface", () => {

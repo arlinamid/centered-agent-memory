@@ -16,9 +16,9 @@ import { SKILL_NAME, type ClientTarget } from "./clients.js";
 
 const DESCRIPTION =
   "Recall earlier conversations from the user's other AI tools (Claude Code, Claude Desktop, " +
-  "Codex, Cursor). Use before asking about or assuming a project's history, and when the user " +
-  "refers to a prior decision, discussion or fix: \"as we discussed\", \"the earlier one\", " +
-  "\"what we did with Codex\".";
+  "Codex, Cursor, Gemini CLI, Antigravity, Devin). Use before asking about or assuming a " +
+  "project's history, and when the user refers to a prior decision, discussion or fix: " +
+  "\"as we discussed\", \"the earlier one\", \"what we did with Codex\".";
 
 /** Package root, from either `src/install/` or `dist/install/`. */
 function assetFile(): string {

@@ -1,8 +1,8 @@
 # Recalling earlier conversations
 
 The `cam` index holds conversations the user had with their **other AI tools**:
-Claude Code, Claude Desktop / Cowork, Codex and Cursor. It is read-only and
-does not modify any of those stores.
+Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity
+and Devin. It is read-only and does not modify any of those stores.
 
 In this conversation you cannot see what the user did yesterday in another
 tool. The index can. That is the difference between "I don't know, let's ask"

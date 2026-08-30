@@ -362,9 +362,11 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
   a másolt adatbázis már nem ad némán üres eredményt: a `cam doctor` és a `cam_status` megmondja, mi
   a baj. Ami hiányzik, az a tényleges összefésülés két gép indexe között — az nem másolás, hanem
   konfliktuskezelés.
-- **További eszközök**: Gemini CLI, Windsurf, Zed. A kollektor-interfész ehhez készült. A Gemini CLI
-  itt két külön dolog: az M5 óta *modellként* felismerjük (álom fázis), de *forrásként* nem — a
-  beszélgetéseit nem indexeljük.
+- **További eszközök**: Zed, és a Windsurf, ha a Cascade store valaha olvashatóvá válik. A Gemini
+  CLI, az Antigravity és a Devin CLI már forrás, nem irány — a Gemini CLI egyszerre modell (álom
+  fázis) és forrás. A Windsurf beszélgetései titkosítottak, és nincs mellettük metaadat-réteg, így
+  egyelőre nincs mit tisztességesen indexelni; lásd:
+  [`sources.md`](sources.hu.md#windsurf--ismert-de-nem-indexelhető).
 - **A melléktermékek bevonása a keresésbe.** Az `artifacts.inline_text` ma 264 sornyi másolt
   scratchpad- és Cowork-tartalmat őriz, amit **semmi nem olvas** — a `cam recall` nem talál bele.
 
@@ -392,11 +394,22 @@ mutatni. Ez utóbbi kikapcsolható: a `recall` `logQuery: false`-szal csak a ké
 
 **Ami nincs benne:** a beszélgetések szövege. Az a forrásokban marad; a hub csak megtalálja.
 
-**Ami elhagyja a gépet:** alapból semmi; a mag nem hálózik. Egyetlen kivétel van, és az kifejezett
-opt-in: a `cam memory dream` a beállított modellnek elküldi a promotált részleteket. Nincs
-alapértelmezett modell, a `consolidate` sosem hívja, és a parancs **küldés előtt** kiírja, hány
-karakter megy ki és hova — `--quiet` mellett is. Amíg nem állítasz be modellt, ez a mondat úgy igaz,
-ahogy le van írva. Részletek: [`memory.md`](memory.hu.md#az-álom-fázis-opcionális).
+**Ami elhagyja a gépet:** alapból semmi; a mag nem hálózik. Pontosan két kivétel van, és
+mindkettő kifejezett opt-in.
+
+1. A `cam memory dream` a beállított modellnek elküldi a promotált részleteket. Nincs
+   alapértelmezett modell, a `consolidate` sosem hívja, és a parancs **küldés előtt** kiírja, hány
+   karakter megy ki és hova — `--quiet` mellett is. Részletek:
+   [`memory.md`](memory.hu.md#az-álom-fázis-opcionális).
+2. A `cam update` megkérdezi a GitHubtól, van-e újabb kiadás. Ki van kapcsolva, amíg a
+   konfigurációs fájl nem mondja, hogy `{"update": {"enabled": true}}`; a megkeresendő URL-t
+   **a megkeresés előtt** kiírja — szintén `--quiet` mellett is —, és a kérés semmit nem visz
+   magával erről a gépről: se azonosítót, se verzió-pinget, se telemetriát. A
+   `cam update --dry-run` úgy válaszol arra, hogy „mit keresnél meg?", hogy közben semmit nem
+   keres meg.
+
+Amíg egyiket sem kapcsolod be, a „semmi nem hagyja el ezt a gépet" mondat úgy igaz, ahogy le van
+írva.
 
 **Törlés:** az egész index eldobható (`.data/hub.sqlite`), a forrásokat ez nem érinti. Szemcsésen:
 `cam forget --project <kulcs>` vagy `cam forget <tool:sessionId>` egy projektet vagy sessiont felejt
@@ -406,7 +419,7 @@ megvannak. Részletek: [`operations.md`](operations.hu.md).
 
 ---
 
-## Ötödik eszköz bekötése
+## Újabb eszköz bekötése
 
 1. Implementáld a `Collector` interfészt (`src/collectors/types.ts`). Minden út, adatbázis-nyitó és óra
    a `CollectorCtx`-en át érkezik — a kollektor sosem hívja közvetlenül az `os.homedir()`-t.

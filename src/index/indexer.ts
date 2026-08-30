@@ -6,16 +6,21 @@ import { chunkTurns, type ChunkInput } from "./chunker.js";
 /**
  * Where a turn's text actually lives. We store this, never the text itself.
  *
- * Today every collector produces one of the first two kinds. `file_range` and
- * `inline` are reserved for a future volatile-source collector — the ones the
- * OS or the app may delete under us — and are read back correctly, but no
- * collector emits them: volatile material is captured on the `artifacts` table
- * instead, and a turn is always a reference.
+ * `sqlite_kv` addresses one key in a key/value table; `sqlite_row` addresses a
+ * row in a named table, which is what a store like Devin's `message_nodes`
+ * needs. `file_range` reads a whole file (or a byte span of it) and, with a
+ * `field`, plucks one value out — that is how a source that writes a single
+ * JSON document per session is addressed, rather than one JSON per line.
+ *
+ * `inline` remains reserved for a volatile source whose text would be gone
+ * before it could be read back; no collector emits it. The volatile material we
+ * do keep lives on the `artifacts` table instead.
  */
 export type Locator =
   | { kind: "jsonl_line"; path: string; off: number; len: number; field: string }
   | { kind: "sqlite_kv"; path: string; key: string; field: string }
-  | { kind: "file_range"; path: string; off?: number; len?: number }
+  | { kind: "sqlite_row"; path: string; table: string; column: string; key: string; field?: string }
+  | { kind: "file_range"; path: string; off?: number; len?: number; field?: string }
   | { kind: "inline" };
 
 export interface TurnInput {
@@ -135,13 +140,15 @@ export function addTurns(db: Db, sessionId: number, turns: ReadonlyArray<TurnInp
   const insert = db.prepare(
     `insert into turns
        (session_id, seq, role, ts_ms, char_len, text_sha256,
-        locator_kind, loc_path, loc_off, loc_len, loc_key, loc_field, inline_text, availability)
-     values (?,?,?,?,?,?,?,?,?,?,?,?,?, 'ok')
+        locator_kind, loc_path, loc_off, loc_len, loc_key, loc_field,
+        loc_table, loc_column, inline_text, availability)
+     values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'ok')
      on conflict(session_id, seq) do update set
        role = excluded.role, ts_ms = excluded.ts_ms, char_len = excluded.char_len,
        text_sha256 = excluded.text_sha256, locator_kind = excluded.locator_kind,
        loc_path = excluded.loc_path, loc_off = excluded.loc_off, loc_len = excluded.loc_len,
        loc_key = excluded.loc_key, loc_field = excluded.loc_field,
+       loc_table = excluded.loc_table, loc_column = excluded.loc_column,
        inline_text = excluded.inline_text, availability = 'ok'`,
   );
 
@@ -158,8 +165,14 @@ export function addTurns(db: Db, sessionId: number, turns: ReadonlyArray<TurnInp
       l.kind === "inline" ? null : l.path,
       l.kind === "jsonl_line" ? l.off : l.kind === "file_range" ? (l.off ?? null) : null,
       l.kind === "jsonl_line" ? l.len : l.kind === "file_range" ? (l.len ?? null) : null,
-      l.kind === "sqlite_kv" ? l.key : null,
-      l.kind === "jsonl_line" || l.kind === "sqlite_kv" ? l.field : null,
+      l.kind === "sqlite_kv" || l.kind === "sqlite_row" ? l.key : null,
+      l.kind === "jsonl_line" || l.kind === "sqlite_kv"
+        ? l.field
+        : l.kind === "sqlite_row" || l.kind === "file_range"
+          ? (l.field ?? null)
+          : null,
+      l.kind === "sqlite_row" ? l.table : null,
+      l.kind === "sqlite_row" ? l.column : null,
       // The one sanctioned copy: volatile sources the OS or the app deletes.
       l.kind === "inline" ? t.text : null,
     );

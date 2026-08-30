@@ -17,6 +17,16 @@ export interface ResolvedRoots {
   cursorStateDb: string;
   cursorHistory: string;
   claudeTemp: string;
+  geminiHome: string;
+  geminiTmp: string;
+  /** IDE surface. Shares its conversation set with `antigravityIde`. */
+  antigravityHome: string;
+  antigravityIde: string;
+  antigravityCli: string;
+  /** Electron app data: `Local State` and the VS Code global storage. */
+  antigravityState: string;
+  devinCliHome: string;
+  windsurfHome: string;
 }
 
 /**
@@ -60,6 +70,14 @@ export function defaultRoots(home = os.homedir()): ResolvedRoots {
     cursorStateDb: path.join(cursorUser, "globalStorage", "state.vscdb"),
     cursorHistory: path.join(cursorUser, "History"),
     claudeTemp: path.join(os.tmpdir(), "claude"),
+    geminiHome: path.join(home, ".gemini"),
+    geminiTmp: path.join(home, ".gemini", "tmp"),
+    antigravityHome: path.join(home, ".gemini", "antigravity"),
+    antigravityIde: path.join(home, ".gemini", "antigravity-ide"),
+    antigravityCli: path.join(home, ".gemini", "antigravity-cli"),
+    antigravityState: appSupportDir("Antigravity", home),
+    devinCliHome: path.join(appSupportDir("devin", home), "cli"),
+    windsurfHome: path.join(home, ".codeium", "windsurf"),
   };
 }
 

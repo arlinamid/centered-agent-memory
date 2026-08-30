@@ -5,6 +5,27 @@ import { pluck, readLineAt, sha256 } from "./jsonl.js";
 
 export type Availability = "ok" | "stale" | "missing";
 
+/** Separates the key columns inside a `sqlite_row` locator's `loc_key`. */
+export const KEY_SEP = "\u001f";
+
+/**
+ * The only tables a `sqlite_row` locator may name.
+ *
+ * Identifiers cannot be bound as parameters, so they are interpolated into the
+ * query — which means they must not come from the database unchecked. A stored
+ * locator naming anything else is treated as unreadable, not as SQL.
+ */
+const SQLITE_ROW_TABLES: Record<
+  string,
+  { keyColumns: readonly string[]; keyTypes: readonly ("text" | "int")[]; columns: readonly string[] }
+> = {
+  message_nodes: {
+    keyColumns: ["session_id", "node_id"],
+    keyTypes: ["text", "int"],
+    columns: ["chat_message"],
+  },
+};
+
 /** What a turn reads as once its source is gone. Shown to the user, never indexed. */
 export const MISSING_MARK = "[source missing]";
 
@@ -21,6 +42,8 @@ export interface TurnRow {
   loc_len: number | null;
   loc_key: string | null;
   loc_field: string | null;
+  loc_table: string | null;
+  loc_column: string | null;
   inline_text: string | null;
   availability: string;
 }
@@ -86,9 +109,32 @@ export class Hydrator {
             | { value: Buffer | string }
             | undefined;
           if (!row) return null;
-          const text = typeof row.value === "string" ? row.value : row.value.toString("utf8");
-          const parsed: unknown = JSON.parse(text);
-          return turn.loc_field ? pluck(parsed, turn.loc_field) : null;
+          return this.pluckJson(row.value, turn.loc_field);
+        } catch {
+          return null;
+        }
+      }
+
+      case "sqlite_row": {
+        if (!turn.loc_path || !turn.loc_key || !turn.loc_table || !turn.loc_column) return null;
+        const spec = SQLITE_ROW_TABLES[turn.loc_table];
+        // The table and column name go into SQL text, so they are never taken
+        // from the row as written: only a shape this build knows how to read is
+        // accepted, and an unknown one reads as missing rather than as a query.
+        if (!spec || !spec.columns.includes(turn.loc_column)) return null;
+        const keys = turn.loc_key.split(KEY_SEP);
+        if (keys.length !== spec.keyColumns.length) return null;
+        const src = this.sourceDb(turn.loc_path);
+        if (!src) return null;
+        try {
+          const where = spec.keyColumns.map((c) => `"${c}" = ?`).join(" and ");
+          const row = src
+            .prepare(`select "${turn.loc_column}" as value from "${turn.loc_table}" where ${where}`)
+            .get(...spec.keyTypes.map((t, i) => (t === "int" ? Number(keys[i]) : keys[i]))) as
+            | { value: Buffer | string | null }
+            | undefined;
+          if (!row || row.value === null) return null;
+          return this.pluckJson(row.value, turn.loc_field);
         } catch {
           return null;
         }
@@ -98,10 +144,14 @@ export class Hydrator {
         if (!turn.loc_path) return null;
         try {
           const buf = fs.readFileSync(turn.loc_path);
-          if (turn.loc_off !== null && turn.loc_len !== null) {
-            return buf.subarray(turn.loc_off, turn.loc_off + turn.loc_len).toString("utf8");
-          }
-          return buf.toString("utf8");
+          const text =
+            turn.loc_off !== null && turn.loc_len !== null
+              ? buf.subarray(turn.loc_off, turn.loc_off + turn.loc_len).toString("utf8")
+              : buf.toString("utf8");
+          // Without a field the range IS the text; with one the range is a JSON
+          // document and the field names the value inside it.
+          if (!turn.loc_field) return text;
+          return pluck(JSON.parse(text), turn.loc_field);
         } catch {
           return null;
         }
@@ -110,6 +160,17 @@ export class Hydrator {
       default:
         return null;
     }
+  }
+
+  /**
+   * A stored value that is JSON text, reduced to the one field the locator
+   * names. Shared by both SQLite locators, which differ only in how the row is
+   * found, not in what the value holds.
+   */
+  private pluckJson(value: Buffer | string, field: string | null): string | null {
+    const text = typeof value === "string" ? value : value.toString("utf8");
+    if (!field) return null;
+    return pluck(JSON.parse(text), field);
   }
 
   /** Self-healing signal: what we learned at read time is written back. */

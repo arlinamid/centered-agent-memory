@@ -198,6 +198,87 @@ describe("skills", () => {
   });
 });
 
+describe("gemini, antigravity and devin targets", () => {
+  it("merges into Gemini's settings document instead of replacing it", () => {
+    mk(".gemini");
+    const settings = path.join(home, ".gemini", "settings.json");
+    // `mcpServers` is one key among many here, and the others are the user's
+    // theme, auth choice and retention policy. Losing them would be silent.
+    fs.writeFileSync(
+      settings,
+      JSON.stringify({ ui: { theme: "GitHub" }, mcpServers: { "example-mcp": { command: "example-mcp" } } }, null, 2),
+      "utf8",
+    );
+
+    install({ scope: "user", home, cwd, entry: ENTRY });
+
+    const doc = JSON.parse(read(settings)) as {
+      ui: { theme: string };
+      mcpServers: Record<string, unknown>;
+    };
+    expect(doc.ui.theme).toBe("GitHub");
+    expect(Object.keys(doc.mcpServers).sort()).toEqual([SERVER_KEY, "example-mcp"]);
+    expect(read(path.join(home, ".gemini", "skills", SKILL_NAME, "SKILL.md"))).toContain(`name: ${SKILL_NAME}`);
+  });
+
+  it("writes Antigravity's canonical config, not the surface that links to it", () => {
+    mk(".gemini", "antigravity");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+
+    // All three surfaces read `~/.gemini/config/mcp_config.json`; the copy at
+    // `antigravity/mcp_config.json` is a symlink to it.
+    const canonical = path.join(home, ".gemini", "config", "mcp_config.json");
+    expect(JSON.parse(read(canonical)).mcpServers[SERVER_KEY]).toBeDefined();
+    expect(fs.existsSync(path.join(home, ".gemini", "antigravity", "mcp_config.json"))).toBe(false);
+    expect(
+      read(path.join(home, ".gemini", "antigravity", "skills", SKILL_NAME, "SKILL.md")),
+    ).toContain(`name: ${SKILL_NAME}`);
+  });
+
+  it("gives Devin the server but not a second copy of the skill", () => {
+    const devinHome = mk("AppData", "Roaming", "devin");
+    mk(".claude");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+
+    expect(JSON.parse(read(path.join(devinHome, "mcp_config.json"))).mcpServers[SERVER_KEY]).toBeDefined();
+    // Devin scans `~/.claude/skills/`, which the Claude Code target already
+    // filled: a Devin-owned copy would list the same skill twice.
+    const targets = clientTargets("user", home, cwd);
+    expect(targets.find((t) => t.id === "devin")!.skillFile).toBeNull();
+    expect(read(path.join(home, ".claude", "skills", SKILL_NAME, "SKILL.md"))).toContain(`name: ${SKILL_NAME}`);
+  });
+
+  it("leaves all three alone when none of them is installed", () => {
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
+    expect(fs.existsSync(path.join(home, "AppData", "Roaming", "devin"))).toBe(false);
+  });
+
+  it("removes itself from all three again", () => {
+    mk(".gemini", "antigravity");
+    mk("AppData", "Roaming", "devin");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    uninstall({ scope: "user", home, cwd });
+
+    for (const file of [
+      path.join(home, ".gemini", "settings.json"),
+      path.join(home, ".gemini", "config", "mcp_config.json"),
+      path.join(home, "AppData", "Roaming", "devin", "mcp_config.json"),
+    ]) {
+      expect(JSON.parse(read(file)).mcpServers[SERVER_KEY]).toBeUndefined();
+    }
+    expect(fs.existsSync(path.join(home, ".gemini", "skills", SKILL_NAME, "SKILL.md"))).toBe(false);
+  });
+
+  it("names every tool it indexes in the skill it hands out", () => {
+    const [claudeCode] = clientTargets("user", home, cwd);
+    const text = renderSkill(claudeCode!);
+    for (const tool of ["Claude Code", "Codex", "Cursor", "Gemini CLI", "Antigravity", "Devin"]) {
+      expect(text).toContain(tool);
+    }
+  });
+});
+
 describe("install", () => {
   it("touches nothing on a dry run", () => {
     mk(".codex");

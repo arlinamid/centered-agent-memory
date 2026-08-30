@@ -2,15 +2,15 @@
 name: agent-memory
 description: >-
   Recall earlier conversations from the user's other AI tools (Claude Code, Claude Desktop,
-  Codex, Cursor). Use before asking about or assuming a project's history, and when the user
-  refers to a prior decision, discussion or fix: "as we discussed", "the earlier one", "what
-  we did with Codex".
+  Codex, Cursor, Gemini CLI, Antigravity, Devin). Use before asking about or assuming a
+  project's history, and when the user refers to a prior decision, discussion or fix: "as we
+  discussed", "the earlier one", "what we did with Codex".
 ---
 # Recalling earlier conversations
 
 The `cam` index holds conversations the user had with their **other AI tools**:
-Claude Code, Claude Desktop / Cowork, Codex and Cursor. It is read-only and
-does not modify any of those stores.
+Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity
+and Devin. It is read-only and does not modify any of those stores.
 
 In this conversation you cannot see what the user did yesterday in another
 tool. The index can. That is the difference between "I don't know, let's ask"

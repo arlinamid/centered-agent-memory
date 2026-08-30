@@ -9,7 +9,7 @@ import { detectWorkspaceRoots } from "./roots.js";
  * 2: manual evidence is no longer re-resolved as if it were a path, which
  *    silently discarded every `cam attribute` decision.
  */
-export const RULE_VERSION = 2;
+export const RULE_VERSION = 3;
 
 export type Confidence = "strong" | "medium" | "weak" | "none";
 
@@ -358,7 +358,13 @@ function decide(rows: ReadonlyArray<EvidenceRow>): Verdict {
 
   const order: Array<{ origins: string[]; method: string; confidence: Confidence }> = [
     { origins: ["manual"], method: "manual", confidence: "strong" },
-    { origins: ["cwd", "user_selected_folders"], method: "cwd", confidence: "strong" },
+    // `user_selected_folders` (Cowork), `workspace_dirs` (Devin) and
+    // `workspace_uris` (Antigravity) are the same fact under three names: the
+    // folders the user pointed the tool at. For Antigravity it is the ONLY
+    // direct signal — that store has no working-directory field at all — so
+    // leaving it out of this step would leave every Antigravity conversation
+    // unattributed.
+    { origins: ["cwd", "user_selected_folders", "workspace_dirs", "workspace_uris"], method: "cwd", confidence: "strong" },
     { origins: ["ofs_key"], method: "ofs_votes", confidence: "strong" },
     { origins: ["bubble_scan", "msg_request_ctx"], method: "msg_votes", confidence: "strong" },
     { origins: ["time_correlation"], method: "time_correlation", confidence: "medium" },

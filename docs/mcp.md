@@ -1,6 +1,6 @@
 # MCP server
 
-`cam` also runs as an MCP server, so all four agents can query **the same**
+`cam` also runs as an MCP server, so every wired agent can query **the same**
 context the CLI shows — rendering is shared, the two surfaces cannot drift
 apart.
 
@@ -41,8 +41,8 @@ environment variable; without that it opens the same database the CLI does
 | `cam_memory` | long-term memory: what came back across several questions, on several days — with the evidence behind the promotion |
 | `cam_status` | when the index last synced, what it holds, whether it is trustworthy |
 
-Seven tools, deliberately that many. Every further tool consumes context in all
-four clients, on every request.
+Seven tools, deliberately that many. Every further tool consumes context in
+every wired client, on every request.
 
 `cam_memory` without `id` lists the promoted memories (filterable by project),
 with `id` returns one memory's full text with the evidence (when, on which

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { DreamConfig } from "./memory/dream.js";
 import { DEFAULT_STALE_MS } from "./ops/freshness.js";
 import type { RetentionPolicy } from "./ops/prune.js";
+import type { UpdateConfig } from "./update/check.js";
 import { defaultRoots, normalizePath, type ResolvedRoots } from "./paths.js";
 
 export interface HubConfig {
@@ -22,6 +23,12 @@ export interface HubConfig {
   retention: Partial<RetentionPolicy>;
   /** Past this age the index reports itself as stale, everywhere it is quoted. */
   staleAfterMs: number;
+  /**
+   * Looking for a newer release. Off unless the user turns it on: this is the
+   * only other thing in the tool that can reach the network, and like the
+   * dream phase it stays silent until asked.
+   */
+  update: UpdateConfig;
 }
 
 /** Directory name used under the user's data and config directories. */
@@ -76,6 +83,8 @@ export interface FileConfig {
   retention?: Partial<RetentionPolicy>;
   /** Hours, because that is the unit the answer is thought about in. */
   staleAfterHours?: number;
+  /** `{ "enabled": true }` turns on the release check. Absent means off. */
+  update?: UpdateConfig;
 }
 
 /**
@@ -123,6 +132,7 @@ export function loadConfig(overrides: Partial<HubConfig> = {}, warn?: (msg: stri
     maxInlineBytes: overrides.maxInlineBytes ?? file.maxInlineBytes ?? 256 * 1024,
     dream: overrides.dream ?? file.memory?.dream ?? {},
     retention: overrides.retention ?? file.retention ?? {},
+    update: overrides.update ?? file.update ?? {},
     staleAfterMs:
       overrides.staleAfterMs ??
       (typeof file.staleAfterHours === "number" && file.staleAfterHours > 0

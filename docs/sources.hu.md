@@ -1,4 +1,4 @@
-# A négy forrás
+# A források
 
 Ez a fejezet azt írja le, amit méréssel derítettünk ki a tárolókról — beleértve azokat a
 buktatókat, amelyek ránézésre nem látszanak, és amelyekre mind van regressziós teszt.
@@ -130,3 +130,222 @@ További tudnivalók:
 `User/History/<hash>/entries.json` — a `resource` a szerkesztett fájl abszolút URI-ja, az `entries[]`
 pedig a mentések időbélyegei. A referenciagépen 6076 mappa, 34 567 esemény. Ez az egyetlen jel azokhoz a
 Cursor-szálakhoz, amelyek egyetlen útvonalat sem említenek.
+
+## Gemini CLI
+
+```
+~/.gemini/tmp/<projekt>/chats/session-*.json
+~/.gemini/tmp/<projekt>/.project_root
+```
+
+Sessionönként egy teljes JSON dokumentum, nem JSONL: `sessionId`, `startTime`,
+`lastUpdated`, `kind` (`main` | `subagent` | hiányzik) és `messages[]`.
+
+- **A projektkönyvtár nevéből nem lehet visszafejteni az útvonalat.** A
+  legtöbb egy sima mappanév (`scripts`), ami akárhány könyvtárra illik; a többi
+  hash — és a `projectHash` **nem** a munkakönyvtár SHA-256-a. A
+  `~/.gemini/projects.json` minden útvonalát végigpróbáltuk minden kis/nagybetűs
+  és elválasztó-variánsban a hash nevű könyvtárak ellen: egy sem egyezett. Ezért
+  a munkakönyvtár a chatek mellett fekvő `.project_root`-ból jön, és a
+  `.project_root` nélküli projekt attribuálatlan marad. A referenciagépen ez 13
+  könyvtárból 11, ami 159 chatfájlból 157-et fed le.
+- **A fájlon belüli `projectHash` nem feltétlenül egyezik az őt tartalmazó
+  könyvtáréval.** Egy subagent session a saját hash-ét viszi, miközben a szülő
+  mappájában lakik — ez is indok arra, hogy az attribúció a könyvtárra épüljön.
+- **A két szerep `user` és `gemini`, és más az alakjuk.** A `user` üzenet mindig
+  `{text}` blokkok tömbje, a `gemini` üzenet mindig sima string. 159 fájlon
+  mérve: 193 `user:array`, 359 `gemini:string`, kivétel nélkül.
+- **Az `info` és az `error` a CLI önmagával beszél** — bővítmény-frissítési
+  értesítők, kvótahibák —, ezeket nem indexeljük. Ahogy a `gemini` rekord
+  `thoughts` és `toolCalls` mezőit sem.
+- **A session növekedés közben helyben íródik újra**, tehát fél dokumentum nem
+  parse-olható: a megváltozott fájlt egészben olvassuk újra. A `classifyFile`
+  így is hasznos, mert a változatlan fájl nulla olvasásba kerül.
+- **A Gemini rögzíti, hogy egy session subagent, de azt soha, hogy kié.** A
+  kapcsolatot nyitva hagyjuk, nem következtetjük ki időzítésből.
+- A chatek melletti `logs.json` ugyanazokat a user-üzeneteket tartalmazza, külön
+  nem olvassuk: a `chats/*.json` a bővebb halmaz.
+
+## Antigravity
+
+```
+~/.gemini/antigravity-cli/conversation_summaries.db     (SQLite)
+~/.gemini/antigravity-cli/history.jsonl
+~/.gemini/antigravity{,-ide}/brain/<uuid>/*.md
+~/.gemini/antigravity{,-ide}/conversations/*.pb         (titkosított, nem olvassuk)
+```
+
+**Maguk a beszélgetések titkosítva vannak, nem csak sémátlanok.** 64 KiB-os
+ablakon mérve a `conversations/*.pb` és az `implicit/*.pb` **7,997–7,998 bit
+entrópiát** hordoz bájtonként, olvasható fejléc nélkül — miközben a mellettük
+fekvő sima protobuf (`user_settings.pb`) 3,6-ot mér és protobufként olvasható.
+A törzsek tehát nincsenek az indexben, és a collector ezt kimondja ahelyett,
+hogy üres store-t jelentene. Amit indexelünk, az az, amit az Antigravity a
+beszélgetéseiről *feljegyez*:
+
+- `conversation_summaries.db` — beszélgetésenként egy sor. A **`title` minden
+  sorban üres** a referenciagépen; a `preview` a generált egysoros összefoglaló,
+  amit a felület mutat, tehát az lesz a cím. Turn nélkül.
+- `history.jsonl` — a felhasználó által begépelt promptok, `workspace`-szel és
+  általában `conversationId`-vel. Ez az egyetlen olvasható nyoma annak, ami
+  elhangzott. A `conversationId` nélküli sor (egy session első promptja és
+  minden slash-parancs) semmilyen beszélgetéshez nem köthető, ezért kihagyjuk
+  ahelyett, hogy találgatás alá sorolnánk.
+- `brain/<uuid>/*.md` — `task.md` és `implementation_plan.md`, az ügynök saját
+  terv-dokumentumai, git-repóban. Csak `.md`: ugyanezek a könyvtárak több ezer
+  képernyőképet és minden dokumentum `.resolved.N` történetét is tartalmazzák.
+  A referenciagépen 480 dokumentum, 1,6 MB szöveg.
+
+Csapdák:
+
+- **A `last_user_input_time` minden sorban `0001-01-01 00:00:00+00:00`** — a
+  .NET „soha” alapértéke. A `Date.parse` elfogadja, és **2001-et** ad vissza,
+  tehát változatlanul tárolva minden beszélgetés huszonöt évvel korábbinak
+  vallaná magát. A 2020 előtti értékeket hiányzónak tekintjük.
+- **A `workspace_uris` percent-kódolt file URI-k JSON tömbje**
+  (`["file:///d%3A/tool/demo"]`). Ez a store egyetlen közvetlen projektjelzése —
+  munkakönyvtár-oszlop nincs benne —, ezért erős origó az attribúciós
+  kaszkádban. 104 sorból 100-ban kitöltött.
+- **Három könyvtár, egy adatkészlet.** Az `antigravity/` (IDE), az
+  `antigravity-ide/` és az `antigravity-cli/` ugyanazokat a beszélgetés-azonosítókat
+  tartalmazza; az első kettőben a `.pb` fájlok pár tucat bájtban térnek el.
+  Mindent a beszélgetés-azonosító kulcsol, és deduplikálunk.
+- A `~/.gemini/antigravity/mcp_config.json` **symlink** a
+  `~/.gemini/config/mcp_config.json`-ra, amit a `config/.migrated` jelöl meg
+  kanonikusként. A telepítő a célfájlt írja, nem a linket.
+
+## Devin CLI
+
+```
+<appdata>/devin/cli/sessions.db     (SQLite, WAL)
+```
+
+A `sessions` adja a `working_directory`-t — valódi munkakönyvtár, tehát az
+attribúció közvetlen és erős —, plusz a `title`-t, a `model`-t, és epoch
+**másodperceket** a `created_at` / `last_activity_at` mezőkben. A
+`message_nodes.chat_message` egy JSON string:
+`{message_id, role, content, metadata}`, ahol a `content` mindig sima string.
+
+- **A store erdő, nem átirat.** Minden újrapróbálkozás és szerkesztett prompt új
+  ágat nyit, és mind bent marad a `message_nodes`-ban. A tábla végigolvasása
+  egy kérdést négyszer indexelne (mérve: 4 `user` node 1 `prompt_history` sorra).
+  A `sessions.main_chain_id` a beszélgetés jelenlegi állapotának levele; a szülők
+  visszasétálása az egyetlen olvasat, ami azzal egyezik, amit a felhasználó lát
+  — a referenciagépen 37 node-ból 16.
+- **A rövidülő lánc a sessiont is rövidíti.** A visszalépés turnöket dob el, ezért
+  a sessiont minden változásnál újraépítjük, nem hozzáfűzünk.
+- A `system` rekordok a beinjektált környezet: a munkakönyvtár-kiíratás és egy
+  always-on szabályblokk, ami a felhasználó saját utasításfájljait ágyazza be. A
+  `tool` rekordok eszközeredmények. Egyik sem beszéd, és mindkettő ugyanazt a
+  szöveget tenné az indexbe sessiononként egyszer.
+- **Egy assistant node üres stringet is tarthat**, amíg egy eszközhívás fut.
+- **A store nagy része a WAL-ban él** (1,9 MB WAL egy 4 KB-os adatbázisfájl
+  mellett). A fixture ezért épül WAL módban.
+- A `transcripts/*.json` (`ATIF-v1.7`) csak akkor keletkezik, ha a felhasználó
+  exportál, és részhalmaza annak, amit a `sessions.db` már tartalmaz. Nem olvassuk.
+
+## Windsurf — ismert, de nem indexelhető
+
+```
+~/.codeium/windsurf/cascade/*.pb
+```
+
+A Cascade beszélgetések ugyanúgy titkosítva vannak, mint az Antigravityé, és
+**nincs mellettük összefoglaló adatbázis** — tehát az Antigravityvel ellentétben
+még metaadat-réteg sincs, amiből attribuálni vagy címet adni lehetne. Nincs mit
+tisztességesen indexelni, ezért nincs Windsurf collector.
+
+A Devin asztali alkalmazás Windsurf-fork, és ugyanezt a store-t használja (a
+`state.vscdb`-je tele van `windsurf*` kulcsokkal); a Devin **CLI** külön,
+olvasható store, azt indexeljük. Ha az Antigravity kulcskezelése valaha
+megérkezik, ugyanaz a modul a Windsurfot is lefedné, más kulcsnévvel.
+
+### Antigravity beszélgetéstörzsek, igény szerint
+
+A titkosított `.pb` fájlok mégis olvashatók — nem visszafejtéssel, hanem
+annak a komponensnek a megkérdezésével, amelyik már tudja. Az Antigravity
+egy language servert futtat, ami Connect-RPC szolgáltatást válaszol sima
+HTTP-n localhoston, és ez a daemon fejti vissza a saját store-ját.
+
+Ez **nem** része a `cam sync`-nek. Csak akkor fut, ha valaki egy beszélgetést
+név szerint kér (`cam get antigravity:<id>`, vagy `cam_get` MCP-n), és amit
+lehúz, azt megőrzi, tehát a második kérdés egy hívásba kerül.
+
+```
+POST http://127.0.0.1:<port>/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory
+x-codeium-csrf-token: <token>
+{"cascadeId": "<conversation id>"}
+```
+
+Minden alább mért, és minden sor egy rossz válasz, ami jónak látszott:
+
+- **A header `x-codeium-csrf-token`.** Az Antigravity Codeium-fork, és
+  megtartotta a gyártói előtagot. `x-csrf-token`, `x-csrf` vagy `csrf-token`
+  mellett a daemon `401 {"code":"unauthenticated","message":"missing CSRF token"}`
+  választ ad — ami rossz tokennek olvasható, nem rossz header-névnek.
+- **A token a daemon parancssorának `--csrf_token`-je**, és nem a mellette
+  ülő `--extension_server_csrf_token`, ami másik szolgáltatást véd. Részstring
+  szerinti illesztés azt veszi, amelyik előbb jön.
+- **A port nem a naplóból jön.** A `language_server.log` 49361/49362-t
+  rögzített, miközben az élő processz 55026/55027-en hallgatott. A processz
+  saját listening socketjeiből jön: Windowson `Get-NetTCPConnection`, Linuxon
+  előbb `ss -ltnp`, aztán `lsof` (`ss` az, amit egy mai disztribúció szállít;
+  egyik sem garantált), macOS-en `lsof`. Az üres válasz azt jelenti: „az
+  Antigravity nem fut”.
+- **Két port van, és az egyik használhatatlan.** Az alacsonyabb HTTPS/gRPC, és
+  `Client sent an HTTP request to an HTTPS server.`-rel válaszol; a magasabb
+  a sima HTTP. Az olvasó próbájával dönt, nem a sorrendben bízik.
+- **A `GetAllCascadeTrajectories` `{}`-t ad.** Proto3 JSON-ban az üres
+  repeated mező kimarad, tehát nincs listázható oldal: a beszélgetés-azonosítók
+  a `conversation_summaries.db`-ből jönnek, a változásjelzés is onnan.
+- **Egy daemon csak a saját felületét ismeri.** Az IDE language serverétől a
+  CLI-ben indított beszélgetést kérdezve
+  `{"code":"unknown","message":"trajectory not found"}` a válasz.
+- **Daemont nem indítunk, és nem is próbálunk.** Lezárt Antigravity mellett
+  az `agy agentapi` csak az alparancs-listáját írja ki, az
+  `agy agentapi get-conversation-metadata <id>` pedig 1-gyel lép ki
+  `{"error":"ANTIGRAVITY_LS_ADDRESS is not set"}` üzenettel — egy daemon
+  kliense, nem indítási mód. A `language_server.exe` közvetlen futtatása egy
+  dokumentálatlan bináris argumentumkészletének kitalálása lenne, egy valódi
+  `agy` session indítása pedig számlázott modellhívás helyi adat olvasásához.
+  Tehát ha az Antigravity zárva van, a válasz az, hogy ezt kimondjuk.
+
+**Ami visszajön, és ami megmarad.** A trajectory lépésnapló, nem átirat: a
+mért beszélgetésben 523 lépés 46 turn volt. Egy ilyen trajectory népszámlálása:
+
+```
+167  PLANNER_RESPONSE   158  EPHEMERAL_MESSAGE   58  VIEW_FILE   29  CODE_ACTION
+ 23  RUN_COMMAND         23  GREP_SEARCH         13  COMMAND_STATUS
+ 12  USER_INPUT          11  ERROR_MESSAGE        6  CONVERSATION_HISTORY
+  6  KNOWLEDGE_ARTIFACTS  6  LIST_DIRECTORY       6  CHECKPOINT
+  3  BROWSER_SUBAGENT     2  SEND_COMMAND_INPUT   …  NOTIFY_USER
+```
+
+Három mező a beszéd, és a csapda a `PLANNER_RESPONSE`:
+
+| Lépés | Felvett mező |
+|---|---|
+| `USER_INPUT` | `userInput.items[*].text`, tartalékként `userResponse` |
+| `NOTIFY_USER` | `notifyUser.notificationContent` |
+| `PLANNER_RESPONSE` | **csak** a `plannerResponse.response` |
+
+A planner-lépések többsége a modell gondolatmenete: `thinking`, `toolCalls[]`
+és egy base64 `thinkingSignature` — ugyanaz a forma, amit a Claude Code
+átiratokból is kihagyunk. De *néhány* hoz `response`-t is, azt a mondatot,
+amit a felhasználó olvas. Egy beszélgetés három legnagyobb planner-lépésének
+mintájában egyik sem volt, és pont így marad ki a mező: az egész lépés
+felvétele a gondolatmenetet indexelné, az egész kihagyása a beszélgetés
+felét veszíti. Csak a `response` olvasása 12 turn helyett 46-ot hozott
+ugyanabból az 523 lépésből.
+
+**A turnök inline tárolódnak.** A sima szöveg sehol nincs a lemezen — a store
+titkosítva tartja —, tehát nincs fájl és bájt-offset, amit feljegyeznénk. Ez
+ugyanaz a kivétel, amit a volatilis scratchpadek már használnak, és azt
+jelenti, hogy a lehúzott beszélgetés olvasható és kereshető marad akkor is,
+miután az Antigravity újra bezárult.
+
+**Semmit sem húzunk le kétszer.** Az összefoglaló sor `last_modified_time` és
+`step_count` mezője a verzió; amíg nem mozdult, a megőrzött másolat aktuális,
+és nincs hívás. Ha elmozdult, a beszélgetést újra lekérjük, és a turnjeit
+**cseréljük**, mert a folytatott beszélgetésnek új lépései vannak, és a
+hozzáfűzés megduplázná, ami előttük volt.

@@ -29,6 +29,11 @@ export function migrate(db: Db): string[] {
   // visible. The old column stays (nothing is ever dropped) and keeps its
   // historical values; new runs write the honestly named one.
   addColumn("sync_runs", "sessions_seen", "sessions_seen INTEGER NOT NULL DEFAULT 0");
+  // The `sqlite_row` locator addresses a row in a named table rather than a
+  // key/value pair, so the table and column travel with the key. Old rows keep
+  // NULL, which is exactly right: no existing locator is a `sqlite_row`.
+  addColumn("turns", "loc_table", "loc_table TEXT");
+  addColumn("turns", "loc_column", "loc_column TEXT");
 
   if (hasTable(db, "meta")) {
     db.prepare("insert or replace into meta(key, value) values ('schema_version', ?)").run(String(SCHEMA_VERSION));

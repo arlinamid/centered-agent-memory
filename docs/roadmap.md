@@ -434,10 +434,12 @@ hope works.
   empty result: `cam doctor` and `cam_status` say what is wrong. What is
   missing is the actual merge between two machines' indexes — that is not
   a copy, but conflict handling.
-- **Further tools**: Gemini CLI, Windsurf, Zed. The collector interface was
-  built for this. Gemini CLI is two separate things here: since M5 we
-  recognise it *as a model* (dream phase), but not *as a source* — we do
-  not index its conversations.
+- **Further tools**: Zed, and Windsurf if its Cascade store ever becomes
+  readable. Gemini CLI, Antigravity and Devin CLI are now sources rather than
+  directions — Gemini CLI is both a model (dream phase) and a source.
+  Windsurf's conversations are encrypted with no metadata layer beside them,
+  so there is nothing honest to index yet; see
+  [`sources.md`](sources.md#windsurf--known-and-not-indexable).
 - **Bringing artifacts into search.** `artifacts.inline_text` today holds
   264 rows of copied scratchpad and Cowork content that **nothing reads** —
   `cam recall` does not find into it.
@@ -470,12 +472,21 @@ with `logQuery: false` writes only the question hash.
 sources; the hub only finds it.
 
 **What leaves the machine:** by default nothing; the core does not network.
-There is one exception, and it is an explicit opt-in: `cam memory dream` sends
-the promoted excerpts to the configured model. There is no default model,
-`consolidate` never calls it, and the command prints **before sending** how
-many characters go out and where — even with `--quiet`. Until you configure a
-model, this sentence is true as written. Details:
-[`memory.md`](memory.md#the-dream-phase-optional).
+There are exactly two exceptions, and both are explicit opt-ins.
+
+1. `cam memory dream` sends the promoted excerpts to the configured model.
+   There is no default model, `consolidate` never calls it, and the command
+   prints **before sending** how many characters go out and where — even with
+   `--quiet`. Details: [`memory.md`](memory.md#the-dream-phase-optional).
+2. `cam update` asks GitHub whether there is a newer release. It is off until
+   the config file says `{"update": {"enabled": true}}`, it prints the URL it
+   is about to contact **before** contacting it — again even with `--quiet` —
+   and the request carries nothing about this machine: no identifier, no
+   version ping, no telemetry. `cam update --dry-run` answers "what would you
+   contact?" without contacting it at all.
+
+Until you turn one of those on, "nothing leaves this machine" is true as
+written.
 
 **Deletion:** the whole index can be dropped (`.data/hub.sqlite`), this does
 not touch the sources. Granularly: `cam forget --project <key>` or
@@ -487,7 +498,7 @@ reindexes them if they are still there. Details:
 
 ---
 
-## Wiring a fifth tool
+## Wiring another tool
 
 1. Implement the `Collector` interface (`src/collectors/types.ts`). Every
    path, database opener, and clock arrives through `CollectorCtx` — the

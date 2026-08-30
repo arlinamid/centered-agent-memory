@@ -4,11 +4,11 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.6.1-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.7.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
-One index over every AI coding tool on the machine — Claude Code, Claude Desktop / Cowork, Codex, Cursor — organised by project. CLI and MCP, so any agent can look up what the others already did.
+One index over every AI coding tool on the machine — Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity, Devin — organised by project. CLI and MCP, so any agent can look up what the others already did.
 
 [Magyar](README.hu.md) · [docs](docs/install.md) · [`docs/*.hu.md`](README.hu.md)
 
@@ -52,6 +52,9 @@ flowchart LR
   B[Codex] --> H
   C[Cursor] --> H
   D[Desktop / Cowork] --> H
+  E[Gemini CLI] --> H
+  F[Antigravity] --> H
+  G[Devin CLI] --> H
   H --> CLI
   H --> MCP
 ```
@@ -63,7 +66,7 @@ The index stores **locators**, not copies. Sources stay read-only. Nothing leave
 | Locators, not copies | A turn is a file + byte offset, or an SQLite key. Text is re-read at query time. Volatile scratchpads are the one exception (`artifacts`). |
 | No guessing | Unknown project stays `unattributed`. Every hit names its signal and confidence (`strong` / `medium` / `weak` / `none`). |
 | Sources are read-only | Structural: `openSourceReadonly`. The tool never writes another agent's store. |
-| Nothing leaves the machine | No network, no telemetry. `cam memory dream` is opt-in, prints first, and nothing else calls it. |
+| Nothing leaves the machine | No telemetry, ever. Two things can reach the network and both are off until you turn them on: `cam memory dream` and `cam update`. Each prints what it will contact before contacting it. |
 | Says how old it is | Every MCP answer ends with the index age. `STALE` means do not quote it as current. |
 
 ---
@@ -168,6 +171,11 @@ Past 24 hours (`staleAfterHours`) the line says `STALE, run: cam sync`, and the 
 | Cowork | `<appdata>/Claude/local-agent-mode-sessions/**` | `userSelectedFolders` |
 | Claude Desktop | `<appdata>/Claude/claude-code-sessions/**` | index + title |
 | Cursor history | `<appdata>/Cursor/User/History/*/entries.json` | time-correlation input |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/session-*.json` | `.project_root` beside the chats |
+| Antigravity | `~/.gemini/antigravity-cli/conversation_summaries.db` + `history.jsonl` + `brain/**/*.md` | `workspace_uris` |
+| Devin CLI | `<appdata>/devin/cli/sessions.db` | `sessions.working_directory` |
+
+Antigravity's conversation bodies (`conversations/*.pb`) are encrypted — measured at 7.998 bits of entropy per byte — so what is indexed is the summary, the typed prompts and the agent's plan documents, and the tool says so rather than reporting an empty store. Windsurf stores its Cascade threads the same way with no metadata beside them, so it has no collector.
 
 Formats and traps: [`docs/sources.md`](docs/sources.md). Schema: [`docs/architecture.md`](docs/architecture.md).
 
@@ -187,6 +195,12 @@ cam memory dream [--dry-run]   # optional sentence, written by a model you confi
 Same database, same promotions. A promoted memory stores no text either — it references a chunk. Details: [`docs/memory.md`](docs/memory.md).
 
 `cam memory dream` is off by default, never runs from `consolidate`, prints what would leave the machine before it leaves, and labels every generated sentence with the model that wrote it.
+
+## Updating
+
+`cam update --check` compares the installed version against the latest GitHub release; `cam update --yes` installs it. Both are off until the config file says `{"update": {"enabled": true}}`, and `cam update --dry-run` shows exactly what would be contacted without contacting it.
+
+An update stops any running `cam-mcp` server first (the MCP client starts a fresh one on its next tool call), takes the sync lock so a scheduled run cannot collide, and — when the copy being replaced is the one doing the replacing — hands the install to a script in a temp directory that waits for the process to exit. The index is then migrated immediately by the newly installed binary, rather than at 04:00 by an unattended job. An index written by a newer version is refused, not silently stamped back.
 
 ---
 

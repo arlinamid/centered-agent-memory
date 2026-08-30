@@ -19,14 +19,16 @@ import {
   formatTurns,
 } from "../query/format.js";
 import { getTurns, parseCitation, recall } from "../query/recall.js";
+import { DaemonSession } from "../sources/language-server.js";
+import { fetchConversation } from "../sources/antigravity-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.6.1";
+export const SERVER_VERSION = "0.7.0";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
-Claude Code, Claude Desktop / Cowork, Codex and Cursor. Read-only — it does not
-modify any of those stores.
+Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and
+Devin. Read-only — it does not modify any of those stores.
 
 Use it before asking about or assuming earlier work on a project: cam_dossier
 gives the full picture, cam_timeline the chronology, cam_recall full-text
@@ -49,6 +51,11 @@ export interface ServerOptions {
 
 /** Factory so tests can drive the server in-process over an in-memory transport. */
 export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
+  // One address cache for the life of the server: the MCP client asks several
+  // questions in a row, and finding the daemon means listing every process on
+  // the machine. It expires on its own, because Antigravity picks new ports
+  // every time it restarts.
+  const antigravity = new DaemonSession();
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION, title: "Centered Agent Memory" },
     { instructions: INSTRUCTIONS },
@@ -63,10 +70,18 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
    * that skips this.
    */
   type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+  /**
+   * Every answer ends with how old the index is.
+   *
+   * Handlers may be async — `cam_get` has to reach Antigravity's daemon for a
+   * conversation whose body is encrypted — so the result is awaited before the
+   * footer is appended. Without the await the footer would be pushed onto a
+   * promise, and the tool would fail with a result that is not iterable.
+   */
   const dated =
-    <A>(handler: (args: A) => ToolResult) =>
-    (args: A): ToolResult => {
-      const res = handler(args);
+    <A>(handler: (args: A) => ToolResult | Promise<ToolResult>) =>
+    async (args: A): Promise<ToolResult> => {
+      const res = await handler(args);
       const footer = formatFreshness(freshness(db, now(), opts.staleAfterMs));
       return { ...res, content: [...res.content, { type: "text", text: footer }] };
     };
@@ -104,13 +119,18 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
     {
       title: "Project timeline",
       description:
-        "A project's sessions in chronological order, from all four tools, with " +
+        "A project's sessions in chronological order, from every tool in the index, with " +
         "attribution method and confidence. Does not read text, so it is fast.",
       inputSchema: {
         project: z.string().min(1),
         since: z.string().optional().describe("ISO date, from"),
         until: z.string().optional().describe("ISO date, until"),
-        tools: z.array(z.string()).optional().describe("Filter by tool: claude_code, codex, cursor, cowork"),
+        tools: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Filter by tool: claude_code, claude_desktop, cowork, codex, cursor, gemini_cli, antigravity, devin",
+          ),
         includeSubagents: z.boolean().optional(),
         limit: z.number().int().min(1).max(1000).optional(),
       },
@@ -207,14 +227,29 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    dated(({ citation }: { citation: string }) => {
+    dated(async ({ citation }: { citation: string }) => {
       const parsed = parseCitation(citation);
       if (!parsed) return text(`Unreadable citation: ${citation}`, true);
 
-      const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
-      if (turns.length === 0) return text(`No such session: ${citation}`, true);
+      // Antigravity keeps its conversations encrypted, and only its own daemon
+      // can read them. Asking for one by name is the moment to go and get it —
+      // the only moment, which is why nothing else in the server does.
+      let note = "";
+      if (parsed.tool === "antigravity") {
+        const outcome = await fetchConversation(db, parsed.sessionExtId, { session: antigravity });
+        if (outcome.status === "no-daemon") {
+          note =
+            "\n\n(Antigravity is not running, so this conversation's text could not be read: " +
+            "its body is encrypted on disk. What is shown is what the index holds without it.)";
+        } else if (outcome.status === "failed") {
+          note = `\n\n(Antigravity's language server did not answer: ${outcome.detail})`;
+        }
+      }
 
-      return text(formatTurns(turns));
+      const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
+      if (turns.length === 0) return text(`No such session: ${citation}${note}`, true);
+
+      return text(formatTurns(turns) + note);
     }),
   );
 

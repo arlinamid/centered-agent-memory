@@ -4,11 +4,11 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.6.1-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.7.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
-Egy index a gép minden AI kódoló eszközéről — Claude Code, Claude Desktop / Cowork, Codex, Cursor — projektenként. CLI és MCP, hogy bármelyik ágens megnézhesse, mit csináltak a többiek.
+Egy index a gép minden AI kódoló eszközéről — Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity, Devin — projektenként. CLI és MCP, hogy bármelyik ágens megnézhesse, mit csináltak a többiek.
 
 [English](README.md) · [docs](docs/install.hu.md) · [English docs](docs/install.md)
 
@@ -54,6 +54,9 @@ flowchart LR
   B[Codex] --> H
   C[Cursor] --> H
   D[Desktop / Cowork] --> H
+  E[Gemini CLI] --> H
+  F[Antigravity] --> H
+  G[Devin CLI] --> H
   H --> CLI
   H --> MCP
 ```
@@ -65,7 +68,7 @@ Az index **hivatkozásokat** tárol, nem másolatot. A források read-onlyak. Se
 | Hivatkozás, nem másolat | Egy turn: fájl + bájt-offset, vagy SQLite-kulcs. A szöveget lekérdezéskor olvassuk vissza. Kivétel a múlandó scratchpad (`artifacts`). |
 | Nem tippelünk | Ismeretlen projekt `unattributed` marad. Minden találat megnevezi a jelet és a megbízhatóságot (`strong` / `medium` / `weak` / `none`). |
 | A forrás read-only | Szerkezeti: `openSourceReadonly`. A `cam` sosem ír másik ágens tárolójába. |
-| Semmi nem hagyja el a gépet | Nincs hálózat, nincs telemetria. A `cam memory dream` opt-in, előbb kiírja, mit küldene, és semmi más nem hívja. |
+| Semmi nem hagyja el a gépet | Telemetria soha. Két dolog érheti el a hálózatot, és mindkettő ki van kapcsolva, amíg be nem kapcsolod: a `cam memory dream` és a `cam update`. Mindkettő kiírja, mit fog megkeresni, mielőtt megkeresi. |
 | Megmondja, milyen régi | Minden MCP-válasz az index korával végződik. A `STALE` azt jelenti: ne idézd frissként. |
 
 ---
@@ -170,6 +173,11 @@ Minden válasz — a hibás is — az index korával végződik:
 | Cowork | `<appdata>/Claude/local-agent-mode-sessions/**` | `userSelectedFolders` |
 | Claude Desktop | `<appdata>/Claude/claude-code-sessions/**` | index + cím |
 | Cursor előzmények | `<appdata>/Cursor/User/History/*/entries.json` | idő-korreláció bemenete |
+| Gemini CLI | `~/.gemini/tmp/<projekt>/chats/session-*.json` | `.project_root` a chatek mellett |
+| Antigravity | `~/.gemini/antigravity-cli/conversation_summaries.db` + `history.jsonl` + `brain/**/*.md` | `workspace_uris` |
+| Devin CLI | `<appdata>/devin/cli/sessions.db` | `sessions.working_directory` |
+
+Az Antigravity beszélgetés-törzsei (`conversations/*.pb`) titkosítottak — mérve 7,998 bit entrópia bájtonként —, ezért az összefoglalót, a begépelt promptokat és az ügynök terv-dokumentumait indexeljük, és a tool ezt ki is mondja ahelyett, hogy üres store-t jelentene. A Windsurf ugyanígy tárolja a Cascade szálakat, de metaadat nélkül, ezért ahhoz nincs collector.
 
 Formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md). Séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
 
@@ -189,6 +197,12 @@ cam memory dream [--dry-run]   # opcionális mondat, beállított modelltől
 Ugyanaz az adatbázis, ugyanaz a promóció. A promotált emlék sem tárol szöveget — chunk-hivatkozás. Részletek: [`docs/memory.hu.md`](docs/memory.hu.md).
 
 A `cam memory dream` alapból ki van kapcsolva, a `consolidate` sosem hívja, kiírja, mi menne ki *mielőtt* kimegy, és a generált mondatot a modell nevével címkézi.
+
+## Frissítés
+
+A `cam update --check` összeveti a telepített verziót a legutóbbi GitHub release-szel; a `cam update --yes` telepíti. Mindkettő ki van kapcsolva, amíg a konfigurációs fájl nem mondja, hogy `{"update": {"enabled": true}}`, a `cam update --dry-run` pedig megmutatja, mit keresne meg — anélkül, hogy megkeresné.
+
+A frissítés előbb leállítja a futó `cam-mcp` szervereket (az MCP kliens a következő eszközhívásnál újat indít), felveszi a sync-lockot, hogy ütemezett futás ne ütközzön bele, és — ha épp azt a példányt cserélné le, amelyik fut — egy ideiglenes könyvtárba írt szkriptre bízza a telepítést, ami megvárja a folyamat kilépését. Az indexet ezután azonnal az újonnan telepített bináris migrálja, nem hajnali 4-kor egy felügyelet nélküli job. Az újabb verzió által írt indexet visszautasítja, nem bélyegzi vissza csendben.
 
 ---
 

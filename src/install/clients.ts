@@ -6,7 +6,7 @@ import { appSupportDir } from "../paths.js";
 /**
  * Where each agent tool keeps its MCP configuration and its skills.
  *
- * The same four tools the collectors read from, approached from the other end:
+ * The same tools the collectors read from, approached from the other end:
  * there we look for their conversation stores, here for the files that tell
  * them about a server. Detection is by the tool's own home directory, so a
  * client that was never installed is reported as absent rather than having a
@@ -16,7 +16,14 @@ import { appSupportDir } from "../paths.js";
  * so the test suite can point the whole registry at a fixture.
  */
 
-export type ClientId = "claude_code" | "claude_desktop" | "codex" | "cursor";
+export type ClientId =
+  | "claude_code"
+  | "claude_desktop"
+  | "codex"
+  | "cursor"
+  | "gemini_cli"
+  | "antigravity"
+  | "devin";
 export type ConfigFormat = "json" | "toml";
 export type Scope = "user" | "project";
 
@@ -66,6 +73,9 @@ function userTargets(home: string): ClientTarget[] {
   const codexHome = path.join(home, ".codex");
   const cursorHome = path.join(home, ".cursor");
   const desktopHome = appSupportDir("Claude", home);
+  const geminiHome = path.join(home, ".gemini");
+  const antigravityHome = path.join(geminiHome, "antigravity");
+  const devinHome = appSupportDir("devin", home);
 
   return [
     {
@@ -119,6 +129,51 @@ function userTargets(home: string): ClientTarget[] {
       skillFile: path.join(cursorHome, "skills", SKILL_NAME, "SKILL.md"),
       surface: CLI_SURFACE,
     },
+    {
+      id: "gemini_cli",
+      name: "Gemini CLI",
+      scope: "user",
+      home: geminiHome,
+      installed: fs.existsSync(geminiHome),
+      // Not a dedicated server file: `mcpServers` is one key inside the general
+      // settings document, next to `ui` and `security`. `upsertJson` merges into
+      // that key and leaves the rest of the document alone, which is exactly
+      // what is needed here.
+      mcpFile: path.join(geminiHome, "settings.json"),
+      mcpFormat: "json",
+      skillFile: path.join(geminiHome, "skills", SKILL_NAME, "SKILL.md"),
+      surface: CLI_SURFACE,
+    },
+    {
+      id: "antigravity",
+      name: "Antigravity",
+      scope: "user",
+      home: antigravityHome,
+      installed: fs.existsSync(antigravityHome),
+      // One configuration serves all three Antigravity surfaces (IDE, CLI, and
+      // the older `antigravity-ide` tree): `~/.gemini/antigravity/mcp_config.json`
+      // is a symlink to this file, and `config/.migrated` records the move.
+      // Writing the canonical path rather than the link keeps the link a link.
+      mcpFile: path.join(geminiHome, "config", "mcp_config.json"),
+      mcpFormat: "json",
+      skillFile: path.join(antigravityHome, "skills", SKILL_NAME, "SKILL.md"),
+      surface: CLI_SURFACE,
+    },
+    {
+      id: "devin",
+      name: "Devin",
+      scope: "user",
+      home: devinHome,
+      installed: fs.existsSync(devinHome),
+      mcpFile: path.join(devinHome, "mcp_config.json"),
+      mcpFormat: "json",
+      // Devin has no skill directory of its own: it scans `~/.claude/skills/`
+      // and `~/.agents/skills/`, and the Claude Code target already writes the
+      // first of those. Writing a second copy would list one skill twice in
+      // Devin's own skill menu, so the Claude Code target is the channel here.
+      skillFile: null,
+      surface: CLI_SURFACE,
+    },
   ];
 }
 
@@ -147,5 +202,14 @@ export function clientTargets(scope: Scope, home = os.homedir(), cwd = process.c
   return scope === "project" ? projectTargets(home, cwd) : userTargets(home);
 }
 
-export const isClientId = (s: string): s is ClientId =>
-  s === "claude_code" || s === "claude_desktop" || s === "codex" || s === "cursor";
+const CLIENT_IDS = new Set<string>([
+  "claude_code",
+  "claude_desktop",
+  "codex",
+  "cursor",
+  "gemini_cli",
+  "antigravity",
+  "devin",
+]);
+
+export const isClientId = (s: string): s is ClientId => CLIENT_IDS.has(s);

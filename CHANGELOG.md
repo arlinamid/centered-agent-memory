@@ -2,7 +2,88 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.7.0] — 2026-08-30
+
+### Three more tools in the index
+
+- **Gemini CLI** (`~/.gemini/tmp/<project>/chats/*.json`). Whole-document JSON, one file per
+  session. The working directory comes from `.project_root` beside the chats: `projectHash` is
+  not the SHA-256 of the path (checked against every path in `projects.json`, in every case and
+  separator variant), and a bare folder name matches any number of directories — so a project
+  without a `.project_root` stays unattributed rather than guessed at. 159 sessions, 432 turns,
+  96% attributed on the reference machine.
+- **Devin CLI** (`<appdata>/devin/cli/sessions.db`). The store is a forest, not a transcript:
+  every retry forks a branch and all of them stay in `message_nodes`, so reading the table would
+  index one question four times over. The collector walks `sessions.main_chain_id` back to the
+  root, which is the conversation as the user would see it. `system` records (the injected
+  environment, and an always-on rules block that inlines the user's own instruction files) and
+  `tool` results are not speech and are not indexed.
+- **Antigravity** (`~/.gemini/antigravity*/`). The conversation bodies are **encrypted** — 7.998
+  bits of entropy per byte over a 64 KiB window, against 3.6 for the plain protobuf beside them —
+  so what is indexed is what Antigravity records about its conversations: the summaries database
+  (104 conversations, titled from `preview`, since `title` is empty in every row), the typed
+  prompts in `history.jsonl`, and the agent's own plan documents under `brain/` (480 files).
+  92 of 104 conversations bind to a project. Windsurf stores Cascade the same way but has no
+  metadata beside it, so it is documented as not indexable rather than half-read.
+
+### Antigravity conversation bodies, on demand
+
+- **`cam get antigravity:<id>` asks the live language server**, not the encrypted `.pb` file.
+  Antigravity decrypts its own store over Connect-RPC on localhost (`GetCascadeTrajectory`,
+  header `x-codeium-csrf-token`). This is not part of `cam sync`: no hourly job starts a
+  daemon, and with Antigravity closed the answer is that it is closed.
+- **The port comes from the process's listening sockets**, never from `language_server.log`
+  (which recorded stale ports on the reference machine). Windows uses `Get-NetTCPConnection`;
+  Linux tries `ss -ltnp` first, then `lsof` — neither is guaranteed on a given box; macOS
+  uses `lsof`. An empty answer is treated as "not running".
+- **A daemon only knows its own surface.** The IDE language server answers `trajectory not
+  found` for a conversation the CLI created. The parser takes speech fields only
+  (`USER_INPUT`, `NOTIFY_USER`, and `plannerResponse.response` — not the thinking or
+  tool-calls that fill most `PLANNER_RESPONSE` steps). The kept copy is versioned by the
+  summaries row, so a second `cam get` is a cache hit.
+
+### Wired into three more clients
+
+- `cam install` now writes the MCP server into **Gemini CLI** (merging into the `mcpServers` key
+  of `~/.gemini/settings.json` without disturbing the rest of the document), **Antigravity**
+  (`~/.gemini/config/mcp_config.json` — the canonical file the `antigravity/` symlink points at,
+  so the link stays a link) and **Devin** (`<appdata>/Devin/mcp_config.json`).
+- Skills go to `~/.gemini/skills/` and `~/.gemini/antigravity/skills/`. Devin gets none of its
+  own on purpose: it scans `~/.claude/skills/`, which the Claude Code target already fills, and a
+  second copy would list the same skill twice in Devin's menu.
+
+### `cam update`
+
+- **New command**, and the second thing in the package that can reach the network. Off until the
+  config file says `{"update": {"enabled": true}}`; it prints the URL before contacting it, even
+  under `--quiet`; the request carries no identifier and no telemetry. `--dry-run` answers "what
+  would you contact?" without contacting it.
+- **An update stops what is running.** Live `cam-mcp` servers hold the files npm is about to
+  replace — on Windows that fails outright — so they are found and asked to stop (SIGTERM, so
+  they close their database handle), and the sync lock is held so a scheduled run cannot collide.
+  `--keep-servers` opts out.
+- **The updater is never the file being updated.** When the running copy is the global one, the
+  install is handed to a script in a temp directory that waits for this process to exit, then
+  installs, then migrates. It imports nothing but Node built-ins, because every other file is one
+  npm is about to overwrite.
+- **The index migrates immediately, with the new binary** — not at 04:00 in an unattended job
+  where a failed migration would be invisible.
+
+### Migration safety
+
+- **An index written by a newer version is now refused** (`SchemaTooNewError`), instead of being
+  silently stamped back to the running build's schema number. Migrations only go forward, so an
+  older build opening a newer index was reading a schema it did not fully know *and* erasing the
+  only evidence that it was ever newer.
+- `turns.loc_table` / `turns.loc_column` added for the new `sqlite_row` locator, which addresses
+  a row in a named table rather than a key/value pair. The table name is checked against a
+  whitelist at read time: an unknown one reads as missing text, never as SQL. `SCHEMA_VERSION` 5.
+- `file_range` locators now accept a field pointer, so a source that writes one JSON document per
+  session can be addressed without copying it. No existing locator changed meaning, so **no
+  reindex is required**.
+- `RULE_VERSION` 3: `workspace_dirs` (Devin) and `workspace_uris` (Antigravity) join `cwd` and
+  `user_selected_folders` as direct project signals. For Antigravity it is the only one the store
+  has. `cam doctor` reports the drift; `cam reattribute` fixes it without reading any store.
 
 ## [0.6.1] — 2026-08-30
 

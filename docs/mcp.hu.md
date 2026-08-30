@@ -1,6 +1,6 @@
 # MCP szerver
 
-A `cam` MCP-szerverként is fut, így mind a négy ágens **ugyanazt** a kontextust kérdezheti le, amit a
+A `cam` MCP-szerverként is fut, így minden bekötött ágens **ugyanazt** a kontextust kérdezheti le, amit a
 CLI mutat — a renderelés közös, a két felület nem sodródhat szét.
 
 Szigorúan **csak olvas**: nincs író tool, és egyik eszköz tárolóját sem módosítja.
@@ -36,7 +36,7 @@ A `stdout` a JSON-RPC csatorna, ezért minden emberi olvasásra szánt kimenet a
 | `cam_memory` | a hosszú távú memória: amit több kérdés, több nap alatt többször előhívtál — a promóció bizonyítékával |
 | `cam_status` | mikor szinkronizált utoljára az index, mit tartalmaz, megbízható-e |
 
-Hét tool, szándékosan ennyi. Minden további tool mind a négy kliensben, minden kérésnél kontextust
+Hét tool, szándékosan ennyi. Minden további tool minden bekötött kliensben, minden kérésnél kontextust
 fogyaszt.
 
 A `cam_memory` `id` nélkül a promotált emlékeket listázza (projektre szűrhető), `id`-vel egy emlék

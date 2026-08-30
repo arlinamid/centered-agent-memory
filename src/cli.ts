@@ -2,9 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { configFilePath, loadConfig, type HubConfig } from "./config.js";
 import {
   HubUnreadableError,
+  SchemaTooNewError,
   getMeta,
   initSchema,
   isCorruption,
@@ -22,8 +24,23 @@ import { codexCollector } from "./collectors/codex.js";
 import { coworkCollector } from "./collectors/cowork.js";
 import { cursorCollector } from "./collectors/cursor.js";
 import { cursorHistoryCollector } from "./collectors/cursor-history.js";
+import { geminiCliCollector } from "./collectors/gemini-cli.js";
+import { devinCliCollector } from "./collectors/devin-cli.js";
+import { antigravityCollector } from "./collectors/antigravity.js";
 import { artifactsCollector } from "./collectors/artifacts.js";
 import type { Collector, CollectorCtx } from "./collectors/types.js";
+import {
+  DEFAULT_REPO,
+  UpdateDisabledError,
+  fetchLatestRelease,
+  installedVersion,
+  latestReleaseUrl,
+  verdict,
+} from "./update/check.js";
+import { downloadRelease, installTarball, isSelfReplacing, stageUpdater } from "./update/apply.js";
+import { findRunningServers, stopServers } from "./update/servers.js";
+import { DaemonSession } from "./sources/language-server.js";
+import { fetchConversation } from "./sources/antigravity-fetch.js";
 import {
   RULE_VERSION,
   collectCwdEvidence,
@@ -85,6 +102,9 @@ const COLLECTORS: Collector[] = [
   codexCollector,
   coworkCollector,
   cursorCollector,
+  geminiCliCollector,
+  devinCliCollector,
+  antigravityCollector,
   claudeDesktopCollector,
   cursorHistoryCollector,
   artifactsCollector,
@@ -123,7 +143,15 @@ function ctxFor(hub: Db, repair = false): CollectorCtx {
 
 function open(): Db {
   const db = openHub(cfg().dbPath);
-  initSchema(db);
+  try {
+    initSchema(db);
+  } catch (err) {
+    // `withHub` only closes what `open` returned, so a schema that refuses to
+    // load here would leave the handle open for the life of the process — and
+    // on Windows that keeps a lock on a file the caller may want to move.
+    db.close();
+    throw err;
+  }
   return db;
 }
 
@@ -175,7 +203,7 @@ export const SPECS: Record<string, FlagSpec> = {
     bools: [...(QUERY_FLAGS.bools ?? []), "include-weak"],
     values: [...(QUERY_FLAGS.values ?? []), "project", "tool", "since"],
   },
-  get: QUERY_FLAGS,
+  get: { bools: [...(QUERY_FLAGS.bools ?? []), "refresh"], values: [...(QUERY_FLAGS.values ?? [])] },
   alias: {},
   attribute: {},
   reattribute: {},
@@ -211,6 +239,10 @@ export const SPECS: Record<string, FlagSpec> = {
   uninstall: {
     bools: [...(QUERY_FLAGS.bools ?? []), "project", "dry-run", "no-mcp", "no-skills", "no-dream", "no-schedule"],
     values: [...(QUERY_FLAGS.values ?? []), "client"],
+  },
+  update: {
+    bools: [...(QUERY_FLAGS.bools ?? []), "check", "dry-run", "yes", "keep-servers"],
+    values: [...(QUERY_FLAGS.values ?? []), "repo"],
   },
 };
 
@@ -402,7 +434,7 @@ function cmdRecall(a: ParsedArgs): number {
  * something can open them. Same parser, same renderer and same failure modes as
  * the `cam_get` tool — a hit found in the terminal reads the same way there.
  */
-function cmdGet(a: ParsedArgs): number {
+async function cmdGet(a: ParsedArgs): Promise<number> {
   const [citation, ...extra] = a.positional;
   if (!citation || extra.length > 0) return usage("cam get <tool:sessionId[#seqN-M]>");
   if (a.errors.length > 0) return reportErrors(a);
@@ -413,7 +445,13 @@ function cmdGet(a: ParsedArgs): number {
     return EXIT_USAGE;
   }
 
-  return withHub((db) => {
+  return withHubAsync(async (db) => {
+    // An Antigravity conversation is in the index as a title, a working
+    // directory and a time — its body is encrypted, and only Antigravity's own
+    // daemon can undo that. Asking for one by name is exactly the moment to go
+    // and get it, so this is the only place that does.
+    if (parsed.tool === "antigravity") await hydrateAntigravity(db, parsed.sessionExtId, has(a, "refresh"));
+
     const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
     if (turns.length === 0) {
       log.fail(`No such session: ${citation}`);
@@ -422,6 +460,39 @@ function cmdGet(a: ParsedArgs): number {
     log.result(has(a, "json") ? JSON.stringify(turns, null, 2) : formatTurns(turns));
     return EXIT_OK;
   });
+}
+
+/**
+ * Bring one Antigravity conversation's text into the index, if it is not there.
+ *
+ * Never fatal: the conversation is worth showing with a title and a date even
+ * when its body cannot be read, and "Antigravity is closed" is a normal state
+ * rather than a failure.
+ */
+async function hydrateAntigravity(db: Db, cascadeId: string, force: boolean): Promise<void> {
+  const session = new DaemonSession({ log: log.warn });
+  try {
+    const outcome = await fetchConversation(db, cascadeId, { session, log: log.warn, force });
+    switch (outcome.status) {
+      case "fetched":
+        log.status(`read ${outcome.turns} turn(s) from Antigravity (${outcome.steps} steps)`);
+        break;
+      case "no-daemon":
+        log.status(
+          "Antigravity is not running, so this conversation's text cannot be read — " +
+            "its body is encrypted on disk. Open Antigravity and ask again.",
+        );
+        break;
+      case "failed":
+        log.warn(`antigravity: ${outcome.detail}`);
+        break;
+      case "cached":
+      case "not-found":
+        break;
+    }
+  } finally {
+    session.close();
+  }
 }
 
 function cmdAlias(a: ParsedArgs): number {
@@ -689,6 +760,12 @@ function cmdDoctor(): number {
   try {
     db = openHub(c.dbPath);
   } catch (err) {
+    // Not a crash and not corruption: the index is simply newer than this
+    // build. The message already says both ways out, so no stack trace.
+    if (err instanceof SchemaTooNewError) {
+      log.fail(err.message);
+      return EXIT_FAILED;
+    }
     if (err instanceof HubUnreadableError || isCorruption(err)) {
       log.fail(`  ! the database cannot be opened: ${(err as Error).message}`);
       log.fail("    The file is corrupt. Save it, delete it, then: cam sync — sources are untouched.");
@@ -963,6 +1040,230 @@ async function cmdBackup(a: ParsedArgs): Promise<number> {
 }
 
 /**
+ * Looking for a newer release, and installing one.
+ *
+ * The second and last thing in this package that can reach the network. It is
+ * off until the config file says otherwise, it prints what it is about to
+ * contact BEFORE contacting it — on stderr, so `--quiet` cannot hide it — and
+ * the request carries nothing about this machine.
+ *
+ * Two steps, deliberately: `--check` answers "am I behind" and stops there.
+ * Changing what is installed is a separate decision, taken separately.
+ */
+async function cmdUpdate(a: ParsedArgs): Promise<number> {
+  const config = cfg();
+  const repo = flag(a, "repo") ?? config.update.repo ?? DEFAULT_REPO;
+  const url = latestReleaseUrl(repo);
+  const installed = installedVersion();
+  const dryRun = has(a, "dry-run");
+  const checkOnly = has(a, "check");
+
+  // A dry run is the answer to "what would this contact?", so it must not
+  // contact it. Nothing below this point runs.
+  if (dryRun) {
+    log.result(`installed:  ${installed}`);
+    log.result(`would GET:  ${url}`);
+    log.result("would send: nothing about this machine — no identifier, no telemetry.");
+    if (has(a, "check")) {
+      log.result("then:       report the comparison, install nothing.");
+      return EXIT_OK;
+    }
+    log.result("then:       download the tarball, stop any running cam-mcp server, npm install -g it,");
+    log.result("            and open the index with the new binary so it migrates now.");
+    const running = findRunningServers();
+    log.result(
+      running.listed
+        ? `would stop: ${running.servers.length} cam-mcp server(s)${running.servers.length > 0 ? ` (pid ${running.servers.map((s) => s.pid).join(", ")})` : ""}`
+        : `would stop: unknown — could not list processes (${running.detail})`,
+    );
+    log.result(
+      isSelfReplacing()
+        ? "install by: a script in a temp directory, after this process exits (it would be replacing itself)"
+        : "install by: this process (the running copy is not the one npm would replace)",
+    );
+    return EXIT_OK;
+  }
+
+  if (config.update.enabled !== true) {
+    log.fail(new UpdateDisabledError(configFilePath()).message);
+    return EXIT_FAILED;
+  }
+
+  // The disclosure is not a progress report: it stays on stderr at every
+  // level, including --quiet, and it happens before the request.
+  log.fail(`contacting ${url} — one GET, nothing about this machine goes with it.`);
+
+  let release;
+  try {
+    release = await fetchLatestRelease({ repo });
+  } catch (err) {
+    log.fail(`update check failed: ${(err as Error).message}`);
+    return EXIT_FAILED;
+  }
+
+  const state = verdict(installed, release.version);
+  if (has(a, "json")) {
+    log.result(
+      JSON.stringify(
+        { installed, latest: release.version, tag: release.tag, state, releaseUrl: release.htmlUrl },
+        null,
+        2,
+      ),
+    );
+  } else {
+    log.result(`installed ${installed}  ·  latest ${release.version}  ·  ${state}`);
+    if (state === "behind") log.result(`  ${release.htmlUrl}`);
+  }
+
+  if (checkOnly || state !== "behind") return EXIT_OK;
+
+  if (!has(a, "yes")) {
+    log.result("");
+    log.result(`To install ${release.tag}: cam update --yes`);
+    return EXIT_OK;
+  }
+
+  if (!release.assetUrl) {
+    log.fail(`release ${release.tag} has no packed tarball attached — install it by hand.`);
+    return EXIT_FAILED;
+  }
+
+  log.fail(`downloading ${release.assetName} from ${release.assetUrl}`);
+  let downloaded;
+  try {
+    downloaded = await downloadRelease(release);
+  } catch (err) {
+    log.fail(`download failed: ${(err as Error).message}`);
+    return EXIT_FAILED;
+  }
+
+  // Nothing else may be running while the package is replaced and the index is
+  // migrated. Two different things can be: a scheduled `cam sync`, which the
+  // hub lock stops cleanly, and a live MCP server, which holds the files npm
+  // is about to overwrite.
+  return withHub((db) => {
+    const lock = acquireLock(db, "update");
+    if (!lock.ok) {
+      log.fail(`Already running: ${lock.heldBy.what} (${describeHolder(lock.heldBy)}) — not updating.`);
+      return EXIT_FAILED;
+    }
+    try {
+      if (!quiesceServers(has(a, "keep-servers"))) return EXIT_FAILED;
+
+      // A program cannot overwrite the files it is running from: on Windows
+      // npm cannot replace them at all, and everywhere else this process would
+      // carry on executing code that no longer matches the disk. When the
+      // running copy IS the global one, the install is handed to a script in a
+      // temporary directory that waits for this process to exit first.
+      if (isSelfReplacing()) {
+        const staged = stageUpdater({ tarball: downloaded.file, dbPath: config.dbPath });
+        log.status(`handing the install to ${staged.script} (pid ${staged.pid ?? "?"})`);
+        log.result("");
+        log.result(`Installing ${release.tag} after this process exits.`);
+        log.result(`  log:    ${staged.logFile}`);
+        log.result("  verify: cam update --check");
+        return EXIT_OK;
+      }
+
+      const result = installTarball(downloaded.file);
+      if (!result.ok) {
+        log.fail(`${result.command}: ${result.detail}`);
+        return EXIT_FAILED;
+      }
+      log.status(`installed ${release.tag} (${downloaded.bytes} bytes)`);
+    } finally {
+      lock.handle.release();
+    }
+
+    // Migrate NOW, and with the new binary.
+    //
+    // The schema only ever moves forward, and a release may add columns. This
+    // process is still the OLD code, so it must not open the index itself: it
+    // would migrate to the version it knows, not the one just installed. Left
+    // alone, the first thing to open the index would be the scheduled sync at
+    // 04:00, where a failed migration is invisible until someone goes looking.
+    //
+    // The lock is released first: the new binary opens the same index, and
+    // would find it held by this process.
+    const migrated = migrateWithNewBinary(config.dbPath);
+    log.status(`index: ${migrated.detail}`);
+    return finishUpdate(migrated.ok);
+  });
+}
+
+/**
+ * Stop the MCP servers still running the version being replaced.
+ *
+ * Returns false when the update must not go ahead: a server we could not stop
+ * still holds the files npm is about to overwrite, and a half-written package
+ * is worse than an update that did not happen.
+ */
+function quiesceServers(keep: boolean): boolean {
+  const found = findRunningServers();
+  if (!found.listed) {
+    // Not knowing is not the same as none. Say which happened.
+    log.status(`could not list processes (${found.detail}) — close any editor using cam before continuing.`);
+    return true;
+  }
+  if (found.servers.length === 0) return true;
+
+  if (keep) {
+    log.status(`${found.servers.length} cam-mcp server(s) left running at your request.`);
+    return true;
+  }
+
+  log.fail(
+    `stopping ${found.servers.length} running cam-mcp server(s): ${found.servers.map((s) => s.pid).join(", ")}` +
+      " — the MCP client starts a fresh one on its next tool call.",
+  );
+  const results = stopServers(found.servers);
+  const failed = results.filter((r) => !r.stopped);
+  for (const f of failed) log.fail(`  pid ${f.pid}: ${f.detail}`);
+  if (failed.length > 0) {
+    log.fail("Not updating: a running server still holds the files npm would replace.");
+    log.fail("Close the editors using cam, or re-run with --keep-servers to try anyway.");
+    return false;
+  }
+  return true;
+}
+
+function finishUpdate(migrated: boolean): number {
+  // The scheduled job holds the path of the copy that registered it. A global
+  // install can land somewhere else, and then the hourly sync would keep
+  // running a version that is no longer there.
+  log.result("");
+  log.result("If `cam sync` is scheduled, re-register it so the job points at the new copy:");
+  log.result("  cam install --no-mcp --no-skills --no-dream");
+  return migrated ? EXIT_OK : EXIT_FAILED;
+}
+
+/**
+ * Run the freshly installed `cam` against the index, so its migration happens
+ * here rather than in the next unattended job.
+ *
+ * `status` is the cheapest command that opens the hub, and opening it is what
+ * migrates it. A `cam` that is not on PATH is not a failed update — the
+ * install worked, the index simply migrates on first use — so that case is
+ * reported, not counted as an error.
+ */
+function migrateWithNewBinary(dbPath: string): { ok: boolean; detail: string } {
+  const cam = process.platform === "win32" ? "cam.cmd" : "cam";
+  const r = spawnSync(cam, ["status", "--db", dbPath, "--quiet"], {
+    encoding: "utf8",
+    windowsHide: true,
+    shell: false,
+  });
+  if (r.error) {
+    return { ok: true, detail: `migrates on first use (could not run \`${cam}\`: ${r.error.message})` };
+  }
+  if (r.status !== 0) {
+    const text = `${r.stderr ?? ""}${r.stdout ?? ""}`.trim().split("\n").filter(Boolean);
+    return { ok: false, detail: `migration FAILED — ${text[text.length - 1] ?? `${cam} status exited ${r.status}`}` };
+  }
+  return { ok: true, detail: "migrated and readable by the new version" };
+}
+
+/**
  * Wiring the tool into everything on the machine that can use it: the MCP
  * config of every agent tool, a skill telling that agent when to reach for it,
  * a model for the dream phase taken from an agent CLI that is already here, and
@@ -978,7 +1279,9 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
   const dryRun = has(a, "dry-run");
   const only = flag(a, "client");
   if (only !== undefined && !isClientId(only)) {
-    return usage("cam install --client <claude_code|claude_desktop|codex|cursor>");
+    return usage(
+      "cam install --client <claude_code|claude_desktop|codex|cursor|gemini_cli|antigravity|devin>",
+    );
   }
   const doDream = !has(a, "no-dream") && !remove;
   const doSchedule = !has(a, "no-schedule");
@@ -1228,7 +1531,7 @@ function reportErrors(a: ParsedArgs): number {
   return EXIT_USAGE;
 }
 
-const USAGE = `cam — shared context from Claude Code / Claude Desktop / Codex / Cursor conversations
+const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Cursor / Gemini CLI / Antigravity / Devin
 
   cam sync [--repair] [--tool <name>]    read sources (incremental)
   cam projects [--unattributed]          projects, or unattributed sessions
@@ -1257,6 +1560,10 @@ const USAGE = `cam — shared context from Claude Code / Claude Desktop / Codex 
   cam install [--dry-run] [--project]    wire into every agent tool found:
                                          MCP server, skill, dream model, schedule
   cam uninstall [--dry-run]              the same in reverse; does not touch the index
+  cam update [--check] [--yes]           look for a newer release (off by default:
+                                         needs {"update":{"enabled":true}} in the config)
+                                         --dry-run says what it would contact, and contacts
+                                         nothing; --keep-servers leaves running cam-mcp alone
 
 Shared flags: --json, --limit N, --tool <tool>, --include-weak,
               --db <path> (index location; see: cam doctor),
@@ -1305,7 +1612,7 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
       case "recall":
         return cmdRecall(a);
       case "get":
-        return cmdGet(a);
+        return await cmdGet(a);
       case "alias":
         return cmdAlias(a);
       case "attribute":
@@ -1330,6 +1637,8 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
         return await cmdInstall(a, false);
       case "uninstall":
         return await cmdInstall(a, true);
+      case "update":
+        return await cmdUpdate(a);
       default:
         log.fail(USAGE);
         return EXIT_USAGE;

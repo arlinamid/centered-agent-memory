@@ -119,7 +119,50 @@ export function openSourceReadonly(filePath: string): Db {
   return db;
 }
 
+/**
+ * The index was written by a newer version than the one running.
+ *
+ * Migrations only ever go forward: they add columns, and nothing knows how to
+ * take one away. An older build opening a newer index would read a schema it
+ * does not fully know, and — because the version is stamped unconditionally —
+ * would erase the only evidence that the index was ever newer. Refusing is the
+ * one honest answer, and it names both ways out.
+ */
+export class SchemaTooNewError extends Error {
+  constructor(
+    readonly found: number,
+    readonly supported: number,
+  ) {
+    super(
+      `this index is schema version ${found}, and this build of cam understands ${supported}. ` +
+        "It was written by a newer version.\n" +
+        "  Either update: cam update --yes\n" +
+        "  or point this build at a different index: cam --db <path> ...",
+    );
+    this.name = "SchemaTooNewError";
+  }
+}
+
+/** What the index says about itself, before anything is written to it. */
+function storedSchemaVersion(db: Db): number | null {
+  try {
+    const row = db.prepare("select value from meta where key = 'schema_version'").get() as
+      | { value: string }
+      | undefined;
+    if (!row) return null;
+    const n = Number.parseInt(row.value, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null; // no meta table yet: a fresh hub
+  }
+}
+
 export function initSchema(db: Db): void {
+  // Asked before anything is written, because writing is what would destroy
+  // the answer.
+  const found = storedSchemaVersion(db);
+  if (found !== null && found > SCHEMA_VERSION) throw new SchemaTooNewError(found, SCHEMA_VERSION);
+
   // Columns first: `CREATE INDEX IF NOT EXISTS` over a column an older table
   // does not have yet fails despite the IF NOT EXISTS, so the upgrade has to
   // happen before the DDL, not after it.
