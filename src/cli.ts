@@ -1552,6 +1552,9 @@ function installSchedule(dryRun: boolean, remove: boolean, force: boolean): bool
       log.status(`  ${plan.jobs.join(", ")} — already set up, nothing to do`);
       return false;
     }
+    if (state === "stale") {
+      log.status(`  ${plan.jobs.join(", ")} — updating so the hourly run has no window`);
+    }
     if (state === "different" && !force) {
       // Re-registering would take the jobs over silently, and the previous
       // owner would look installed while nothing runs on its behalf. One call,

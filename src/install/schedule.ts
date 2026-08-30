@@ -301,9 +301,22 @@ export function applySchedule(plan: SchedulePlan, remove = false): StepResult[] 
 
 export interface ScheduleState {
   /** `same` means this very copy of the package already owns the jobs. */
-  state: "absent" | "same" | "different";
+  state: "absent" | "same" | "different" | "stale";
   /** What is registered now, for the report. Empty when absent. */
   current: string;
+}
+
+/**
+ * Windows: the CLI path is in the action arguments, not necessarily Execute.
+ * Same copy with the old node.exe action is stale — it still flashes a window.
+ */
+export function classifyWindowsSchedule(current: string, cli: string): ScheduleState["state"] {
+  if (current.trim() === "") return "absent";
+  const hay = current.replace(/\\/g, "/").toLowerCase();
+  const needle = cli.replace(/\\/g, "/").toLowerCase();
+  if (!hay.includes(needle)) return "different";
+  if (!hay.includes("-windowstyle hidden")) return "stale";
+  return "same";
 }
 
 /**
@@ -332,12 +345,7 @@ export function scheduleState(plan: SchedulePlan): ScheduleState {
       );
       if (r.status !== 0) return { state: "absent", current: "" };
       const current = (r.stdout ?? "").trim();
-      if (current === "") return { state: "absent", current: "" };
-      // The action is powershell wrapping node; the CLI path sits in the
-      // argument string, quoted with whatever quoting New-ScheduledTaskAction used.
-      const hay = current.replace(/\\/g, "/").toLowerCase();
-      const needle = plan.cli.replace(/\\/g, "/").toLowerCase();
-      return { state: hay.includes(needle) ? "same" : "different", current };
+      return { state: classifyWindowsSchedule(current, plan.cli), current };
     }
     case "darwin":
     case "linux": {

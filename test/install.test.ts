@@ -14,7 +14,7 @@ import {
   upsertJson,
   upsertToml,
 } from "../src/install/mcp.js";
-import { schedulePlan, scheduleState, type SchedulePlan } from "../src/install/schedule.js";
+import { classifyWindowsSchedule, schedulePlan, scheduleState, type SchedulePlan } from "../src/install/schedule.js";
 import { renderSkill } from "../src/install/skills.js";
 import { appSupportDir } from "../src/paths.js";
 
@@ -418,6 +418,19 @@ describe("schedule", () => {
     expect(text).toContain("powershell.exe");
     expect(text).toContain(opts.node);
     expect(text).toContain(opts.cli);
+  });
+
+  it("rewrites a Windows task that still launches node.exe directly", () => {
+    const cli = "C:\\npm\\node_modules\\centered-agent-memory\\dist\\cli.js";
+    expect(classifyWindowsSchedule("", cli)).toBe("absent");
+    expect(classifyWindowsSchedule(`node.exe "${cli}" sync --quiet`, cli)).toBe("stale");
+    expect(
+      classifyWindowsSchedule(
+        `powershell.exe -NoProfile -WindowStyle Hidden -NonInteractive -Command "& 'C:\\node.exe' '${cli}' sync --quiet"`,
+        cli,
+      ),
+    ).toBe("same");
+    expect(classifyWindowsSchedule(`node.exe "D:\\other\\dist\\cli.js" sync --quiet`, cli)).toBe("different");
   });
 
   it("does the same on Linux, and says what a logged-out machine needs", () => {

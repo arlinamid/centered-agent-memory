@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-08-30
+
+### Rewrite a flashing Windows sync task
+
+- **`cam install` notices the old `node.exe` action** and re-registers it with
+  `powershell -WindowStyle Hidden`. 0.9.1 wrote the hidden wrapper on a fresh
+  install, but skipped an existing task that already pointed at the same CLI.
+
 ## [0.9.1] — 2026-08-30
 
 ### Windows update and silent sync
