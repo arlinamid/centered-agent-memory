@@ -109,6 +109,99 @@ describe("codex collector", () => {
     expect(sessions()[0]!.turn_count).toBe(1);
   });
 
+  it("indexes current Codex item_completed UserMessage and AgentMessage records", async () => {
+    fs.mkdirSync(rollDir, { recursive: true });
+    const roll = path.join(rollDir, "rollout-item-completed.jsonl");
+
+    const records = [
+      {
+        timestamp: "2026-08-27T05:31:45.406Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          thread_id: MAIN,
+          turn_id: "turn-1",
+          item: {
+            type: "UserMessage",
+            id: "user-1",
+            content: [
+              {
+                type: "text",
+                text: "szia\n",
+                text_elements: [],
+              },
+            ],
+          },
+        },
+      },
+      {
+        timestamp: "2026-08-27T05:31:47.931Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          thread_id: MAIN,
+          turn_id: "turn-1",
+          item: {
+            type: "AgentMessage",
+            id: "agent-1",
+            content: [
+              {
+                type: "Text",
+                text: "Szia! Miben segíthetek?",
+              },
+            ],
+            phase: "final_answer",
+          },
+        },
+      },
+      {
+        timestamp: "2026-08-27T05:31:48.000Z",
+        type: "event_msg",
+        payload: {
+          type: "item_completed",
+          thread_id: MAIN,
+          turn_id: "turn-1",
+          item: {
+            type: "Reasoning",
+            id: "reasoning-1",
+            content: [{ type: "Text", text: "ezt nem szabad indexelni" }],
+          },
+        },
+      },
+    ];
+
+    fs.writeFileSync(
+      roll,
+      records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+      "utf8",
+    );
+
+    writeCodexState(h.roots, [{ id: MAIN, cwd: CWD, rolloutPath: roll }]);
+
+    const stat = await codexCollector.sync(h.ctx);
+    expect(stat).toMatchObject({ sessions: 1, turns: 2, errors: 0 });
+
+    const rows = h.hub
+      .prepare("select * from turns order by seq")
+      .all() as Array<{ role: string }>;
+
+    expect(rows.map((row) => row.role)).toEqual(["user", "assistant"]);
+
+    const hydrator = new Hydrator(h.hub);
+    const user = hydrator.resolve(rows[0] as never);
+    const assistant = hydrator.resolve(rows[1] as never);
+    hydrator.close();
+
+    expect(user).toMatchObject({
+      status: "ok",
+      text: "szia\n",
+    });
+    expect(assistant).toMatchObject({
+      status: "ok",
+      text: "Szia! Miben segíthetek?",
+    });
+  });
+
   it("rejects a prompt masquerading as a title and falls back to the first user line", async () => {
     const prompt = "## Context files (in this working directory)\n" + "Read every file listed.\n".repeat(40);
     const roll = writeRollout(rollDir, "rollout-longtitle.jsonl", {

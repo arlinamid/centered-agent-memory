@@ -290,22 +290,78 @@ function buildTurns(filePath: string, lines: ReadonlyArray<JsonlLine>, baseSeq: 
   let seq = baseSeq;
 
   for (const l of lines) {
-    const rec = l.json as { type?: string; timestamp?: unknown; payload?: Record<string, unknown> } | null;
+    const rec = l.json as {
+      type?: string;
+      timestamp?: unknown;
+      payload?: Record<string, unknown>;
+    } | null;
+
     if (!rec || rec.type !== "event_msg" || !rec.payload) continue;
 
-    const kind = rec.payload.type;
-    if (kind !== "user_message" && kind !== "agent_message") continue;
-    const text = rec.payload.message;
-    if (typeof text !== "string" || text.trim().length === 0) continue;
-
     const ts = typeof rec.timestamp === "string" ? Date.parse(rec.timestamp) : Number.NaN;
-    out.push({
-      seq: seq++,
-      role: kind === "user_message" ? "user" : "assistant",
-      tsMs: Number.isFinite(ts) ? ts : null,
-      text,
-      locator: { kind: "jsonl_line", path: filePath, off: l.off, len: l.len, field: "payload.message" },
-    });
+    const kind = rec.payload.type;
+
+    // Legacy Codex rollout format.
+    if (kind === "user_message" || kind === "agent_message") {
+      const text = rec.payload.message;
+      if (typeof text !== "string" || text.trim().length === 0) continue;
+
+      out.push({
+        seq: seq++,
+        role: kind === "user_message" ? "user" : "assistant",
+        tsMs: Number.isFinite(ts) ? ts : null,
+        text,
+        locator: {
+          kind: "jsonl_line",
+          path: filePath,
+          off: l.off,
+          len: l.len,
+          field: "payload.message",
+        },
+      });
+      continue;
+    }
+
+    // Current Codex rollout format.
+    if (kind === "item_completed") {
+      const item = rec.payload.item;
+      if (!item || typeof item !== "object") continue;
+
+      const typedItem = item as Record<string, unknown>;
+      const itemType = typedItem.type;
+
+      if (itemType !== "UserMessage" && itemType !== "AgentMessage") continue;
+
+      const content = typedItem.content;
+      if (!Array.isArray(content)) continue;
+
+      const parts: string[] = [];
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const text = (block as Record<string, unknown>).text;
+        if (typeof text === "string" && text.length > 0) parts.push(text);
+      }
+
+      if (parts.length === 0) continue;
+
+      const text = parts.join("\n");
+      if (text.trim().length === 0) continue;
+
+      out.push({
+        seq: seq++,
+        role: itemType === "UserMessage" ? "user" : "assistant",
+        tsMs: Number.isFinite(ts) ? ts : null,
+        text,
+        locator: {
+          kind: "jsonl_line",
+          path: filePath,
+          off: l.off,
+          len: l.len,
+          field: "payload.item.content[*].text",
+        },
+      });
+    }
   }
+
   return out;
 }
