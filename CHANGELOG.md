@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-08-30
+
 - **The tag push cannot start the Release workflow.** `GITHUB_TOKEN` does not trigger
   `on: push` jobs, so `v0.6.0` was tagged and then nothing published. After the tag the
   cutter now `workflow_dispatch`-es Release — that event is the documented exception.
