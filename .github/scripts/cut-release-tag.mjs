@@ -181,6 +181,12 @@ function pushTag(tag, sha) {
   git(["tag", "-a", tag, sha, "-m", tag]);
   git(["push", "origin", tag]);
   console.log(`pushed ${tag} → ${sha}`);
+  // A GITHUB_TOKEN push does not start `on: push` workflows. workflow_dispatch
+  // is the exception, so this is what actually publishes the tarball.
+  execFileSync("gh", ["workflow", "run", "release.yml", "--ref", "main", "-f", `tag=${tag}`], {
+    encoding: "utf8",
+  });
+  console.log(`dispatched Release for ${tag}`);
 }
 
 function main() {
