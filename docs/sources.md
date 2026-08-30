@@ -199,8 +199,9 @@ over a 64 KiB window, `conversations/*.pb` and `implicit/*.pb` carry
 **7.997–7.998 bits of entropy per byte** with no readable header, while the
 plain protobuf next to them (`user_settings.pb`) measures 3.6 and reads as
 protobuf. So the bodies are not in the index, and the collector says so rather
-than reporting an empty store. What is indexed is what Antigravity records
-*about* its conversations:
+than reporting an empty store. The text arrives on demand — see
+[Cascade bodies](#cascade-bodies-on-demand). What is indexed offline is what
+Antigravity records *about* its conversations:
 
 - `conversation_summaries.db` — one row per conversation. **`title` is empty in
   every row** on the reference machine; `preview` is the generated one-line
@@ -263,32 +264,35 @@ string.
 - `transcripts/*.json` (`ATIF-v1.7`) appears only when the user exports, and is
   a subset of what `sessions.db` already holds. Not read.
 
-## Windsurf — known, and not indexable
+## Devin desktop / Windsurf Cascade
 
 ```
-~/.codeium/windsurf/cascade/*.pb
+~/.codeium/windsurf/cascade/<uuid>.pb
 ```
 
-Cascade conversations are stored the same encrypted way as Antigravity's, and
-**there is no summaries database beside them** — so unlike Antigravity there is
-not even a metadata layer to attribute or title from. Nothing would be honest
-to index, so there is no Windsurf collector.
+The Devin desktop app is a Windsurf fork and uses this store (its `state.vscdb`
+is full of `windsurf*` keys). The `.pb` files are encrypted the same way as
+Antigravity's, and **there is no summaries database beside them**. `cam sync`
+records that a conversation exists — the UUID filename, mtime and size — and
+does not open the bytes.
 
-The Devin desktop app is a Windsurf fork and uses this same store (its
-`state.vscdb` is full of `windsurf*` keys); the Devin **CLI** is a separate,
-readable store and is indexed. If the key handling ever lands for Antigravity,
-the same module would cover Windsurf with a different key name.
+Citations stay `devin:<cascadeId>`. A Devin CLI session with the same id wins:
+that store is already readable, and `cam get` does not replace its turns.
 
-### Antigravity conversation bodies, on demand
+A leftover Windsurf install that is not Devin is the same store and the same
+protocol, so the same path covers it when that app is the one running.
 
-The encrypted `.pb` files can be read after all — not by decrypting them, but by
-asking the component that already can. Antigravity runs a language server that
-answers a Connect-RPC service over plain HTTP on localhost, and that daemon
-decrypts its own store.
+## Cascade bodies, on demand
+
+Antigravity and Devin both keep conversations encrypted. The only component
+that can decrypt them is the language server the app already runs: a
+Connect-RPC service over plain HTTP on localhost. We do not decrypt the `.pb`
+file, and we do not start a daemon.
 
 This is **not** part of `cam sync`. It runs only when somebody asks for one
-conversation by name (`cam get antigravity:<id>`, or `cam_get` over MCP), and
-what it fetches is kept, so asking twice costs one call.
+conversation by name (`cam get antigravity:<id>` / `cam get devin:<id>`, or
+`cam_get` over MCP). What is fetched is kept, so asking twice costs one call.
+A closed app is a normal state, not a failure.
 
 ```
 POST http://127.0.0.1:<port>/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory
@@ -299,37 +303,49 @@ x-codeium-csrf-token: <token>
 Everything below was measured, and each line is a wrong answer that looked
 right:
 
-- **The header is `x-codeium-csrf-token`.** Antigravity is a Codeium fork and
+- **The header is `x-codeium-csrf-token`.** Both apps are Codeium-lineage and
   kept the vendor prefix. With `x-csrf-token`, `x-csrf` or `csrf-token` the
   daemon answers `401 {"code":"unauthenticated","message":"missing CSRF token"}`
   — which reads like a wrong token rather than a wrong header name.
-- **The token is `--csrf_token` from the daemon's command line**, and not the
-  `--extension_server_csrf_token` sitting beside it, which guards a different
-  service. Matching the flag by substring picks whichever comes first.
+- **The token is `--csrf_token` on argv, or `WINDSURF_CSRF_TOKEN` in the
+  process environment.** Antigravity writes the flag. Devin writes the env
+  var and leaves argv without a token (measured, including after a restart).
+  Argv wins when both are present. `--extension_server_csrf_token` guards a
+  different service and is not interchangeable. The parent pipe is not opened,
+  and the value is not written down.
+- **Reading that environment is platform-specific, like the ports.** Linux
+  reads `/proc/<pid>/environ`. macOS tries `sysctl -b kern.procargs2.<pid>`,
+  then `ps eww`. Windows reads the PEB through `assets/read-process-env.ps1`.
+  An empty answer is "no token", the same as "not running".
 - **The port does not come from the log.** `language_server.log` recorded
   49361/49362 while the live process was listening on 55026/55027. It comes
   from the process's own listening sockets: `Get-NetTCPConnection` on Windows,
   `ss -ltnp` then `lsof` on Linux (`ss` is what a current distribution ships;
-  neither is guaranteed), `lsof` on macOS. An empty answer is treated as
-  "Antigravity is not running".
-- **There are two ports and one is useless.** The lower is HTTPS/gRPC and
-  answers `Client sent an HTTP request to an HTTPS server.`; the higher is the
-  plain HTTP one. The reader probes rather than trusting the order.
-- **`GetAllCascadeTrajectories` returns `{}`.** In proto3 JSON an empty
-  repeated field is omitted, so there is no listing to page through: the
-  conversation ids come from `conversation_summaries.db`, which is also where
-  change detection comes from.
-- **A daemon only knows its own surface.** Asking the IDE's language server for
-  a conversation created by the CLI answers
-  `{"code":"unknown","message":"trajectory not found"}`.
+  neither is guaranteed), `lsof` on macOS.
+- **There are two ports and only one is HTTP.** The other is HTTPS/gRPC and
+  answers `Client sent an HTTP request to an HTTPS server.` The order is not
+  stable (measured on Devin: either port can be the HTTP one), so both are
+  probed.
+- **A daemon only knows its own surface.** Asking the wrong language server
+  answers `{"code":"unknown","message":"trajectory not found"}`. Antigravity
+  and Devin both implement the same methods, so every live daemon is asked.
 - **We cannot start a daemon, and do not try.** With Antigravity closed,
   `agy agentapi` only prints its subcommand list, and
   `agy agentapi get-conversation-metadata <id>` exits 1 with
   `{"error":"ANTIGRAVITY_LS_ADDRESS is not set"}` — it is a client of a daemon,
   not a way to start one. Running `language_server.exe` directly would mean
   inventing the argument set of an undocumented binary, and starting a real
-  `agy` session would mean making a billed model call to read local data. So
-  when Antigravity is closed the answer is to say so.
+  `agy` session would mean making a billed model call to read local data.
+
+What differs between the two stores:
+
+| | Antigravity | Devin / Windsurf |
+|---|---|---|
+| Citation | `antigravity:<id>` | `devin:<id>` |
+| `GetAllCascadeTrajectories` | `{}` (proto3 omits an empty repeated field) | a map keyed by cascade id (`summary`, `stepCount`, `workspaces`) |
+| Conversation ids / change detection | `conversation_summaries.db` (`last_modified_time` + `step_count`) | the `.pb` filename; version is mtime + size |
+| Unknown id | not fetched (`not-found`) | fetched; a successful answer inserts the session |
+| If the `.pb` is gone and a body was kept | — | the kept copy is current |
 
 **What comes back, and what is kept.** A trajectory is a step log, not a
 transcript: 523 steps carried 46 turns in the measured conversation. The census
@@ -362,10 +378,9 @@ the reasoning, and skipping it whole loses half the conversation. Reading only
 **Turns are stored inline.** The plaintext exists nowhere on disk — the store
 holds it encrypted — so there is no file and byte offset to record. This is the
 same exception the volatile scratchpads already use, and it means a fetched
-conversation stays readable, and searchable, after Antigravity is closed again.
+conversation stays readable, and searchable, after the app is closed again.
 
-**Nothing is fetched twice.** The summaries row's `last_modified_time` and
-`step_count` are the version; while it has not moved, the kept copy is current
-and no call is made. When it has, the conversation is re-fetched and its turns
-are **replaced**, because a conversation that continued has new steps and
-appending would double what came before them.
+**Nothing is fetched twice.** While the version above has not moved, the kept
+copy is current and no call is made. When it has, the conversation is
+re-fetched and its turns are **replaced**, because a conversation that
+continued has new steps and appending would double what came before them.

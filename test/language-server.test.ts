@@ -4,6 +4,7 @@ import {
   DaemonSession,
   SERVICE,
   callRpc,
+  csrfTokenFor,
   csrfTokenOf,
   httpPortCandidates,
   parseLsofPorts,
@@ -11,6 +12,8 @@ import {
   parseProcessLines,
   parseSsPorts,
 } from "../src/sources/language-server.js";
+import { WINDSURF_CSRF_ENV } from "../src/sources/process-env.js";
+import { fakeLanguageServers } from "./helpers/daemon.js";
 
 /**
  * The parts of the Antigravity daemon protocol that were measured rather than
@@ -41,6 +44,22 @@ describe("finding the daemon", () => {
     expect(csrfTokenOf("ls.exe --csrf_token=equals-form")).toBe("equals-form");
     expect(csrfTokenOf("ls.exe --extension_server_csrf_token only-the-other-one")).toBeNull();
     expect(csrfTokenOf("ls.exe --no-token-at-all")).toBeNull();
+  });
+
+  it("falls back to WINDSURF_CSRF_TOKEN when argv has no --csrf_token", () => {
+    const proc = { pid: 42, commandLine: "language_server.exe --parent_pipe_path \\\\.\\pipe\\s" };
+    expect(csrfTokenFor(proc, { envOf: () => null })).toBeNull();
+    expect(
+      csrfTokenFor(proc, {
+        envOf: (pid, name) => (pid === 42 && name === WINDSURF_CSRF_ENV ? "from-env" : null),
+      }),
+    ).toBe("from-env");
+    expect(
+      csrfTokenFor(
+        { pid: 42, commandLine: "ls.exe --csrf_token from-argv" },
+        { envOf: () => "from-env" },
+      ),
+    ).toBe("from-argv");
   });
 
   it("tries the higher port first, because the lower one is the HTTPS side", () => {
@@ -138,22 +157,20 @@ describe("calling the daemon", () => {
  * it starts.
  */
 describe("holding on to the daemon address", () => {
-  const PROCESS_LINE = "46680\tlanguage_server.exe --csrf_token tok";
-  const PORT_LINES = "55027\n55026\n";
+  const DEVIN = {
+    pid: 46680,
+    commandLine: "language_server.exe --csrf_token tok",
+    ports: [55027, 55026],
+  };
 
-  const isProcessQuery = (args: string[]): boolean =>
-    args.join(" ").includes("Win32_Process") || args.join(" ").includes("-eo");
-
-  /** A machine where `stdout` is what the process listing returns. */
-  const listing = (stdout: string, count?: { n: number }) =>
-    ((_cmd: string, args: string[]) => {
-      if (isProcessQuery(args)) {
-        if (count) count.n++;
-        return { status: 0, stdout, stderr: "" };
-      }
-      return { status: 0, stdout: PORT_LINES, stderr: "" };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any;
+  const listing = (present: boolean, count?: { n: number }) => {
+    const run = fakeLanguageServers(present ? [DEVIN] : []);
+    if (!count) return run;
+    return ((cmd: string, args: string[]) => {
+      if (/Win32_Process|-eo/.test([cmd, ...args].join(" "))) count.n++;
+      return run(cmd, args);
+    }) as typeof run;
+  };
 
   const answering = (async () => ({
     ok: true,
@@ -162,7 +179,7 @@ describe("holding on to the daemon address", () => {
   })) as unknown as typeof globalThis.fetch;
 
   it("finds a running daemon and reports its address", async () => {
-    const session = new DaemonSession({ run: listing(PROCESS_LINE), fetchImpl: answering });
+    const session = new DaemonSession({ run: listing(true), fetchImpl: answering });
     expect(await session.acquire()).toEqual({ pid: 46680, port: 55027, csrfToken: "tok" });
   });
 
@@ -170,13 +187,13 @@ describe("holding on to the daemon address", () => {
     // Measured with Antigravity shut: `agy agentapi get-conversation-metadata`
     // exits 1 with "ANTIGRAVITY_LS_ADDRESS is not set" — it is a client of a
     // daemon, not a way to start one. So this has to answer null and say so.
-    const session = new DaemonSession({ run: listing(""), fetchImpl: answering });
+    const session = new DaemonSession({ run: listing(false), fetchImpl: answering });
     expect(await session.acquire()).toBeNull();
   });
 
   it("reuses the address instead of listing every process again", async () => {
     const count = { n: 0 };
-    const session = new DaemonSession({ run: listing(PROCESS_LINE, count), fetchImpl: answering });
+    const session = new DaemonSession({ run: listing(true, count), fetchImpl: answering });
     await session.acquire();
     expect(count.n).toBe(1);
     await session.acquire();
@@ -190,7 +207,7 @@ describe("holding on to the daemon address", () => {
     const count = { n: 0 };
     let clock = 1_000_000;
     const session = new DaemonSession({
-      run: listing(PROCESS_LINE, count),
+      run: listing(true, count),
       fetchImpl: answering,
       ttlMs: 1000,
       now: () => clock,
@@ -210,10 +227,34 @@ describe("holding on to the daemon address", () => {
 
   it("forgets the address on close", async () => {
     const count = { n: 0 };
-    const session = new DaemonSession({ run: listing(PROCESS_LINE, count), fetchImpl: answering });
+    const session = new DaemonSession({ run: listing(true, count), fetchImpl: answering });
     await session.acquire();
     session.close();
     await session.acquire();
     expect(count.n).toBe(2);
+  });
+
+  it("finds a daemon whose token is only in the environment", async () => {
+    const run = fakeLanguageServers([
+      { pid: 7, commandLine: "language_server.exe --parent_pipe_path \\\\.\\pipe\\s", ports: [56027, 56026] },
+    ]);
+    const session = new DaemonSession({
+      run,
+      fetchImpl: answering,
+      envOf: (pid, name) => (pid === 7 && name === WINDSURF_CSRF_ENV ? "env-tok" : null),
+    });
+    expect(await session.acquire()).toEqual({ pid: 7, port: 56027, csrfToken: "env-tok" });
+  });
+
+  it("returns every live daemon, because the first one may be the wrong surface", async () => {
+    const run = fakeLanguageServers([
+      { pid: 1, commandLine: "ls.exe --csrf_token a", ports: [55027, 55026] },
+      { pid: 2, commandLine: "ls.exe --csrf_token b", ports: [56027, 56026] },
+    ]);
+    const session = new DaemonSession({ run, fetchImpl: answering });
+    expect(await session.acquireAll()).toEqual([
+      { pid: 1, port: 55027, csrfToken: "a" },
+      { pid: 2, port: 56027, csrfToken: "b" },
+    ]);
   });
 });

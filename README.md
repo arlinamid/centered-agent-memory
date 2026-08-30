@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.7.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.8.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -54,7 +54,7 @@ flowchart LR
   D[Desktop / Cowork] --> H
   E[Gemini CLI] --> H
   F[Antigravity] --> H
-  G[Devin CLI] --> H
+  G[Devin] --> H
   H --> CLI
   H --> MCP
 ```
@@ -174,8 +174,9 @@ Past 24 hours (`staleAfterHours`) the line says `STALE, run: cam sync`, and the 
 | Gemini CLI | `~/.gemini/tmp/<project>/chats/session-*.json` | `.project_root` beside the chats |
 | Antigravity | `~/.gemini/antigravity-cli/conversation_summaries.db` + `history.jsonl` + `brain/**/*.md` | `workspace_uris` |
 | Devin CLI | `<appdata>/devin/cli/sessions.db` | `sessions.working_directory` |
+| Devin desktop / Windsurf | `~/.codeium/windsurf/cascade/<uuid>.pb` (encrypted; body on `cam get`) | `workspace_uris` from the live language server |
 
-Antigravity's conversation bodies (`conversations/*.pb`) are encrypted — measured at 7.998 bits of entropy per byte — so what is indexed is the summary, the typed prompts and the agent's plan documents, and the tool says so rather than reporting an empty store. Windsurf stores its Cascade threads the same way with no metadata beside them, so it has no collector.
+Antigravity's conversation bodies (`conversations/*.pb`) are encrypted — measured at 7.998 bits of entropy per byte — so what is indexed is the summary, the typed prompts and the agent's plan documents. `cam get antigravity:<id>` asks the live language server for the body. Devin desktop / Windsurf Cascade is the same encrypted store without a summaries database: `cam sync` records the filename, and `cam get devin:<id>` fetches the text the same way.
 
 Formats and traps: [`docs/sources.md`](docs/sources.md). Schema: [`docs/architecture.md`](docs/architecture.md).
 

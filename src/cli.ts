@@ -26,6 +26,7 @@ import { cursorCollector } from "./collectors/cursor.js";
 import { cursorHistoryCollector } from "./collectors/cursor-history.js";
 import { geminiCliCollector } from "./collectors/gemini-cli.js";
 import { devinCliCollector } from "./collectors/devin-cli.js";
+import { devinCascadeCollector } from "./collectors/devin-cascade.js";
 import { antigravityCollector } from "./collectors/antigravity.js";
 import { artifactsCollector } from "./collectors/artifacts.js";
 import type { Collector, CollectorCtx } from "./collectors/types.js";
@@ -41,6 +42,7 @@ import { downloadRelease, installTarball, isSelfReplacing, stageUpdater } from "
 import { findRunningServers, stopServers } from "./update/servers.js";
 import { DaemonSession } from "./sources/language-server.js";
 import { fetchConversation } from "./sources/antigravity-fetch.js";
+import { fetchDevinCascade } from "./sources/devin-fetch.js";
 import {
   RULE_VERSION,
   collectCwdEvidence,
@@ -104,6 +106,7 @@ const COLLECTORS: Collector[] = [
   cursorCollector,
   geminiCliCollector,
   devinCliCollector,
+  devinCascadeCollector,
   antigravityCollector,
   claudeDesktopCollector,
   cursorHistoryCollector,
@@ -451,6 +454,7 @@ async function cmdGet(a: ParsedArgs): Promise<number> {
     // daemon can undo that. Asking for one by name is exactly the moment to go
     // and get it, so this is the only place that does.
     if (parsed.tool === "antigravity") await hydrateAntigravity(db, parsed.sessionExtId, has(a, "refresh"));
+    if (parsed.tool === "devin") await hydrateDevin(db, parsed.sessionExtId, has(a, "refresh"));
 
     const turns = getTurns(db, parsed.tool, parsed.sessionExtId, parsed.seqStart, parsed.seqEnd);
     if (turns.length === 0) {
@@ -489,6 +493,51 @@ async function hydrateAntigravity(db: Db, cascadeId: string, force: boolean): Pr
       case "cached":
       case "not-found":
         break;
+      default: {
+        const _never: never = outcome;
+        throw new Error(`unhandled antigravity fetch: ${String(_never)}`);
+      }
+    }
+  } finally {
+    session.close();
+  }
+}
+
+/**
+ * Bring one Devin Cascade conversation's text into the index, if it is not
+ * a CLI session (those already have locators) and the desktop app is open.
+ *
+ * Never fatal: "Devin is closed" is a normal state rather than a failure.
+ */
+async function hydrateDevin(db: Db, cascadeId: string, force: boolean): Promise<void> {
+  const session = new DaemonSession({ log: log.warn });
+  try {
+    const outcome = await fetchDevinCascade(db, cascadeId, {
+      session,
+      cascadeDir: path.join(cfg().roots.windsurfHome, "cascade"),
+      log: log.warn,
+      force,
+    });
+    switch (outcome.status) {
+      case "fetched":
+        log.status(`read ${outcome.turns} turn(s) from Devin (${outcome.steps} steps)`);
+        break;
+      case "no-daemon":
+        log.status(
+          "Devin is not running, so this conversation's text cannot be read — " +
+            "its body is encrypted on disk. Open Devin and ask again.",
+        );
+        break;
+      case "failed":
+        log.warn(`devin: ${outcome.detail}`);
+        break;
+      case "cached":
+      case "cli-session":
+        break;
+      default: {
+        const _never: never = outcome;
+        throw new Error(`unhandled devin fetch: ${String(_never)}`);
+      }
     }
   } finally {
     session.close();

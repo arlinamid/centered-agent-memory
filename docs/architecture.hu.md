@@ -1,14 +1,16 @@
 # Felépítés
 
 ```
-források (read-only)          →  kollektorok  →  index (SQLite)  →  lekérdezés  →  CLI / MCP
-~/.claude/projects/*.jsonl       claude-code      sources            recall
-~/.codex/state_5.sqlite          codex            sessions           timeline
-<appdata>/Cursor/state.vscdb     cursor           turns (locator)    dossier
-<appdata>/Claude/…               cowork           chunks + FTS5
-                                 claude-desktop   path_evidence
-                                 cursor-history   attribution
-                                 artifacts        artifacts
+források (read-only)                →  kollektorok / get  →  index (SQLite)  →  lekérdezés  →  CLI / MCP
+~/.claude/projects/*.jsonl              claude-code          sources            recall
+~/.codex/state_5.sqlite                 codex                sessions           timeline
+<appdata>/Cursor/state.vscdb            cursor               turns (locator     dossier
+<appdata>/Claude/…                      cowork, desktop            vagy inline)
+~/.gemini/tmp/…                         gemini-cli           chunks + FTS5
+~/.gemini/antigravity*/                 antigravity          path_evidence
+<appdata>/devin/cli/sessions.db         devin-cli            attribution
+~/.codeium/windsurf/cascade/*.pb        devin-cascade        artifacts
+                                        + RPC a `cam get`-nél
 ```
 
 ## A három szabály
@@ -18,8 +20,17 @@ egy JSON-mutató (`message.content[*].text`), vagy Cursor esetén a `state.vscdb
 contentless (`content=''`), tehát az invertált index létezik, a szöveg nem. Lekérdezéskor a `Hydrator`
 olvassa vissza a forrásból.
 
-Egyetlen kivétel: a **múlandó** anyag. A `%TEMP%/claude/**` scratchpadet az OS bármikor törli, a Cowork
-kimenetek az app takarításától függnek — ezek `inline_text`-ként bekerülnek (256 KB-ig).
+Két kivétel, mindkettő `inline`, mindkettő ezen a gépen marad:
+
+- **Múlandó** anyag. A `%TEMP%/claude/**` scratchpadet az OS bármikor törli, a
+  Cowork kimenetek az app takarításától függnek — ezek `artifacts.inline_text`-ként
+  bekerülnek (256 KB-ig).
+- **Titkosított Cascade-törzsek.** Az Antigravity és a Devin asztali olyan
+  formában tartja a beszélgetést a lemezen, amit nem tudunk olvasni. A
+  `cam get` az élő language servert kérdezi, és a beszédet
+  `turns.inline_text`-ként tárolja, mert nincs fájl és bájt-offset, amit
+  feljegyezhetnénk. Ez nem része a `cam sync`-nek. Lásd
+  [`sources.md`](sources.hu.md#cascade-törzsek-igény-szerint).
 
 **Nem tippelünk.** Ha egy session projektje nem állapítható meg, `unattributed` marad. Minden verdikt
 mellett ott a módszer és a megbízhatóság, és a `recall` alapból elrejti a gyenge találatokat.
@@ -42,9 +53,27 @@ A `sources` tábla a főkönyv. Egy append-only fájlra:
 A prefix-hash **fix ablakot** használ (`min(4096, bytes_indexed)` bájt). Ha a fájl aktuális méretéig
 hashelnénk, minden hozzáfűzés más ablakot fedne le, és minden sync teljes újraolvasás lenne.
 
-A Cursor nem fájl, hanem kulcs-érték tár, ezért ott `ext_version` = a beszélgetés `lastUpdatedAt`-je.
-Amelyiknek nincs időbélyege, ott a `composerData` sha256-ja a jel — de **csak akkor**, mert egy bubble
-szövegének szerkesztése nem változtatja meg a `composerData`-t (az csak azonosítók listája).
+A nem append-only fájl ugyanígy az `ext_version`-t használja: a változatlan
+verzió `skip`. A Cursornél ez a `lastUpdatedAt` (vagy a `composerData`
+sha256-ja, ha nincs időbélyeg — **csak akkor**, mert egy bubble szerkesztése
+nem változtatja meg a `composerData`-t). A Codex és a Devin CLI a store által
+közölt verziót használja. Az Antigravity összefoglalók a
+`last_modified_time + step_count`-ot. Egy Cascade `.pb` az mtime + méretet, és
+a kollektor a bájtokat soha nem nyitja ki.
+
+## Igény szerinti letöltés
+
+Egy kollektor, ami titkosított fájlra futna, óránként vendor daemont indítana,
+és százával fejtene vissza beszélgetéseket, amiket senki nem kért. Ezért a
+`cam sync` azt jegyzi meg, hogy a beszélgetés létezik, és a `cam get` /
+`cam_get` az egyetlen pillanat, ami a language serverrel beszél.
+
+Ez az út a `src/sources/` alatt van, nem a `collectors/`-ben. Megkeresi az
+összes élő `language_server*` folyamatot, a CSRF tokent az argv-ból vagy a
+folyamat környezetéből olvassa (Linuxon `/proc`, macOS-en `sysctl` majd `ps`,
+Windowson PEB), mindkét listening portot próbálja, és minden daemont
+megkérdez — egy daemon csak a saját felületét ismeri. Nem indít egyet sem. A
+bezárt alkalmazás normális válasz.
 
 ## Projektfelismerés
 
@@ -74,7 +103,7 @@ másodperc alatt lefut, és egy alias hozzáadása interaktív művelet.
 | lépcső | forrás | súly | megbízhatóság |
 |---|---|---|---|
 | `manual` | `cam attribute` | 1000 | erős |
-| `cwd`, `user_selected_folders` | a session munkakönyvtára / kiválasztott mappái | 3 | erős |
+| `cwd`, `user_selected_folders`, `workspace_dirs`, `workspace_uris` | a session munkakönyvtára / kiválasztott mappái (három név ugyanarra a tényre; az Antigravitynek cwd-oszlopa sincs) | 3 | erős |
 | `ofs_key` | Cursor `ofsContent` kulcsok (nyitott fájlok) | 2 | erős |
 | `bubble_scan`, `msg_request_ctx` | a beszélgetésben említett útvonalak | 1 | erős |
 | `time_correlation` | Cursor fájltörténet ±30 perc, ≥3 esemény és ≥50% részesedés | 1 | közepes |
@@ -85,6 +114,8 @@ A `runner_up_key` mindig íródik: a 6:5 arányban szavazó szál más állat, m
 A `manual` és a `time_correlation*` bizonyíték **maga hordozza a verdiktet**: a `raw_path`-uk jelölés
 (`~manual:<kulcs>`, `~time:9/10`), nem útvonal, ezért az újraszámolás nem oldja fel őket még egyszer.
 Enélkül a kézi döntés minden `cam reattribute`-tal elveszne — a `rule_version` 2 pont ezt jelzi.
+A `rule_version` 3 ugyanez a `workspace_dirs` és a `workspace_uris` miatt: nélkülük a `cwd`
+lépcsőn minden Antigravity-beszélgetés attribuálatlan maradna.
 
 ## Keresés
 
@@ -112,7 +143,15 @@ src/
     roots.ts                 workspace-gyökér tanulás
     evidence.ts              útvonal-kinyerés, bizonyíték írás
     resolve.ts               kaszkád, idő-korreláció, újraszámolás
-  collectors/                eszközönként egy, közös interfésszel
+  collectors/                tárolónként egy, közös interfésszel (titkosított
+                             Cascade-nél csak metaadat)
+  sources/
+    language-server.ts       élő Codeium-leszármazott daemonok (port, CSRF)
+    process-env.ts           egy env változó idegen folyamatból (Linux / macOS / Windows)
+    cascade-rpc.ts           GetCascadeTrajectory minden daemonon
+    antigravity-trajectory.ts beszédmező-whitelist
+    antigravity-fetch.ts     `cam get antigravity:…`
+    devin-fetch.ts           `cam get devin:…` (nem CLI-session)
   memory/                    konszolidáció, pontozás, promotált emlékek, álom
   ops/
     freshness.ts             mennyire friss az index (sync_runs)
@@ -133,6 +172,7 @@ src/
   mcp/server.ts              hét read-only tool, mindegyik válaszán az index korával
   cli.ts
 assets/skill-body.md         a skill törzse; a {{SURFACE}} helyére a kliens kerül
+assets/read-process-env.ps1  Windows PEB-olvasó a `WINDSURF_CSRF_TOKEN`-hez
 skills/agent-memory/SKILL.md a nyilvános, felfedezhető skill (`npx skills add`)
 ```
 

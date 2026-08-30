@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.7.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.8.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -56,7 +56,7 @@ flowchart LR
   D[Desktop / Cowork] --> H
   E[Gemini CLI] --> H
   F[Antigravity] --> H
-  G[Devin CLI] --> H
+  G[Devin] --> H
   H --> CLI
   H --> MCP
 ```
@@ -176,8 +176,9 @@ Minden válasz — a hibás is — az index korával végződik:
 | Gemini CLI | `~/.gemini/tmp/<projekt>/chats/session-*.json` | `.project_root` a chatek mellett |
 | Antigravity | `~/.gemini/antigravity-cli/conversation_summaries.db` + `history.jsonl` + `brain/**/*.md` | `workspace_uris` |
 | Devin CLI | `<appdata>/devin/cli/sessions.db` | `sessions.working_directory` |
+| Devin asztali / Windsurf | `~/.codeium/windsurf/cascade/<uuid>.pb` (titkosított; törzs a `cam get`-tel) | `workspace_uris` az élő language serverből |
 
-Az Antigravity beszélgetés-törzsei (`conversations/*.pb`) titkosítottak — mérve 7,998 bit entrópia bájtonként —, ezért az összefoglalót, a begépelt promptokat és az ügynök terv-dokumentumait indexeljük, és a tool ezt ki is mondja ahelyett, hogy üres store-t jelentene. A Windsurf ugyanígy tárolja a Cascade szálakat, de metaadat nélkül, ezért ahhoz nincs collector.
+Az Antigravity beszélgetés-törzsei (`conversations/*.pb`) titkosítottak — mérve 7,998 bit entrópia bájtonként —, ezért az összefoglalót, a begépelt promptokat és az ügynök terv-dokumentumait indexeljük. A `cam get antigravity:<id>` az élő language servertől kéri a törzset. A Devin asztali / Windsurf Cascade ugyanez a titkosított store összefoglaló adatbázis nélkül: a `cam sync` a fájlnevet jegyzi, a `cam get devin:<id>` ugyanígy hozza a szöveget.
 
 Formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md). Séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
 

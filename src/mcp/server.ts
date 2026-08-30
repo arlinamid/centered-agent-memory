@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -19,12 +20,14 @@ import {
   formatTurns,
 } from "../query/format.js";
 import { getTurns, parseCitation, recall } from "../query/recall.js";
+import { defaultRoots } from "../paths.js";
 import { DaemonSession } from "../sources/language-server.js";
 import { fetchConversation } from "../sources/antigravity-fetch.js";
+import { fetchDevinCascade } from "../sources/devin-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.7.0";
+export const SERVER_VERSION = "0.8.0";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
 Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and
@@ -47,6 +50,8 @@ export interface ServerOptions {
   /** Past this age the index reports itself as stale. */
   staleAfterMs?: number;
   nowMs?: () => number;
+  /** Encrypted Cascade files; tests point this at a fixture. */
+  cascadeDir?: string;
 }
 
 /** Factory so tests can drive the server in-process over an in-memory transport. */
@@ -55,7 +60,8 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
   // questions in a row, and finding the daemon means listing every process on
   // the machine. It expires on its own, because Antigravity picks new ports
   // every time it restarts.
-  const antigravity = new DaemonSession();
+  const languageServers = new DaemonSession();
+  const cascadeDir = opts.cascadeDir ?? path.join(defaultRoots().windsurfHome, "cascade");
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION, title: "Centered Agent Memory" },
     { instructions: INSTRUCTIONS },
@@ -231,18 +237,29 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       const parsed = parseCitation(citation);
       if (!parsed) return text(`Unreadable citation: ${citation}`, true);
 
-      // Antigravity keeps its conversations encrypted, and only its own daemon
-      // can read them. Asking for one by name is the moment to go and get it —
-      // the only moment, which is why nothing else in the server does.
+      // Encrypted Cascade bodies (Antigravity and Devin desktop) are read
+      // only when someone asks for that conversation by name.
       let note = "";
       if (parsed.tool === "antigravity") {
-        const outcome = await fetchConversation(db, parsed.sessionExtId, { session: antigravity });
+        const outcome = await fetchConversation(db, parsed.sessionExtId, { session: languageServers });
         if (outcome.status === "no-daemon") {
           note =
             "\n\n(Antigravity is not running, so this conversation's text could not be read: " +
             "its body is encrypted on disk. What is shown is what the index holds without it.)";
         } else if (outcome.status === "failed") {
           note = `\n\n(Antigravity's language server did not answer: ${outcome.detail})`;
+        }
+      } else if (parsed.tool === "devin") {
+        const outcome = await fetchDevinCascade(db, parsed.sessionExtId, {
+          session: languageServers,
+          cascadeDir,
+        });
+        if (outcome.status === "no-daemon") {
+          note =
+            "\n\n(Devin is not running, so this conversation's text could not be read: " +
+            "its body is encrypted on disk. What is shown is what the index holds without it.)";
+        } else if (outcome.status === "failed") {
+          note = `\n\n(Devin's language server did not answer: ${outcome.detail})`;
         }
       }
 

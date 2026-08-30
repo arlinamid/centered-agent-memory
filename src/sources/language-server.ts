@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
+import { WINDSURF_CSRF_ENV, readProcessEnvVar } from "./process-env.js";
 
 /**
- * Talking to the Antigravity language server.
+ * Talking to a Codeium-lineage language server (Antigravity, Devin / Windsurf).
  *
- * Antigravity keeps its conversations encrypted on disk (see
- * `docs/sources.md`), and the only component that can decrypt them is the
- * daemon the application already runs. It answers a Connect-RPC service over
- * plain HTTP on localhost, guarded by a CSRF token it was started with.
+ * Both keep conversations encrypted on disk (see `docs/sources.md`), and the
+ * only component that can decrypt them is the daemon the application already
+ * runs. It answers a Connect-RPC service over plain HTTP on localhost,
+ * guarded by a CSRF token it was started with.
  *
  * Three things about it are measured rather than assumed, because each one
  * would otherwise be a plausible-looking bug:
@@ -14,9 +15,11 @@ import { spawnSync } from "node:child_process";
  *   - **The log is not the port.** `language_server.log` recorded 49361/49362
  *     while the live process was actually listening on 55026/55027, so the port
  *     comes from the process's own listening sockets, never from the log.
- *   - **There are two ports and only one is usable.** The lower is HTTPS/gRPC
- *     and answers "Client sent an HTTP request to an HTTPS server"; the higher
- *     is the plain HTTP one this speaks to.
+ *   - **There are two ports and only one is usable.** One is HTTPS/gRPC and
+ *     answers "Client sent an HTTP request to an HTTPS server"; the other is
+ *     the plain HTTP one this speaks to. The order is not stable (measured on
+ *     Devin: either port can be the HTTP one), so the caller probes rather
+ *     than trusting which is higher.
  *   - **Nothing here runs unless something changed.** Starting a daemon is
  *     expensive and it phones home on startup, so the caller decides — from the
  *     summaries database, which costs nothing — whether there is anything to
@@ -40,7 +43,7 @@ export interface Daemon {
 
 export type Runner = typeof spawnSync;
 
-interface ProcessInfo {
+export interface ProcessInfo {
   pid: number;
   commandLine: string;
 }
@@ -88,6 +91,27 @@ export function parseProcessLines(stdout: string): ProcessInfo[] {
 export function csrfTokenOf(commandLine: string): string | null {
   const m = /(?:^|\s)--csrf_token[= ]+("[^"]+"|\S+)/.exec(commandLine);
   return m ? m[1]!.replace(/^"|"$/g, "") : null;
+}
+
+export type EnvLookup = (pid: number, name: string) => string | null;
+
+export interface DiscoverOptions {
+  run?: Runner;
+  fetchImpl?: typeof globalThis.fetch;
+  envOf?: EnvLookup;
+}
+
+/**
+ * The token the daemon will accept, from whichever place this build put it.
+ *
+ * Antigravity writes `--csrf_token` on the command line. Devin / Windsurf
+ * write `WINDSURF_CSRF_TOKEN` in the process environment and leave argv
+ * without a token (measured, including after a restart). Argv wins when both
+ * are present, because it is the one we can read without opening another
+ * process's memory.
+ */
+export function csrfTokenFor(proc: ProcessInfo, opts: DiscoverOptions = {}): string | null {
+  return csrfTokenOf(proc.commandLine) ?? readProcessEnvVar(proc.pid, WINDSURF_CSRF_ENV, opts);
 }
 
 /** One number per line: what PowerShell's `ForEach-Object { $_.LocalPort }` gives. */
@@ -171,10 +195,9 @@ export function listeningPorts(pid: number, opts: { run?: Runner } = {}): number
 /**
  * Which of a daemon's ports speaks plain HTTP.
  *
- * The daemon opens the gRPC/HTTPS port first and the HTTP one immediately
- * after, so the HTTP port is the higher of the pair. Guessing wrong is cheap to
- * detect — the HTTPS side answers with a plaintext complaint rather than a
- * response — so the caller probes rather than trusting the order blindly.
+ * Guessing wrong is cheap to detect — the HTTPS side answers with a plaintext
+ * complaint rather than a response — so higher-first is only a heuristic. The
+ * order is not stable across Codeium-lineage builds, and both ports are probed.
  */
 export function httpPortCandidates(ports: ReadonlyArray<number>): number[] {
   return [...ports].sort((a, b) => b - a);
@@ -242,16 +265,20 @@ export async function callRpc(
 }
 
 /**
- * Find a daemon that is already running, without starting anything.
+ * Every language server already running, without starting anything.
  *
- * Returns null when there is none — which is a normal state, not an error: the
- * caller decides whether that is worth starting one over.
+ * Antigravity and Devin both answer the same RPC, and a daemon only knows its
+ * own surface. Asking the first process we see can therefore be the wrong
+ * one — so the caller tries each, and a missing token on argv is not a skip:
+ * Devin keeps it in the process environment instead.
+ *
+ * An empty list is a normal state, not an error: the caller decides whether
+ * that is worth starting one over.
  */
-export async function findDaemon(
-  opts: { run?: Runner; fetchImpl?: typeof globalThis.fetch } = {},
-): Promise<Daemon | null> {
+export async function findDaemons(opts: DiscoverOptions = {}): Promise<Daemon[]> {
+  const found: Daemon[] = [];
   for (const proc of listLanguageServers(opts)) {
-    const csrfToken = csrfTokenOf(proc.commandLine);
+    const csrfToken = csrfTokenFor(proc, opts);
     if (!csrfToken) continue;
     for (const port of httpPortCandidates(listeningPorts(proc.pid, opts))) {
       // A probe, not a guess: the HTTPS port answers with a plaintext
@@ -261,11 +288,18 @@ export async function findDaemon(
         timeoutMs: 3000,
       });
       if (probe.status > 0 && typeof probe.body === "object") {
-        return { pid: proc.pid, port, csrfToken };
+        found.push({ pid: proc.pid, port, csrfToken });
+        break;
       }
     }
   }
-  return null;
+  return found;
+}
+
+/** The first daemon that answers, or null when none is open. */
+export async function findDaemon(opts: DiscoverOptions = {}): Promise<Daemon | null> {
+  const all = await findDaemons(opts);
+  return all[0] ?? null;
 }
 
 /**
@@ -277,12 +311,10 @@ export async function findDaemon(
  */
 export const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
-export interface SessionOptions {
+export interface SessionOptions extends DiscoverOptions {
   /** How long a discovered address is reused before it is looked up again. */
   ttlMs?: number;
   log?: (msg: string) => void;
-  run?: Runner;
-  fetchImpl?: typeof globalThis.fetch;
   now?: () => number;
 }
 
@@ -296,7 +328,7 @@ export interface SessionOptions {
  * the user restarts Antigravity.
  */
 export class DaemonSession {
-  private daemon: Daemon | null = null;
+  private daemons: Daemon[] | null = null;
   private foundAtMs = 0;
   private readonly ttlMs: number;
   private readonly now: () => number;
@@ -306,21 +338,34 @@ export class DaemonSession {
     this.now = opts.now ?? Date.now;
   }
 
-  /** The live daemon, or null when Antigravity is not open. */
+  /** The first live daemon, or null when none is open. */
   async acquire(): Promise<Daemon | null> {
-    if (this.daemon && this.now() - this.foundAtMs < this.ttlMs) return this.daemon;
+    const all = await this.acquireAll();
+    return all[0] ?? null;
+  }
 
-    const found = await findDaemon(this.opts);
-    if (!found) {
-      this.daemon = null;
-      return null;
+  /**
+   * Every live daemon. A conversation lives on one surface, and the first
+   * process we see is not always that surface.
+   */
+  async acquireAll(): Promise<Daemon[]> {
+    if (this.daemons && this.now() - this.foundAtMs < this.ttlMs) return this.daemons;
+
+    const found = await findDaemons(this.opts);
+    if (found.length === 0) {
+      this.daemons = null;
+      return [];
     }
-    if (!this.daemon || this.daemon.port !== found.port) {
-      this.opts.log?.(`antigravity: language server on port ${found.port} (pid ${found.pid})`);
+    const ports = found.map((d) => d.port).join(",");
+    const prev = this.daemons?.map((d) => d.port).join(",");
+    if (prev !== ports) {
+      this.opts.log?.(
+        `language server: ${found.map((d) => `port ${d.port} (pid ${d.pid})`).join(", ")}`,
+      );
     }
-    this.daemon = found;
+    this.daemons = found;
     this.foundAtMs = this.now();
-    return this.daemon;
+    return this.daemons;
   }
 
   /** Forget the address, so the next call looks it up again. */
@@ -329,7 +374,7 @@ export class DaemonSession {
   }
 
   close(): void {
-    this.daemon = null;
+    this.daemons = null;
     this.foundAtMs = 0;
   }
 }

@@ -3,8 +3,8 @@ import { normalizePath } from "../paths.js";
 import { addTurns, clearSession, upsertSession } from "../index/indexer.js";
 import { ensureSource, getSource, recordVersionSync } from "../index/watermarks.js";
 import { replaceEvidence } from "../attribution/evidence.js";
-import { DaemonSession, callRpc } from "./language-server.js";
-import { parseTrajectory } from "./antigravity-trajectory.js";
+import { DaemonSession } from "./language-server.js";
+import { fetchTrajectory } from "./cascade-rpc.js";
 
 /**
  * Fetching one Antigravity conversation, on demand.
@@ -75,21 +75,24 @@ export async function fetchConversation(
     return { status: "cached", turns: existing.turn_count };
   }
 
-  const daemon = await opts.session.acquire();
   // Not an error: Antigravity is simply closed, and there is no supported way
   // to open it from here. The caller says so and shows what it does have.
-  if (!daemon) return { status: "no-daemon" };
-
-  // One conversation is 5.2 MB of JSON on the reference machine, so the
-  // timeout is generous and the call is made once.
-  const res = await callRpc(daemon, "GetCascadeTrajectory", { cascadeId }, {
-    fetchImpl: opts.fetchImpl,
-    timeoutMs: 60_000,
-  });
-  if (!res.ok) return { status: "failed", detail: res.detail || `HTTP ${res.status}` };
-
-  const parsed = parseTrajectory(res.body);
-  if (!parsed) return { status: "failed", detail: "the daemon answered something that is not a trajectory" };
+  // Every live daemon is asked, because the first one may be Devin's.
+  const got = await fetchTrajectory(opts.session, cascadeId, { fetchImpl: opts.fetchImpl });
+  let parsed;
+  switch (got.status) {
+    case "no-daemon":
+      return { status: "no-daemon" };
+    case "failed":
+      return { status: "failed", detail: got.detail };
+    case "ok":
+      parsed = got.parsed;
+      break;
+    default: {
+      const _never: never = got;
+      return { status: "failed", detail: String(_never) };
+    }
+  }
 
   const version = summaryVersion(db, cascadeId);
   const source = ensureSource(db, "antigravity", "rpc", bodySourceLocator(cascadeId));

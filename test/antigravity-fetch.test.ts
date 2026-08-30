@@ -5,6 +5,7 @@ import { antigravityCollector } from "../src/collectors/antigravity.js";
 import { Hydrator, type TurnRow } from "../src/index/hydrate.js";
 import { makeHarness, type Harness } from "./helpers/fixtures.js";
 import { writeSummaries, type Summary } from "./helpers/antigravity-fixture.js";
+import { fakeLanguageServers } from "./helpers/daemon.js";
 
 let h: Harness;
 
@@ -54,14 +55,9 @@ const trajectory = (userText: string, assistantText: string) => ({
 
 /** A machine with one language server on port 55027. */
 const daemonRunning = (respond: (method: string) => { ok: boolean; status: number; text: string }) => {
-  const run = ((_cmd: string, args: string[]) => {
-    const script = args.join(" ");
-    if (script.includes("Win32_Process") || script.includes("-eo")) {
-      return { status: 0, stdout: "46680\tlanguage_server.exe --csrf_token tok", stderr: "" };
-    }
-    return { status: 0, stdout: "55027\n55026\n", stderr: "" };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
+  const run = fakeLanguageServers([
+    { pid: 46680, commandLine: "language_server.exe --csrf_token tok", ports: [55027, 55026] },
+  ]);
 
   const calls: string[] = [];
   const fetchImpl = (async (url: string) => {
@@ -79,7 +75,7 @@ const answerWith = (doc: unknown) => (method: string) =>
     ? { ok: true, status: 200, text: JSON.stringify(doc) }
     : { ok: true, status: 200, text: "{}" };
 
-const noDaemon = (() => ({ status: 0, stdout: "", stderr: "" })) as never;
+const noDaemon = fakeLanguageServers([]);
 
 const turnsOf = (extId: string) =>
   h.hub
@@ -192,5 +188,32 @@ describe("fetching one antigravity conversation", () => {
       fetchImpl,
     });
     expect(outcome).toEqual({ status: "not-found" });
+  });
+
+  it("asks the next daemon when the first one does not hold the conversation", async () => {
+    const run = fakeLanguageServers([
+      { pid: 1, commandLine: "ls.exe --csrf_token a", ports: [55027, 55026] },
+      { pid: 2, commandLine: "ls.exe --csrf_token b", ports: [56027, 56026] },
+    ]);
+    const fetchImpl = (async (url: string) => {
+      const port = new URL(url).port;
+      const method = url.slice(url.lastIndexOf("/") + 1);
+      if (method === "GetAllCascadeTrajectories") {
+        return { ok: true, status: 200, text: async () => "{}" };
+      }
+      if (port === "55027") {
+        return { ok: false, status: 500, text: async () => '{"message":"trajectory not found"}' };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(trajectory("kérdés", "a másik daemon")) };
+    }) as unknown as typeof globalThis.fetch;
+
+    const outcome = await fetchConversation(h.hub, CID, {
+      session: new DaemonSession({ run, fetchImpl }),
+      fetchImpl,
+    });
+    expect(outcome).toEqual({ status: "fetched", turns: 2, steps: 3 });
+    const hy = new Hydrator(h.hub);
+    expect(turnsOf(CID).map((t) => hy.resolve(t).text)).toEqual(["kérdés", "a másik daemon"]);
+    hy.close();
   });
 });

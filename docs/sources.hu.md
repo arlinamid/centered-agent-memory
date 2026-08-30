@@ -180,8 +180,9 @@ ablakon mérve a `conversations/*.pb` és az `implicit/*.pb` **7,997–7,998 bit
 entrópiát** hordoz bájtonként, olvasható fejléc nélkül — miközben a mellettük
 fekvő sima protobuf (`user_settings.pb`) 3,6-ot mér és protobufként olvasható.
 A törzsek tehát nincsenek az indexben, és a collector ezt kimondja ahelyett,
-hogy üres store-t jelentene. Amit indexelünk, az az, amit az Antigravity a
-beszélgetéseiről *feljegyez*:
+hogy üres store-t jelentene. A szöveg igény szerint jön — lásd
+[Cascade törzsek](#cascade-törzsek-igény-szerint). Amit offline indexelünk, az
+az, amit az Antigravity a beszélgetéseiről *feljegyez*:
 
 - `conversation_summaries.db` — beszélgetésenként egy sor. A **`title` minden
   sorban üres** a referenciagépen; a `preview` a generált egysoros összefoglaló,
@@ -244,32 +245,36 @@ attribúció közvetlen és erős —, plusz a `title`-t, a `model`-t, és epoch
 - A `transcripts/*.json` (`ATIF-v1.7`) csak akkor keletkezik, ha a felhasználó
   exportál, és részhalmaza annak, amit a `sessions.db` már tartalmaz. Nem olvassuk.
 
-## Windsurf — ismert, de nem indexelhető
+## Devin asztali / Windsurf Cascade
 
 ```
-~/.codeium/windsurf/cascade/*.pb
+~/.codeium/windsurf/cascade/<uuid>.pb
 ```
 
-A Cascade beszélgetések ugyanúgy titkosítva vannak, mint az Antigravityé, és
-**nincs mellettük összefoglaló adatbázis** — tehát az Antigravityvel ellentétben
-még metaadat-réteg sincs, amiből attribuálni vagy címet adni lehetne. Nincs mit
-tisztességesen indexelni, ezért nincs Windsurf collector.
+A Devin asztali alkalmazás Windsurf-fork, és ezt a store-t használja (a
+`state.vscdb`-je tele van `windsurf*` kulcsokkal). A `.pb` fájlok ugyanúgy
+titkosítottak, mint az Antigravityé, és **nincs mellettük összefoglaló
+adatbázis**. A `cam sync` azt jegyzi meg, hogy a beszélgetés létezik — UUID
+fájlnév, mtime, méret —, és a bájtokat nem nyitja ki.
 
-A Devin asztali alkalmazás Windsurf-fork, és ugyanezt a store-t használja (a
-`state.vscdb`-je tele van `windsurf*` kulcsokkal); a Devin **CLI** külön,
-olvasható store, azt indexeljük. Ha az Antigravity kulcskezelése valaha
-megérkezik, ugyanaz a modul a Windsurfot is lefedné, más kulcsnévvel.
+A citáció `devin:<cascadeId>` marad. Ha ugyanaz az id a Devin CLI-ben is
+megvan, az nyer: az a store már olvasható, és a `cam get` nem cseréli le a
+turnjeit.
 
-### Antigravity beszélgetéstörzsek, igény szerint
+Egy megmaradt, nem Devin Windsurf-telepítés ugyanez a store és ugyanez a
+protokoll, tehát ugyanaz az út lefedi, ha az az alkalmazás fut.
 
-A titkosított `.pb` fájlok mégis olvashatók — nem visszafejtéssel, hanem
-annak a komponensnek a megkérdezésével, amelyik már tudja. Az Antigravity
-egy language servert futtat, ami Connect-RPC szolgáltatást válaszol sima
-HTTP-n localhoston, és ez a daemon fejti vissza a saját store-ját.
+## Cascade törzsek, igény szerint
+
+Az Antigravity és a Devin is titkosítva tartja a beszélgetéseket. Az egyetlen
+komponens, ami vissza tudja fejteni őket, az a language server, amit az
+alkalmazás már futtat: Connect-RPC sima HTTP-n localhoston. A `.pb` fájlt
+nem fejtjük, és daemont nem indítunk.
 
 Ez **nem** része a `cam sync`-nek. Csak akkor fut, ha valaki egy beszélgetést
-név szerint kér (`cam get antigravity:<id>`, vagy `cam_get` MCP-n), és amit
-lehúz, azt megőrzi, tehát a második kérdés egy hívásba kerül.
+név szerint kér (`cam get antigravity:<id>` / `cam get devin:<id>`, vagy
+`cam_get` MCP-n). Amit lehúz, azt megőrzi, tehát a második kérdés egy
+hívásba kerül. A bezárt alkalmazás normális állapot, nem hiba.
 
 ```
 POST http://127.0.0.1:<port>/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory
@@ -279,28 +284,33 @@ x-codeium-csrf-token: <token>
 
 Minden alább mért, és minden sor egy rossz válasz, ami jónak látszott:
 
-- **A header `x-codeium-csrf-token`.** Az Antigravity Codeium-fork, és
+- **A header `x-codeium-csrf-token`.** Mindkét app Codeium-leszármazott, és
   megtartotta a gyártói előtagot. `x-csrf-token`, `x-csrf` vagy `csrf-token`
   mellett a daemon `401 {"code":"unauthenticated","message":"missing CSRF token"}`
   választ ad — ami rossz tokennek olvasható, nem rossz header-névnek.
-- **A token a daemon parancssorának `--csrf_token`-je**, és nem a mellette
-  ülő `--extension_server_csrf_token`, ami másik szolgáltatást véd. Részstring
-  szerinti illesztés azt veszi, amelyik előbb jön.
+- **A token a `--csrf_token` az argv-n, vagy a `WINDSURF_CSRF_TOKEN` a
+  folyamat környezetében.** Az Antigravity a flaget írja. A Devin a
+  környezeti változót, és az argv-n nincs token (mérve, újraindítás után is).
+  Ha mindkettő megvan, az argv nyer. A `--extension_server_csrf_token` másik
+  szolgáltatást véd, nem cserélhető. A parent pipe-ot nem nyitjuk ki, és az
+  értéket nem írjuk le.
+- **Ennek a környezetnek az olvasása platformfüggő, mint a portoké.** Linuxon
+  a `/proc/<pid>/environ`. macOS-en először a `sysctl -b kern.procargs2.<pid>`,
+  aztán a `ps eww`. Windowson a PEB, az `assets/read-process-env.ps1`-en
+  keresztül. Az üres válasz az, hogy „nincs token”, ugyanaz, mint a „nem fut”.
 - **A port nem a naplóból jön.** A `language_server.log` 49361/49362-t
   rögzített, miközben az élő processz 55026/55027-en hallgatott. A processz
   saját listening socketjeiből jön: Windowson `Get-NetTCPConnection`, Linuxon
   előbb `ss -ltnp`, aztán `lsof` (`ss` az, amit egy mai disztribúció szállít;
-  egyik sem garantált), macOS-en `lsof`. Az üres válasz azt jelenti: „az
-  Antigravity nem fut”.
-- **Két port van, és az egyik használhatatlan.** Az alacsonyabb HTTPS/gRPC, és
-  `Client sent an HTTP request to an HTTPS server.`-rel válaszol; a magasabb
-  a sima HTTP. Az olvasó próbájával dönt, nem a sorrendben bízik.
-- **A `GetAllCascadeTrajectories` `{}`-t ad.** Proto3 JSON-ban az üres
-  repeated mező kimarad, tehát nincs listázható oldal: a beszélgetés-azonosítók
-  a `conversation_summaries.db`-ből jönnek, a változásjelzés is onnan.
-- **Egy daemon csak a saját felületét ismeri.** Az IDE language serverétől a
-  CLI-ben indított beszélgetést kérdezve
-  `{"code":"unknown","message":"trajectory not found"}` a válasz.
+  egyik sem garantált), macOS-en `lsof`.
+- **Két port van, és csak az egyik HTTP.** A másik HTTPS/gRPC, és
+  `Client sent an HTTP request to an HTTPS server.`-rel válaszol. A sorrend
+  nem stabil (Devinen mérve: bármelyik lehet a HTTP-s), ezért mindkettőt
+  próbáljuk.
+- **Egy daemon csak a saját felületét ismeri.** A rossz language servertől
+  `{"code":"unknown","message":"trajectory not found"}` a válasz. Az
+  Antigravity és a Devin ugyanazokra a metódusokra válaszol, ezért minden
+  élő daemont megkérdezünk.
 - **Daemont nem indítunk, és nem is próbálunk.** Lezárt Antigravity mellett
   az `agy agentapi` csak az alparancs-listáját írja ki, az
   `agy agentapi get-conversation-metadata <id>` pedig 1-gyel lép ki
@@ -308,7 +318,16 @@ Minden alább mért, és minden sor egy rossz válasz, ami jónak látszott:
   kliense, nem indítási mód. A `language_server.exe` közvetlen futtatása egy
   dokumentálatlan bináris argumentumkészletének kitalálása lenne, egy valódi
   `agy` session indítása pedig számlázott modellhívás helyi adat olvasásához.
-  Tehát ha az Antigravity zárva van, a válasz az, hogy ezt kimondjuk.
+
+Ami a két store között különbözik:
+
+| | Antigravity | Devin / Windsurf |
+|---|---|---|
+| Citáció | `antigravity:<id>` | `devin:<id>` |
+| `GetAllCascadeTrajectories` | `{}` (proto3 az üres repeated mezőt elhagyja) | map cascade id szerint (`summary`, `stepCount`, `workspaces`) |
+| Azonosítók / változásjelzés | `conversation_summaries.db` (`last_modified_time` + `step_count`) | a `.pb` fájlnév; a verzió mtime + méret |
+| Ismeretlen id | nem húzza le (`not-found`) | lehúzza; a sikeres válasz beszúrja a sessiont |
+| Ha a `.pb` eltűnt, és a törzs megvan | — | a megőrzött példány aktuális |
 
 **Ami visszajön, és ami megmarad.** A trajectory lépésnapló, nem átirat: a
 mért beszélgetésben 523 lépés 46 turn volt. Egy ilyen trajectory népszámlálása:
@@ -342,10 +361,9 @@ ugyanabból az 523 lépésből.
 titkosítva tartja —, tehát nincs fájl és bájt-offset, amit feljegyeznénk. Ez
 ugyanaz a kivétel, amit a volatilis scratchpadek már használnak, és azt
 jelenti, hogy a lehúzott beszélgetés olvasható és kereshető marad akkor is,
-miután az Antigravity újra bezárult.
+miután az alkalmazás újra bezárult.
 
-**Semmit sem húzunk le kétszer.** Az összefoglaló sor `last_modified_time` és
-`step_count` mezője a verzió; amíg nem mozdult, a megőrzött másolat aktuális,
-és nincs hívás. Ha elmozdult, a beszélgetést újra lekérjük, és a turnjeit
-**cseréljük**, mert a folytatott beszélgetésnek új lépései vannak, és a
-hozzáfűzés megduplázná, ami előttük volt.
+**Semmit sem húzunk le kétszer.** Amíg a fenti verzió nem mozdult, a
+megőrzött másolat aktuális, és nincs hívás. Ha elmozdult, a beszélgetést
+újra lekérjük, és a turnjeit **cseréljük**, mert a folytatott beszélgetésnek
+új lépései vannak, és a hozzáfűzés megduplázná, ami előttük volt.

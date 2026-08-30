@@ -27,17 +27,21 @@ Measured state on the reference machine, 2026-08-29:
 | repeat sync — collectors | ~330 ms |
 | repeat sync — end to end (with attribution) | ~4.6 s |
 
-Details: [`CHANGELOG.md`](../CHANGELOG.md). Architecture:
+That snapshot is the last full census. Since then Gemini CLI, Devin CLI and
+Antigravity are in the index, Cascade bodies are fetched on demand, and the
+suite is 606 tests. Details: [`CHANGELOG.md`](../CHANGELOG.md). Architecture:
 [`architecture.md`](architecture.md). Operations:
 [`operations.md`](operations.md).
 
-**Done (M1–M6):** seven collectors, eighteen CLI commands, seven MCP tools, an
-incremental index, project recognition with autodetect, an attribution
-cascade, full-text search with Hungarian handling, an installable package, the
-deterministic memory layer, unattended operation (scheduling, freshness
-signal, retention, backup), wiring with a single command into every agent tool
-found, and a public release with CI checked on three platforms. On top of
-that, a single optional, off-by-default step uses a model: the dream phase.
+**Done (M1–M6, then the extra sources):** the collectors above, eighteen CLI
+commands, seven MCP tools, an incremental index, project recognition with
+autodetect, an attribution cascade, full-text search with Hungarian handling,
+an installable package, the deterministic memory layer, unattended operation
+(scheduling, freshness signal, retention, backup), wiring with a single
+command into every agent tool found, a public release with CI checked on
+three platforms, and on-demand Cascade fetch from a live language server. On
+top of that, a single optional, off-by-default step uses a model: the dream
+phase.
 
 ---
 
@@ -420,6 +424,36 @@ hope works.
 
 ---
 
+## More sources — after M6 ✅
+
+**The goal was:** the tools this machine actually uses should be in the
+index, without pretending we can read what we cannot.
+
+Closed as 0.7.0 (Gemini CLI, Devin CLI, Antigravity metadata + on-demand
+bodies) and 0.8.0 (Devin Cascade `get`). Itemised list:
+[`CHANGELOG.md`](../CHANGELOG.md). Formats and traps:
+[`sources.md`](sources.md).
+
+The conditions:
+
+- **A source we cannot decrypt is not half-indexed as empty.** Antigravity
+  and Devin desktop keep conversations encrypted. `cam sync` records that
+  they exist. The body arrives only when someone asks (`cam get` /
+  `cam_get`), from the language server the app already runs. A closed app
+  is a normal answer, not a failure, and nothing here starts a daemon.
+- **The same RPC module serves both surfaces.** Antigravity puts
+  `--csrf_token` on argv; Devin puts `WINDSURF_CSRF_TOKEN` in the process
+  environment. Port discovery and env reading are the same shape on
+  Windows, Linux and macOS. Every live daemon is asked, because the first
+  one may be the other app.
+- **A Devin CLI session is not overwritten.** That store is readable
+  SQLite. Citations stay `devin:<id>`; the Cascade path no-ops when the
+  session already has a `sqlite_row` source.
+- **`cam install` writes Gemini, Antigravity and Devin** without adding a
+  second skill copy Devin would list twice.
+
+---
+
 ## Further directions
 
 **These are not commitments.** They come up if daily use demands them.
@@ -434,12 +468,11 @@ hope works.
   empty result: `cam doctor` and `cam_status` say what is wrong. What is
   missing is the actual merge between two machines' indexes — that is not
   a copy, but conflict handling.
-- **Further tools**: Zed, and Windsurf if its Cascade store ever becomes
-  readable. Gemini CLI, Antigravity and Devin CLI are now sources rather than
-  directions — Gemini CLI is both a model (dream phase) and a source.
-  Windsurf's conversations are encrypted with no metadata layer beside them,
-  so there is nothing honest to index yet; see
-  [`sources.md`](sources.md#windsurf--known-and-not-indexable).
+- **Further tools**: Zed. Gemini CLI, Antigravity, Devin CLI and Devin
+  desktop / Windsurf Cascade are now sources rather than directions —
+  Gemini CLI is both a model (dream phase) and a source. Cascade bodies
+  stay encrypted on disk and are fetched on demand from the live language
+  server; see [`sources.md`](sources.md#cascade-bodies-on-demand).
 - **Bringing artifacts into search.** `artifacts.inline_text` today holds
   264 rows of copied scratchpad and Cowork content that **nothing reads** —
   `cam recall` does not find into it.
@@ -463,13 +496,15 @@ knowing exactly what goes into the database.
 **What is in it:** locators (file and offset, or an SQLite key), the full-text
 index (contentless FTS — an inverted index, without the text), metadata
 (titles, timestamps, working directories), project evidence (file paths), an
-inline copy of the volatile artifacts, and **the text of your own search
-queries** (`memory_queries`) — since M3, because the evidence behind a
-promotion has to be showable. The last of these can be turned off: `recall`
-with `logQuery: false` writes only the question hash.
+inline copy of the volatile artifacts, **Cascade speech fetched on demand**
+(`turns.inline_text` — there is no file to point at), and **the text of your
+own search queries** (`memory_queries`) — since M3, because the evidence
+behind a promotion has to be showable. The last of these can be turned off:
+`recall` with `logQuery: false` writes only the question hash.
 
-**What is not in it:** the text of the conversations. That stays in the
-sources; the hub only finds it.
+**What is not in it:** the text of the conversations that still live in a
+readable source. That stays there; the hub only finds it. The Cascade
+exception is still local: it never leaves this machine.
 
 **What leaves the machine:** by default nothing; the core does not network.
 There are exactly two exceptions, and both are explicit opt-ins.
@@ -506,7 +541,10 @@ reindexes them if they are still there. Details:
 2. Watermark: `classifyFile` for a file-based source, `ext_version` for a
    version-based one. The goal is that an unchanged source costs zero reads.
 3. Locator, not a copy: the turn stores the text's location, and the
-   `Hydrator` has to be able to read it back.
+   `Hydrator` has to be able to read it back. `inline` is only for a source
+   with no readable file (volatile artifacts, Cascade RPC). An encrypted
+   store is not a collector of bodies — metadata in `cam sync`, fetch on
+   `cam get`, in `src/sources/`.
 4. Evidence: if the source has a working directory, that is the `cwd`; if
    not, paths from the content (`replaceEvidence`).
 5. Fixture: build the store **at runtime** from the real DDL (see

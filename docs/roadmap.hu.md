@@ -26,15 +26,21 @@ Mért állapot a referenciagépen, 2026-08-29:
 | ismételt sync — kollektorok | ~330 ms |
 | ismételt sync — végig (attribúcióval) | ~4,6 s |
 
-Részletek: [`CHANGELOG.md`](../CHANGELOG.md). Felépítés: [`architecture.md`](architecture.hu.md).
-Üzemeltetés: [`operations.md`](operations.hu.md).
+Ez a táblázat az utolsó teljes népszámlálás. Azóta a Gemini CLI, a Devin CLI
+és az Antigravity bent van az indexben, a Cascade-törzsek igény szerint
+jönnek, és a suite 606 teszt. Részletek: [`CHANGELOG.md`](../CHANGELOG.md).
+Felépítés: [`architecture.md`](architecture.hu.md). Üzemeltetés:
+[`operations.md`](operations.hu.md).
 
-**Kész (M1–M6):** hét kollektor, tizennyolc CLI-parancs, hét MCP-tool, inkrementális index,
-projektfelismerés autodetektálással, attribúciós kaszkád, teljes szövegű keresés magyar kezeléssel,
-telepíthető csomag, a determinisztikus memória-réteg, a felügyelet nélküli üzem (ütemezés,
-frissesség-jelzés, megőrzés, mentés), a bekötés egyetlen paranccsal minden megtalált
-ágens-eszközbe, és a nyilvános kiadás három platformon ellenőrzött CI-vel. Ezen felül egyetlen
-opcionális, alapból kikapcsolt lépés használ modellt: az álom fázis.
+**Kész (M1–M6, aztán a további források):** a fenti kollektorok, tizennyolc
+CLI-parancs, hét MCP-tool, inkrementális index, projektfelismerés
+autodetektálással, attribúciós kaszkád, teljes szövegű keresés magyar
+kezeléssel, telepíthető csomag, a determinisztikus memória-réteg, a
+felügyelet nélküli üzem (ütemezés, frissesség-jelzés, megőrzés, mentés), a
+bekötés egyetlen paranccsal minden megtalált ágens-eszközbe, a nyilvános
+kiadás három platformon ellenőrzött CI-vel, és a Cascade-törzs igény szerinti
+letöltése az élő language serverről. Ezen felül egyetlen opcionális, alapból
+kikapcsolt lépés használ modellt: az álom fázis.
 
 ---
 
@@ -350,6 +356,38 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
 
 ---
 
+## További források — az M6 után ✅
+
+**Cél volt:** azok az eszközök legyenek az indexben, amiket ez a gép tényleg
+használ, anélkül, hogy úgy tennénk, mintha olvasnánk, amit nem tudunk.
+
+Lezárva 0.7.0-ként (Gemini CLI, Devin CLI, Antigravity metaadat + igény
+szerinti törzs) és 0.8.0-ként (Devin Cascade `get`). Tételes lista:
+[`CHANGELOG.md`](../CHANGELOG.md). Formátumok és buktatók:
+[`sources.md`](sources.hu.md).
+
+A feltételek:
+
+- **Amit nem tudunk visszafejteni, azt nem indexeljük félig üresnek.** Az
+  Antigravity és a Devin asztali titkosítva tartja a beszélgetéseket. A
+  `cam sync` azt jegyzi meg, hogy léteznek. A törzs csak akkor jön, ha
+  valaki kéri (`cam get` / `cam_get`), attól a language servertől, amit az
+  alkalmazás már futtat. A bezárt app normális válasz, nem hiba, és semmi
+  itt nem indít daemont.
+- **Ugyanaz az RPC-modul szolgálja mindkét felületet.** Az Antigravity a
+  `--csrf_token`-t az argv-ra írja; a Devin a `WINDSURF_CSRF_TOKEN`-t a
+  folyamat környezetébe. A portkeresés és a környezet olvasása ugyanaz a
+  forma Windowson, Linuxon és macOS-en. Minden élő daemont megkérdez, mert
+  az első lehet a másik app.
+- **A Devin CLI sessiont nem írjuk felül.** Az a store olvasható SQLite. A
+  citáció `devin:<id>` marad; a Cascade-út no-op, ha a sessionnek már van
+  `sqlite_row` forrása.
+- **A `cam install` a Geminit, az Antigravityt és a Devint is beírja**,
+  anélkül, hogy második skill-másolatot tenne a Devinbe, amit kétszer
+  listázna.
+
+---
+
 ## Távlati irányok
 
 **Ezek nem kötelezettségek.** Akkor kerülnek sorra, ha a napi használat megkívánja.
@@ -362,11 +400,11 @@ gépéről, és hogy amit kiadunk, arról ne csak reméljük, hogy működik.
   a másolt adatbázis már nem ad némán üres eredményt: a `cam doctor` és a `cam_status` megmondja, mi
   a baj. Ami hiányzik, az a tényleges összefésülés két gép indexe között — az nem másolás, hanem
   konfliktuskezelés.
-- **További eszközök**: Zed, és a Windsurf, ha a Cascade store valaha olvashatóvá válik. A Gemini
-  CLI, az Antigravity és a Devin CLI már forrás, nem irány — a Gemini CLI egyszerre modell (álom
-  fázis) és forrás. A Windsurf beszélgetései titkosítottak, és nincs mellettük metaadat-réteg, így
-  egyelőre nincs mit tisztességesen indexelni; lásd:
-  [`sources.md`](sources.hu.md#windsurf--ismert-de-nem-indexelhető).
+- **További eszközök**: Zed. A Gemini CLI, az Antigravity, a Devin CLI és a Devin
+  asztali / Windsurf Cascade már forrás, nem irány — a Gemini CLI egyszerre modell
+  (álom fázis) és forrás. A Cascade törzsek lemezen titkosítottak, és igény szerint
+  jönnek az élő language servertől; lásd
+  [`sources.md`](sources.hu.md#cascade-törzsek-igény-szerint).
 - **A melléktermékek bevonása a keresésbe.** Az `artifacts.inline_text` ma 264 sornyi másolt
   scratchpad- és Cowork-tartalmat őriz, amit **semmi nem olvas** — a `cam recall` nem talál bele.
 
@@ -388,11 +426,15 @@ mi kerül az adatbázisba.
 
 **Ami benne van:** locatorok (fájl és offset, vagy SQLite-kulcs), a teljes szövegű index (contentless
 FTS — invertált index, szöveg nélkül), metaadat (címek, időbélyegek, munkakönyvtárak),
-projekt-bizonyíték (fájlútvonalak), a múlandó melléktermékek inline másolata, és **a saját keresési
-kérdéseid szövege** (`memory_queries`) — az M3 óta, mert a promóció bizonyítékát meg kell tudni
-mutatni. Ez utóbbi kikapcsolható: a `recall` `logQuery: false`-szal csak a kérdés hashét írja fel.
+projekt-bizonyíték (fájlútvonalak), a múlandó melléktermékek inline másolata, **az igény szerint
+lehúzott Cascade-beszéd** (`turns.inline_text` — nincs fájl, amire mutatni lehetne), és **a saját
+keresési kérdéseid szövege** (`memory_queries`) — az M3 óta, mert a promóció bizonyítékát meg kell
+tudni mutatni. Ez utóbbi kikapcsolható: a `recall` `logQuery: false`-szal csak a kérdés hashét írja
+fel.
 
-**Ami nincs benne:** a beszélgetések szövege. Az a forrásokban marad; a hub csak megtalálja.
+**Ami nincs benne:** azoknak a beszélgetéseknek a szövege, amik még olvasható
+forrásban élnek. Az ott marad; a hub csak megtalálja. A Cascade-kivétel is
+helyi: nem hagyja el ezt a gépet.
 
 **Ami elhagyja a gépet:** alapból semmi; a mag nem hálózik. Pontosan két kivétel van, és
 mindkettő kifejezett opt-in.
@@ -425,7 +467,10 @@ megvannak. Részletek: [`operations.md`](operations.hu.md).
    a `CollectorCtx`-en át érkezik — a kollektor sosem hívja közvetlenül az `os.homedir()`-t.
 2. Vízjel: fájl alapú forrásnál `classifyFile`, verzió alapúnál `ext_version`. A cél, hogy a
    változatlan forrás nulla olvasásba kerüljön.
-3. Locator, ne másolat: a turn a szöveg helyét tárolja, és a `Hydrator`-nak vissza kell tudnia olvasni.
+3. Locator, ne másolat: a turn a szöveg helyét tárolja, és a `Hydrator`-nak vissza kell tudnia
+   olvasni. Az `inline` csak olyan forrásra kell, aminek nincs olvasható fájlja (múlandó
+   melléktermék, Cascade RPC). A titkosított store nem törzs-kollektor — metaadat a
+   `cam sync`-ben, letöltés a `cam get`-nél, a `src/sources/` alatt.
 4. Bizonyíték: ha a forrásnak van munkakönyvtára, az a `cwd`; ha nincs, útvonalak a tartalomból
    (`replaceEvidence`).
 5. Fixtúra: a tárolót **futásidőben** építsd fel a valódi DDL-lel (lásd `test/helpers/`), ne

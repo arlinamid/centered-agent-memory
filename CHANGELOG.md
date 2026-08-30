@@ -2,6 +2,27 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+## [0.8.0] — 2026-08-30
+
+### Devin Cascade bodies, on demand
+
+- **`cam get devin:<id>` asks the live language server**, the same way Antigravity does.
+  Devin desktop (a Windsurf fork) keeps Cascade threads encrypted in
+  `~/.codeium/windsurf/cascade/<uuid>.pb` with no summaries database beside them.
+  `cam sync` records the filename; the body is fetched only when someone asks, and
+  a successful fetch inserts the session. CLI sessions on the same tool id are
+  left alone.
+- **The CSRF token is not always on argv.** Antigravity still passes `--csrf_token`.
+  Devin sets `WINDSURF_CSRF_TOKEN` in the language-server environment. The reader
+  takes argv first, then the process environment: `/proc/<pid>/environ` on Linux,
+  `sysctl kern.procargs2` then `ps eww` on macOS, the PEB on Windows. The parent
+  pipe is not opened. Every live language server is asked, because the first
+  one may be the other app. Port order is not stable; both sockets are probed.
+  Architecture, sources and the privacy note describe the inline Cascade
+  exception: speech fetched on demand stays on this machine.
+
 ## [0.7.0] — 2026-08-30
 
 ### Three more tools in the index
