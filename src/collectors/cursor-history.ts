@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { normalizePath } from "../paths.js";
 import { ensureSource, recordVersionSync } from "../index/watermarks.js";
-import { emptyStat, type Collector, type CollectorCtx, type SyncStat } from "./types.js";
+import { emptyStat, readDirOrNull, type Collector, type CollectorCtx, type SyncStat } from "./types.js";
 
 /**
  * Cursor's local file history (`User/History/<hash>/entries.json`) records which
@@ -23,7 +23,14 @@ export const cursorHistoryCollector: Collector = {
     if (!fs.existsSync(root)) return stat;
 
     const source = ensureSource(ctx.hub, "cursor", "history", `${root}#file-history`);
-    const dirs = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory());
+
+    // This collector mirrors the directory: it deletes every file event and
+    // writes back what it just read. An unreadable directory must therefore
+    // stop it here — carrying on with nothing would erase the attribution
+    // input that the previous sync collected, because of a permission error.
+    const entries = readDirOrNull(root, ctx, stat);
+    if (entries === null) return stat;
+    const dirs = entries.filter((e) => e.isDirectory());
 
     // Rebuilding is a few thousand tiny reads; the directory count is the
     // change signal, and a daily rebuild is plenty for an attribution input.

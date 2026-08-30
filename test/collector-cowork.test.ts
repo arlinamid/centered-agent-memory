@@ -129,6 +129,11 @@ describe("cowork collector", () => {
     await coworkCollector.sync(h.ctx);
     expect(await coworkCollector.sync(h.ctx)).toMatchObject({ sessions: 0, turns: 0 });
   });
+
+  it("does nothing when Cowork is not installed", async () => {
+    fs.rmSync(h.roots.coworkSessions, { recursive: true, force: true });
+    expect(await coworkCollector.sync(h.ctx)).toMatchObject({ sessions: 0, turns: 0, errors: 0 });
+  });
 });
 
 describe("claude desktop collector", () => {
@@ -193,6 +198,11 @@ describe("claude desktop collector", () => {
     expect(s.tool).toBe("claude_desktop");
     expect(s.turn_count).toBe(0);
     expect(s.cwd_norm).toBe("c:/work/demo");
+  });
+
+  it("does nothing when Claude Desktop is not installed", async () => {
+    fs.rmSync(h.roots.desktopSessions, { recursive: true, force: true });
+    expect(await claudeDesktopCollector.sync(h.ctx)).toMatchObject({ sessions: 0, turns: 0, errors: 0 });
   });
 });
 
@@ -266,5 +276,19 @@ describe("artifacts collector", () => {
 
   it("does nothing when no store is present", async () => {
     expect(await artifactsCollector.sync(h.ctx)).toMatchObject({ errors: 0 });
+  });
+
+  it("reports a plans directory it cannot read", async () => {
+    // Present but unlistable. A file in the directory's place produces ENOTDIR
+    // on every platform, which chmod would not on Windows.
+    fs.rmSync(h.roots.claudePlans, { recursive: true, force: true });
+    fs.writeFileSync(h.roots.claudePlans, "nem mappa", "utf8");
+
+    const stat = await artifactsCollector.sync(h.ctx);
+
+    // Counted rather than swallowed, so `cam sync` says so instead of quietly
+    // reporting that there are no plans.
+    expect(stat.errors).toBe(1);
+    expect(h.logs.some((l) => l.includes("nem olvasható"))).toBe(true);
   });
 });

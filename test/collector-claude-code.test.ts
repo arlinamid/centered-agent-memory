@@ -43,6 +43,11 @@ const session = () =>
   };
 
 describe("claude code collector", () => {
+  it("does nothing when Claude Code is not installed", async () => {
+    fs.rmSync(h.roots.claudeProjects, { recursive: true, force: true });
+    expect(await claudeCodeCollector.sync(h.ctx)).toMatchObject({ sessions: 0, turns: 0, errors: 0 });
+  });
+
   it("indexes only real conversation text", async () => {
     writeTranscript(h.roots, SLUG, SID, realisticRecords(CWD, SID));
     const stat = await claudeCodeCollector.sync(h.ctx);

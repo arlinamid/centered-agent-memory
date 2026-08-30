@@ -2,6 +2,38 @@
 
 Formátum: [Keep a Changelog](https://keepachangelog.com/), verziózás: [SemVer](https://semver.org/).
 
+## [Nem kiadott]
+
+### Az olvashatatlan tároló nem ugyanaz, mint a hiányzó
+
+**Miből jött:** a kérdés az volt, hogy eltörhet-e az MCP, ha valamelyik forrás-eszköz nincs
+telepítve. A válasz nem — a szerver csak az SQLite indexet olvassa, a kollektorok `existsSync`-kel
+indulnak, és a szinkron minden kollektort külön `try/catch`-be tesz. Az átvizsgálás viszont két
+olyan pontot talált, ahol a válasz csak majdnem volt igaz.
+
+- **Két őrizetlen `readdirSync` befoltozva.** A `cursor-history` és az `artifacts` terv-ága az
+  `existsSync` után csupaszon listázta a mappát. Ha a mappa **létezik, de nem olvasható**
+  (jogosultság), a kollektor dobott. A szinkron ezt elkapta, tehát összeomlás nem volt — de egy
+  jogosultsági hiba így is 1-es kilépési kódot adott, teszt nélkül.
+- **A visszatérési érték `null`, nem üres lista — és ez a lényeg.** A `cursor-history` tükrözi a
+  mappát: törli az egész `file_events` táblát, és visszaírja, amit épp olvasott. Ha egy olvasási
+  hibára üres listát kapott volna, kitörli az előző szinkron által gyűjtött attribúciós bemenetet
+  egy jogosultsági hiba miatt. A `readDirOrNull` ezért különbözteti meg a kettőt: az üres lista azt
+  jelenti, hogy „töröld, amid van", a `null` azt, hogy „nem tudtál meg semmit, ne nyúlj hozzá".
+- **A hiba számít, nem tűnik el.** A „nincs telepítve" néma és nulla; a „van, de nem olvasható"
+  `errors++` és egy megnevezett naplósor. Csak az elsőnek jár a csend — a másodikból különben az
+  lesz, hogy „nincs egy tervfájlod se", és senki nem tudja meg, hogy valójában jogosultsági baj van.
+- **Hat új teszt, köztük az, ami a README állítását támasztja alá.** Eddig egyetlen teszt sem
+  futtatott le teljes szinkront úgy, hogy **egyik** eszköz sincs telepítve, pedig pont ezt ígérjük.
+  Most mind a hét kollektor lefut, mind nullát jelent, a futás nulla hibával kerül a `sync_runs`-ba.
+  Ehhez a konfigból kellett rögzíteni a gyökereket is: a `CAM_HOME` a profilalapú tárolókat
+  elmozdítja, de a Claude-jegyzettömb az OS temp mappájában van, tehát e nélkül a teszt a fejlesztő
+  valódi gépét olvasta volna. A hiányzó gyökér ága a claude-code, claude-desktop és cowork
+  kollektoroknál eddig kezelve volt, de nem bizonyítva.
+- **Egy elavult megjegyzés javítva.** A `cli.test.ts` fejléce még azt írta, hogy a hamis home nem
+  mozdítja a Desktop és Cursor tárolóit. A 0.5.0 `appSupportDir`-javítása óta ez nem igaz, és az új
+  teszt épp az ellenkezőjére épül.
+
 ## [0.5.0] — 2026-08-29
 
 ### Nyilvános repó — CI, kiadás, és a gépspecifikus nyomok kitakarítása

@@ -16,10 +16,11 @@ import { openSourceReadonly } from "../src/db/open.js";
  * The CLI is exercised through `run()` rather than a subprocess: the exit code
  * is the contract, and it is the return value here.
  *
- * Only `--tool codex` is ever synced. Its store hangs off the profile
- * directory, so `CAM_HOME` fully isolates it; the Claude Desktop and Cursor
- * stores are resolved from platform application-data locations that a fake home
- * does not move.
+ * Most tests sync `--tool codex` only, because its store hangs off the profile
+ * directory and `CAM_HOME` therefore isolates it completely. Every other
+ * profile-based store is isolated the same way; the one exception is the Claude
+ * scratchpad, which lives under the OS temp directory, so a test that runs all
+ * collectors has to pin the roots through the config file as well.
  */
 
 let dir: string;
@@ -260,6 +261,38 @@ describe("exit codes", () => {
 
   it("succeeds on a sync with nothing to do", async () => {
     expect(await run(["sync", "--tool", "codex"])).toBe(EXIT_OK);
+  });
+
+  it("syncs cleanly on a machine where none of the tools are installed", async () => {
+    // The README says a missing tool is a supported case rather than an error,
+    // and this is that claim: every collector, none of the stores present.
+    // `CAM_HOME` moves the profile-based roots, but the Claude scratchpad sits
+    // under the OS temp directory, so the roots are pinned through the config
+    // file too — otherwise this would read the real machine on any box that
+    // has the tools installed.
+    const nowhere = path.join(dir, "ures-gep");
+    fs.writeFileSync(
+      process.env.CAM_CONFIG!,
+      JSON.stringify({ roots: { ...defaultRoots(nowhere), claudeTemp: path.join(nowhere, "temp") } }),
+      "utf8",
+    );
+
+    expect(await run(["sync"])).toBe(EXIT_OK);
+
+    // Each collector reported for itself, so the run walked all of them
+    // instead of stopping at the first absent store.
+    for (const name of ["claude_code", "codex", "cowork", "cursor", "claude-desktop", "cursor-history", "artifacts"]) {
+      expect(stdout()).toMatch(new RegExp(`^${name}\\s+session:\\s*0\\b.*hiba:0`, "m"));
+    }
+    expect(stderr()).not.toContain("HIBA");
+
+    // And the run is on record as clean, which is what a scheduled sync reads.
+    const last = withHub((db) => db.prepare("select errors, ended_ms from sync_runs order by id desc limit 1").get()) as {
+      errors: number;
+      ended_ms: number | null;
+    };
+    expect(last).toMatchObject({ errors: 0 });
+    expect(last.ended_ms).not.toBeNull();
   });
 });
 

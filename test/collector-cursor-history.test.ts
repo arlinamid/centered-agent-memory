@@ -115,6 +115,27 @@ describe("cursor history collector", () => {
     expect(events()).toHaveLength(2);
   });
 
+  it("reports a history it cannot read, and does not wipe the events over it", async () => {
+    historyDir("aaa", "c:/work/demo/a.ts", [NOW - 1000]);
+    await cursorHistoryCollector.sync(h.ctx);
+    expect(events()).toHaveLength(1);
+
+    // A directory that exists but cannot be listed. Replacing it with a file
+    // is the portable way to arrange that: `readdirSync` fails with ENOTDIR
+    // everywhere, whereas chmod means nothing on Windows.
+    fs.rmSync(h.roots.cursorHistory, { recursive: true, force: true });
+    fs.writeFileSync(h.roots.cursorHistory, "nem mappa", "utf8");
+
+    const stat = await cursorHistoryCollector.sync({ ...h.ctx, repair: true });
+
+    // Counted, not swallowed: a store that is present but unreadable is a
+    // different fact from one that was never installed, and only the second
+    // deserves silence.
+    expect(stat.errors).toBe(1);
+    expect(h.logs.some((l) => l.includes("nem olvasható"))).toBe(true);
+    expect(events()).toHaveLength(1);
+  });
+
   it("leaves the old events in place when the rebuild throws mid-way", async () => {
     historyDir("aaa", "c:/work/demo/a.ts", [NOW - 1000]);
     await cursorHistoryCollector.sync(h.ctx);

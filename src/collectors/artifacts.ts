@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import type { Db } from "../db/open.js";
-import { emptyStat, type Collector, type CollectorCtx, type SyncStat } from "./types.js";
+import { emptyStat, readDirOrNull, type Collector, type CollectorCtx, type SyncStat } from "./types.js";
 
 /**
  * The by-products of agent work: scratchpads, plan documents, generated
@@ -126,7 +126,10 @@ function collectPlans(ctx: CollectorCtx, stat: SyncStat): void {
   // done once per plan and never repeated for a plan that already has one.
   let transcripts: Array<{ loc_path: string }> | null = null;
 
-  for (const name of fs.readdirSync(dir).filter((n) => n.endsWith(".md"))) {
+  const entries = readDirOrNull(dir, ctx, stat);
+  if (entries === null) return;
+
+  for (const name of entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name)) {
     const file = path.join(dir, name);
     const slug = name.slice(0, -3);
 
