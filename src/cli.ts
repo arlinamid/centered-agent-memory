@@ -39,7 +39,7 @@ import {
   latestReleaseUrl,
   verdict,
 } from "./update/check.js";
-import { downloadRelease, installTarball, isSelfReplacing, stageUpdater } from "./update/apply.js";
+import { downloadRelease, globalRoot, installTarball, isSelfReplacing, stageUpdater } from "./update/apply.js";
 import { findRunningServers, stopServers } from "./update/servers.js";
 import { DaemonSession } from "./sources/language-server.js";
 import { fetchConversation } from "./sources/antigravity-fetch.js";
@@ -1222,7 +1222,12 @@ async function cmdUpdate(a: ParsedArgs): Promise<number> {
         return EXIT_OK;
       }
 
-      const result = installTarball(downloaded.file);
+      let result = installTarball(downloaded.file);
+      for (let i = 1; !result.ok && i < 5; i++) {
+        log.status(`install retry ${i}: ${result.detail}`);
+        if (!quiesceServers(has(a, "keep-servers"))) return EXIT_FAILED;
+        result = installTarball(downloaded.file);
+      }
       if (!result.ok) {
         log.fail(`${result.command}: ${result.detail}`);
         return EXIT_FAILED;
@@ -1304,18 +1309,25 @@ function finishUpdate(migrated: boolean): number {
  * reported, not counted as an error.
  */
 function migrateWithNewBinary(dbPath: string): { ok: boolean; detail: string } {
-  const cam = process.platform === "win32" ? "cam.cmd" : "cam";
-  const r = spawnSync(cam, ["status", "--db", dbPath, "--quiet"], {
-    encoding: "utf8",
-    windowsHide: true,
-    shell: false,
-  });
+  const root = globalRoot();
+  const cli = root ? path.join(root, "centered-agent-memory", "dist", "cli.js") : "";
+  const r = cli
+    ? spawnSync(process.execPath, [cli, "status", "--db", dbPath, "--quiet"], {
+        encoding: "utf8",
+        windowsHide: true,
+        shell: false,
+      })
+    : spawnSync(process.platform === "win32" ? "cam.cmd" : "cam", ["status", "--db", dbPath, "--quiet"], {
+        encoding: "utf8",
+        windowsHide: true,
+        shell: false,
+      });
   if (r.error) {
-    return { ok: true, detail: `migrates on first use (could not run \`${cam}\`: ${r.error.message})` };
+    return { ok: true, detail: `migrates on first use (could not run \`${cli || "cam"}\`: ${r.error.message})` };
   }
   if (r.status !== 0) {
     const text = `${r.stderr ?? ""}${r.stdout ?? ""}`.trim().split("\n").filter(Boolean);
-    return { ok: false, detail: `migration FAILED — ${text[text.length - 1] ?? `${cam} status exited ${r.status}`}` };
+    return { ok: false, detail: `migration FAILED — ${text[text.length - 1] ?? `cam status exited ${r.status}`}` };
   }
   return { ok: true, detail: "migrated and readable by the new version" };
 }

@@ -43,10 +43,20 @@ export async function downloadRelease(
 }
 
 /** Where npm keeps global packages, or null when it will not say. */
+export function npmInvocation(explicit?: string): { cmd: string; prefix: string[] } {
+  if (explicit) return { cmd: explicit, prefix: [] };
+  if (process.platform !== "win32") return { cmd: "npm", prefix: [] };
+  // Node 20+ refuses to spawn a .cmd without `shell: true` (EINVAL). The
+  // CLI next to this node is an ordinary JS file and does not flash a console.
+  const cli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (fs.existsSync(cli)) return { cmd: process.execPath, prefix: [cli] };
+  return { cmd: process.env.ComSpec ?? "cmd.exe", prefix: ["/d", "/s", "/c", "npm"] };
+}
+
 export function globalRoot(opts: { npm?: string; run?: typeof spawnSync } = {}): string | null {
-  const npm = opts.npm ?? (process.platform === "win32" ? "npm.cmd" : "npm");
+  const { cmd, prefix } = npmInvocation(opts.npm);
   const run = opts.run ?? spawnSync;
-  const r = run(npm, ["root", "-g"], { encoding: "utf8", windowsHide: true, shell: false });
+  const r = run(cmd, [...prefix, "root", "-g"], { encoding: "utf8", windowsHide: true, shell: false });
   if (r.error || r.status !== 0) return null;
   const out = (r.stdout ?? "").trim();
   return out === "" ? null : out;
@@ -96,12 +106,12 @@ export interface InstallResult {
  * platform.
  */
 export function installTarball(file: string, opts: { npm?: string; run?: typeof spawnSync } = {}): InstallResult {
-  const npm = opts.npm ?? (process.platform === "win32" ? "npm.cmd" : "npm");
-  const args = ["install", "-g", file];
+  const { cmd, prefix } = npmInvocation(opts.npm);
+  const args = [...prefix, "install", "-g", file];
   const run = opts.run ?? spawnSync;
-  const r = run(npm, args, { encoding: "utf8", windowsHide: true, shell: false });
+  const r = run(cmd, args, { encoding: "utf8", windowsHide: true, shell: false });
 
-  const command = `${npm} ${args.join(" ")}`;
+  const command = `${cmd} ${args.join(" ")}`;
   if (r.error) return { ok: false, command, detail: r.error.message };
   if (r.status !== 0) {
     const text = `${r.stderr ?? ""}${r.stdout ?? ""}`.trim().split("\n").filter(Boolean);
@@ -123,8 +133,9 @@ export function installTarball(file: string, opts: { npm?: string; run?: typeof 
 export function updaterScript(): string {
   return `import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
-const [tarball, parentPid, logFile, dbPath, npm, cam] = process.argv.slice(2);
+const [tarball, parentPid, logFile, dbPath, npm] = process.argv.slice(2);
 const say = (line) => fs.appendFileSync(logFile, line + "\\n", "utf8");
 
 const gone = (pid) => {
@@ -136,6 +147,12 @@ const gone = (pid) => {
   }
 };
 
+const npmCli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+const runNpm = (args) =>
+  fs.existsSync(npmCli)
+    ? spawnSync(process.execPath, [npmCli, ...args], { encoding: "utf8", windowsHide: true })
+    : spawnSync(npm, args, { encoding: "utf8", windowsHide: true });
+
 // Wait for the caller to let go of its own files before replacing them.
 const deadline = Date.now() + 30000;
 while (!gone(parentPid) && Date.now() < deadline) {
@@ -143,7 +160,14 @@ while (!gone(parentPid) && Date.now() < deadline) {
 }
 say(gone(parentPid) ? "parent exited" : "parent still running after 30s - continuing anyway");
 
-const install = spawnSync(npm, ["install", "-g", tarball], { encoding: "utf8", windowsHide: true });
+if (process.platform === "win32") {
+  spawnSync("powershell", [
+    "-NoProfile", "-WindowStyle", "Hidden", "-NonInteractive", "-Command",
+    "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'cam-mcp|dist[\\\\/]mcp[\\\\/]server\\\\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+  ], { windowsHide: true });
+}
+
+const install = runNpm(["install", "-g", tarball]);
 if (install.error || install.status !== 0) {
   say("FAILED: " + (install.error ? install.error.message : (install.stderr || install.stdout || "").trim()));
   say("The previous version is still installed.");
@@ -151,8 +175,13 @@ if (install.error || install.status !== 0) {
 }
 say("installed: " + tarball);
 
-const migrate = spawnSync(cam, ["status", "--db", dbPath, "--quiet"], { encoding: "utf8", windowsHide: true });
-if (migrate.error) say("index migrates on first use (could not run " + cam + ": " + migrate.error.message + ")");
+const root = runNpm(["root", "-g"]);
+const cli = path.join((root.stdout || "").trim(), "centered-agent-memory", "dist", "cli.js");
+const migrate = spawnSync(process.execPath, [cli, "status", "--db", dbPath, "--quiet"], {
+  encoding: "utf8",
+  windowsHide: true,
+});
+if (migrate.error) say("index migrates on first use (could not run " + cli + ": " + migrate.error.message + ")");
 else if (migrate.status !== 0) say("MIGRATION FAILED: " + (migrate.stderr || migrate.stdout || "").trim());
 else say("index migrated and readable by the new version");
 
@@ -189,12 +218,11 @@ export function stageUpdater(opts: {
   fs.writeFileSync(logFile, `cam update ${new Date().toISOString()}\n`, "utf8");
 
   const npm = opts.npm ?? (process.platform === "win32" ? "npm.cmd" : "npm");
-  const cam = opts.cam ?? (process.platform === "win32" ? "cam.cmd" : "cam");
   const start = opts.spawnImpl ?? spawn;
 
   const child = start(
     process.execPath,
-    [script, opts.tarball, String(process.pid), logFile, opts.dbPath, npm, cam],
+    [script, opts.tarball, String(process.pid), logFile, opts.dbPath, npm],
     { detached: true, stdio: "ignore", windowsHide: true },
   );
   child.unref();

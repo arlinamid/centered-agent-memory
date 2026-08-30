@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { powershellArgv } from "../powershell.js";
 import { WINDSURF_CSRF_ENV, readProcessEnvVar } from "./process-env.js";
 
 /**
@@ -54,13 +55,11 @@ export function listLanguageServers(opts: { run?: Runner } = {}): ProcessInfo[] 
   if (process.platform === "win32") {
     const r = run(
       "powershell",
-      [
-        "-NoProfile",
-        "-NonInteractive",
+      powershellArgv(
         "-Command",
         "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'language_server*' } | " +
           "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }",
-      ],
+      ),
       { encoding: "utf8", windowsHide: true },
     );
     return parseProcessLines(r.stdout ?? "");
@@ -167,13 +166,11 @@ export function listeningPorts(pid: number, opts: { run?: Runner } = {}): number
   if (process.platform === "win32") {
     const r = run(
       "powershell",
-      [
-        "-NoProfile",
-        "-NonInteractive",
+      powershellArgv(
         "-Command",
         `Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -eq ${pid} } | ` +
           "ForEach-Object { $_.LocalPort }",
-      ],
+      ),
       { encoding: "utf8", windowsHide: true },
     );
     return parsePorts(r.stdout ?? "");

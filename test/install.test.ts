@@ -411,6 +411,15 @@ describe("schedule", () => {
     expect(plan.install[0]?.argv.join(" ")).toContain("IgnoreNew");
   });
 
+  it("wraps the Windows task in a hidden powershell so the hourly sync has no window", () => {
+    const plan = schedulePlan({ ...opts, platform: "win32" });
+    const text = plan.install.map((s) => s.argv.join(" ")).join("\n");
+    expect(text).toContain("-WindowStyle Hidden");
+    expect(text).toContain("powershell.exe");
+    expect(text).toContain(opts.node);
+    expect(text).toContain(opts.cli);
+  });
+
   it("does the same on Linux, and says what a logged-out machine needs", () => {
     const plan = schedulePlan({ ...opts, platform: "linux" });
     expect(plan.files.map((f) => f.contents).join()).toContain("Persistent=true");

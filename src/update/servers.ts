@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { powershellArgv } from "../powershell.js";
 
 /**
  * The MCP servers this package starts, found and stopped.
@@ -41,14 +42,12 @@ export function findRunningServers(
     process.platform === "win32"
       ? run(
           "powershell",
-          [
-            "-NoProfile",
-            "-NonInteractive",
+          powershellArgv(
             "-Command",
             "Get-CimInstance Win32_Process | " +
               "Select-Object -Property ProcessId, CommandLine | " +
               "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }",
-          ],
+          ),
           { encoding: "utf8", windowsHide: true },
         )
       : run("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
@@ -81,27 +80,66 @@ export interface StopResult {
   detail: string;
 }
 
+export function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 /**
- * Ask each server to stop.
+ * Ask each server to stop, and wait until it is actually gone.
  *
- * SIGTERM, not SIGKILL: the server closes its database handle on the way out,
- * and a handle left open is exactly what this is trying to avoid. A process
- * that has already gone (ESRCH) counts as stopped — that is the desired state,
- * however it was reached.
+ * SIGTERM first, so the server can close its database handle. On Windows that
+ * signal is TerminateProcess and still returns before the handle is released,
+ * so we wait — and if it is still there, `taskkill /T /F` takes the process
+ * tree. A pid that is already gone (ESRCH) counts as stopped.
+ *
+ * When `kill` is injected the wait is skipped: the test suite never owns a
+ * real process.
  */
 export function stopServers(
   servers: ReadonlyArray<RunningServer>,
-  opts: { kill?: (pid: number, signal: NodeJS.Signals) => void } = {},
+  opts: {
+    kill?: (pid: number, signal: NodeJS.Signals) => void;
+    alive?: (pid: number) => boolean;
+    run?: Runner;
+    waitMs?: number;
+  } = {},
 ): StopResult[] {
   const kill = opts.kill ?? ((pid, signal) => process.kill(pid, signal));
+  const alive = opts.alive ?? pidAlive;
+  const run = opts.run ?? spawnSync;
+  const waitMs = opts.waitMs ?? 3000;
+  const realWait = opts.alive !== undefined || opts.kill === undefined;
+
   return servers.map((s) => {
     try {
       kill(s.pid, "SIGTERM");
-      return { pid: s.pid, stopped: true, detail: "stopped" };
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === "ESRCH") return { pid: s.pid, stopped: true, detail: "already gone" };
       return { pid: s.pid, stopped: false, detail: (err as Error).message };
     }
+
+    if (!realWait) return { pid: s.pid, stopped: true, detail: "stopped" };
+
+    const deadline = Date.now() + waitMs;
+    while (alive(s.pid) && Date.now() < deadline) sleepMs(50);
+    if (!alive(s.pid)) return { pid: s.pid, stopped: true, detail: "stopped" };
+
+    if (process.platform === "win32") {
+      run("taskkill", ["/F", "/T", "/PID", String(s.pid)], { encoding: "utf8", windowsHide: true });
+      const forceUntil = Date.now() + waitMs;
+      while (alive(s.pid) && Date.now() < forceUntil) sleepMs(50);
+      if (!alive(s.pid)) return { pid: s.pid, stopped: true, detail: "taskkill" };
+    }
+    return { pid: s.pid, stopped: false, detail: "still running" };
   });
 }

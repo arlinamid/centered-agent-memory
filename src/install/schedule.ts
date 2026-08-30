@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { powershellArgv } from "../powershell.js";
 
 /**
  * Installing the periodic run that `docs/operations.md` describes.
@@ -69,9 +70,17 @@ function windowsPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "minute"
     "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries " +
     "-AllowStartIfOnBatteries -MultipleInstances IgnoreNew";
 
+  // node.exe is a console subsystem binary: Task Scheduler shows a window
+  // every hour unless the action is powershell -WindowStyle Hidden wrapping it.
+  // The task's Argument is what powershell.exe will parse when it runs, so
+  // the inner command uses PowerShell quoting; the outer q() is only for the
+  // registration script that writes that Argument.
+  const hidden = (args: string): string =>
+    `-NoProfile -WindowStyle Hidden -NonInteractive -Command "& ${q(o.node)} ${q(o.cli)} ${args}"`;
+
   const sync =
     `${settings}; ` +
-    `$a = New-ScheduledTaskAction -Execute ${q(o.node)} -Argument ${q(`"${o.cli}" sync --quiet`)}; ` +
+    `$a = New-ScheduledTaskAction -Execute ${q("powershell.exe")} -Argument ${q(hidden("sync --quiet"))}; ` +
     `$t = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(${o.minute}) ` +
     `-RepetitionInterval (New-TimeSpan -Hours 1); ` +
     `Register-ScheduledTask -TaskName ${q(SYNC_JOB)} -Action $a -Trigger $t -Settings $s -Force ` +
@@ -79,13 +88,13 @@ function windowsPlan(o: Required<Pick<ScheduleOptions, "node" | "cli" | "minute"
 
   const maintenance =
     `${settings}; ` +
-    `$a = New-ScheduledTaskAction -Execute ${q(o.node)} -Argument ${q(`"${o.cli}" memory consolidate --quiet`)}; ` +
-    `$b = New-ScheduledTaskAction -Execute ${q(o.node)} -Argument ${q(`"${o.cli}" prune --quiet`)}; ` +
+    `$a = New-ScheduledTaskAction -Execute ${q("powershell.exe")} -Argument ${q(hidden("memory consolidate --quiet"))}; ` +
+    `$b = New-ScheduledTaskAction -Execute ${q("powershell.exe")} -Argument ${q(hidden("prune --quiet"))}; ` +
     `$t = New-ScheduledTaskTrigger -Daily -At 4am; ` +
     `Register-ScheduledTask -TaskName ${q(MAINTENANCE_JOB)} -Action @($a, $b) -Trigger $t -Settings $s -Force ` +
     `-Description 'Centered Agent Memory: consolidate and prune' | Out-Null`;
 
-  const ps = (script: string): string[] => ["powershell", "-NoProfile", "-NonInteractive", "-Command", script];
+  const ps = (script: string): string[] => ["powershell", ...powershellArgv("-Command", script)];
 
   return {
     platform: "win32",
@@ -297,14 +306,6 @@ export interface ScheduleState {
   current: string;
 }
 
-/** Two paths to the same file, as the operating system would see them. */
-const samePath = (a: string, b: string): boolean => {
-  const norm = (s: string): string => s.replace(/\\/g, "/").replace(/^"|"$/g, "");
-  return process.platform === "win32"
-    ? norm(a).toLowerCase() === norm(b).toLowerCase()
-    : norm(a) === norm(b);
-};
-
 /**
  * Is the job already registered, and is it ours?
  *
@@ -321,21 +322,22 @@ export function scheduleState(plan: SchedulePlan): ScheduleState {
       // would arrive as mojibake through a pipe.
       const r = spawnSync(
         "powershell",
-        [
-          "-NoProfile",
-          "-NonInteractive",
+        powershellArgv(
           "-Command",
           `$t = Get-ScheduledTask -TaskName '${SYNC_JOB}' -ErrorAction SilentlyContinue; ` +
             "if ($null -eq $t) { exit 1 }; " +
             "$t.Actions | ForEach-Object { $_.Execute + ' ' + $_.Arguments }",
-        ],
+        ),
         { encoding: "utf8", windowsHide: true },
       );
       if (r.status !== 0) return { state: "absent", current: "" };
       const current = (r.stdout ?? "").trim();
       if (current === "") return { state: "absent", current: "" };
-      const cited = /"([^"]+)"/.exec(current)?.[1] ?? "";
-      return { state: samePath(cited, plan.cli) ? "same" : "different", current };
+      // The action is powershell wrapping node; the CLI path sits in the
+      // argument string, quoted with whatever quoting New-ScheduledTaskAction used.
+      const hay = current.replace(/\\/g, "/").toLowerCase();
+      const needle = plan.cli.replace(/\\/g, "/").toLowerCase();
+      return { state: hay.includes(needle) ? "same" : "different", current };
     }
     case "darwin":
     case "linux": {

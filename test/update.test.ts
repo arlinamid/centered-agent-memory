@@ -20,6 +20,7 @@ import {
   downloadRelease,
   installTarball,
   isSelfReplacing,
+  npmInvocation,
   stageUpdater,
   updaterScript,
 } from "../src/update/apply.js";
@@ -174,6 +175,13 @@ describe("installing a release", () => {
     expect(bad.ok).toBe(false);
     expect(bad.detail).toContain("EACCES");
   });
+
+  it("does not spawn npm.cmd, which Node refuses with EINVAL", () => {
+    const { cmd } = npmInvocation();
+    expect(cmd.toLowerCase()).not.toMatch(/npm\.cmd$/);
+    const { cmd: explicit } = npmInvocation("npm");
+    expect(explicit).toBe("npm");
+  });
 });
 
 /**
@@ -247,6 +255,27 @@ describe("quiescing before an install", () => {
     expect(results[0]!.stopped).toBe(false);
     expect(results[0]!.detail).toContain("not permitted");
   });
+
+  it("on Windows force-kills a server that is still alive after SIGTERM", () => {
+    const calls: string[][] = [];
+    const results = stopServers([{ pid: 10, command: "a" }], {
+      kill: () => {},
+      alive: () => true,
+      waitMs: 0,
+      run: ((cmd: string, args: string[]) => {
+        calls.push([cmd, ...args]);
+        return { status: 0, stdout: "", stderr: "", error: undefined };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    });
+    if (process.platform === "win32") {
+      expect(calls[0]).toEqual(["taskkill", "/F", "/T", "/PID", "10"]);
+      expect(results[0]!.detail).toBe("still running");
+    } else {
+      expect(calls).toEqual([]);
+      expect(results[0]).toEqual({ pid: 10, stopped: false, detail: "still running" });
+    }
+  });
 });
 
 /**
@@ -285,6 +314,7 @@ describe("replacing the running copy", () => {
       expect(m[1]!.startsWith("node:")).toBe(true);
     }
     expect(text).toContain("install");
+    expect(text).toContain("npm-cli.js");
     // It waits for the caller to let go of its own files.
     expect(text).toContain("process.kill");
   });
@@ -321,7 +351,6 @@ describe("replacing the running copy", () => {
       staged.logFile,
       "/tmp/hub.sqlite",
       "npm",
-      "cam",
     ]);
   });
 });

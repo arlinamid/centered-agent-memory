@@ -42,16 +42,17 @@ alábbi receptek azt írják le, mit csinál, és hogyan állítsd be kézzel, h
 
 ### Windows — Task Scheduler
 
-Óránként, bejelentkezett felhasználóként. Ablak nélkül futtatjuk, mert egy óránként felvillanó
-konzolablak fél nap alatt elviselhetetlen:
+Óránként, bejelentkezett felhasználóként. A `node.exe` konzolos alkalmazás, ezért a
+feladat nem futtathatja közvetlenül — minden órában felvillanna egy ablak. Az action
+powershell `-WindowStyle Hidden`-nel burkolja ugyanazt a node-ot és CLI-t:
 
 ```powershell
 # A cam a PATH-on egy .cmd shim, amit a node nem tud szkriptként futtatni; a
 # feladatnak a mögötte lévő JS-t kell megadni. Az útvonalat a cam doctor kiírja.
 $cam  = "$env:APPDATA\npm\node_modules\centered-agent-memory\dist\cli.js"
 $node = (Get-Command node).Source
-$action  = New-ScheduledTaskAction -Execute $node `
-           -Argument "`"$cam`" sync --quiet"
+$action  = New-ScheduledTaskAction -Execute powershell.exe `
+           -Argument "-NoProfile -WindowStyle Hidden -NonInteractive -Command `"& '$node' '$cam' sync --quiet`""
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
            -RepetitionInterval (New-TimeSpan -Hours 1)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
@@ -75,7 +76,8 @@ Start-ScheduledTask   -TaskName "cam-sync"   # futtasd most
 Napi karbantartás külön feladatként, hajnalra:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute $node -Argument "`"$cam`" prune --quiet"
+$action = New-ScheduledTaskAction -Execute powershell.exe `
+           -Argument "-NoProfile -WindowStyle Hidden -NonInteractive -Command `"& '$node' '$cam' prune --quiet`""
 Register-ScheduledTask -TaskName "cam-prune" -Action $action `
   -Trigger (New-ScheduledTaskTrigger -Daily -At 4am) -Settings $settings
 ```

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { powershellArgv } from "../powershell.js";
 
 /**
  * Reading one environment variable out of another process on this machine.
@@ -116,7 +117,7 @@ export function readProcessEnvVar(
   if (process.platform === "win32") {
     const r = run(
       "powershell",
-      ["-NoProfile", "-NonInteractive", "-File", windowsReader(), "-ProcessId", String(pid), "-Name", name],
+      powershellArgv("-File", windowsReader(), "-ProcessId", String(pid), "-Name", name),
       { encoding: "utf8", windowsHide: true },
     );
     if (r.error || r.status !== 0) return null;

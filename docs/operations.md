@@ -48,16 +48,17 @@ what it does, and how to set it up by hand if you want it differently.
 
 ### Windows — Task Scheduler
 
-Hourly, as the logged-in user. We run it without a window, because a console
-window flashing every hour becomes unbearable within half a day:
+Hourly, as the logged-in user. `node.exe` is a console app, so the task cannot
+execute it directly — a console window would flash every hour. The action is
+powershell with `-WindowStyle Hidden` wrapping the same node and CLI:
 
 ```powershell
 # cam on the PATH is a .cmd shim that node cannot run as a script; the
 # task has to be given the JS behind it. cam doctor prints the path.
 $cam  = "$env:APPDATA\npm\node_modules\centered-agent-memory\dist\cli.js"
 $node = (Get-Command node).Source
-$action  = New-ScheduledTaskAction -Execute $node `
-           -Argument "`"$cam`" sync --quiet"
+$action  = New-ScheduledTaskAction -Execute powershell.exe `
+           -Argument "-NoProfile -WindowStyle Hidden -NonInteractive -Command `"& '$node' '$cam' sync --quiet`""
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
            -RepetitionInterval (New-TimeSpan -Hours 1)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
@@ -82,7 +83,8 @@ Start-ScheduledTask   -TaskName "cam-sync"   # run it now
 Daily maintenance as a separate task, for the small hours:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute $node -Argument "`"$cam`" prune --quiet"
+$action = New-ScheduledTaskAction -Execute powershell.exe `
+           -Argument "-NoProfile -WindowStyle Hidden -NonInteractive -Command `"& '$node' '$cam' prune --quiet`""
 Register-ScheduledTask -TaskName "cam-prune" -Action $action `
   -Trigger (New-ScheduledTaskTrigger -Daily -At 4am) -Settings $settings
 ```

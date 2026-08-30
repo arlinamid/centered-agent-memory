@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-08-30
+
+### Windows update and silent sync
+
+- **`cam update` no longer spawns `npm.cmd`.** Node 20+ answers `EINVAL` unless a
+  `.cmd` is started with `shell: true`, which flashes a console. The updater
+  runs `node npm-cli.js` instead, waits until each `cam-mcp` pid is actually
+  gone, and on Windows `taskkill /T /F` takes the process tree if SIGTERM was
+  not enough. MCP clients restart a server on the next tool call; the install
+  retries if a newly spawned one still holds the files.
+- **The hourly `cam-sync` task no longer opens a window.** `node.exe` is a
+  console app; the task now starts `powershell -WindowStyle Hidden` wrapping
+  the same node and CLI. Re-register with `cam install --no-mcp --no-skills --no-dream`.
+
 ## [0.9.0] — 2026-08-30
 
 ### Doctor lists every known tool
