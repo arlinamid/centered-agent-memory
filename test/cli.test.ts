@@ -791,6 +791,7 @@ describe("doctor", () => {
     expect(await run(["doctor"])).toBe(EXIT_OK);
     expect(stdout()).toContain("integrity         ok");
     expect(stdout()).toContain("fts: ok");
+    expect(stdout()).toMatch(/tool:.*claude_code=\d+.*gemini_cli=0.*antigravity=0.*devin=0/);
   });
 
   it("diagnoses a damaged file instead of throwing a stack trace", async () => {

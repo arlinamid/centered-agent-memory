@@ -16,6 +16,7 @@ import {
   sqliteVersion,
   type Db,
 } from "./db/open.js";
+import { TOOL_IDS } from "./db/schema.js";
 import { acquireLock, describeHolder } from "./db/lock.js";
 import { checkPortability } from "./db/portability.js";
 import { claudeCodeCollector } from "./collectors/claude-code.js";
@@ -867,7 +868,14 @@ function cmdDoctor(): number {
     group("select status k, count(*) c from sources group by k", "source");
     group("select availability k, count(*) c from turns group by k", "turn");
     group("select confidence k, count(*) c from attribution group by k", "attribution");
-    group("select tool k, count(*) c from sessions group by k", "tool");
+    // Every known tool, including zeros: a missing name looks like the
+    // collector was never wired, which is a different fact from "nothing yet".
+    const toolRows = db.prepare("select tool k, count(*) c from sessions group by k").all() as Array<{
+      k: string;
+      c: number;
+    }>;
+    const byTool = new Map(toolRows.map((r) => [r.k, r.c]));
+    log.status("  tool: " + TOOL_IDS.map((id) => `${id}=${byTool.get(id) ?? 0}`).join("  "));
 
     let healthy = true;
     const drift = db.prepare("select count(*) c from attribution where rule_version <> ?").get(RULE_VERSION) as {

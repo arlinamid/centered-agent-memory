@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-30
+
+### Doctor lists every known tool
+
+- **`cam doctor` prints every tool id**, including those with zero sessions.
+  A missing name looked like the collector was never wired; a zero is the
+  honest "nothing indexed yet".
+
 ## [0.8.0] — 2026-08-30
 
 ### Devin Cascade bodies, on demand
