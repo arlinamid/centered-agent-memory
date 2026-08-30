@@ -163,20 +163,8 @@ jobs:
             console.log(files.length + " files, ok");
           '
 
-      - name: Version and changelog agree
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          grep -q "^## \[$version\]" CHANGELOG.md || {
-            echo "CHANGELOG.md has no [$version] section"
-            exit 1
-          }
-          server=$(node -p "require('fs').readFileSync('src/mcp/server.ts','utf8').match(/SERVER_VERSION = \"([^\"]+)\"/)[1]")
-          test "$server" = "$version" || {
-            echo "SERVER_VERSION ($server) != package.json ($version)"
-            exit 1
-          }
-          echo "$version"
+      - name: Version present from changelog through the README
+        run: node .github/scripts/check-version.mjs
 
   privacy:
     name: no machine-specific traces

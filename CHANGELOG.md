@@ -30,6 +30,30 @@ Hungarian. A user who does not speak Hungarian would hit those first.
   translating it would test a corpus that does not exist.
 - **`[Nem kiadott]` is now `[Unreleased]`.** The heading follows Keep a Changelog.
 
+### A new package.json version becomes a GitHub release
+
+**Where it came from:** a push to `main` does not publish; a `v*` tag does. That is still
+the promise. What was missing is the step that turns a bumped version into that tag
+without a local `git tag`.
+
+- **Source of the version is `package.json`.** `package-lock.json` only has to agree — its
+  root `version` is a copy npm writes when you bump the package. Versioning from the lockfile
+  would version the dependency graph, not the tool.
+- **CI green, then tag.** `Cut release tag` runs after the CI workflow succeeds on `main`.
+  If `v$version` is already a release or a tag, it exits quietly. If the changelog still
+  says `[Unreleased]` and not `## [x.y.z]`, it fails — the notes script reads that section.
+- **The Release workflow is unchanged.** The tag still has to install on Windows, macOS and
+  Linux before `gh release create` runs.
+- **A fix does not sit on `main` under yesterday's number.** If `package.json` still names a
+  released version and HEAD is ahead of that tag, the same job bumps the patch — or the
+  minor, when `[Unreleased]` contains a breaking note — writes the lockfile,
+  `SERVER_VERSION` and the changelog section, commits, and tags. An explicit bump still
+  wins when the number is already new.
+- **The version has to be in every reader-facing place.** `check-version.mjs` requires
+  `package.json`, the lockfile, `SERVER_VERSION`, `## [x.y.z]` in the changelog, and a
+  `cam-vX.Y.Z` badge in both READMEs. CI fails, and the tag is not pushed, if one is
+  missing. The bump rewrites the badge with the new number.
+
 ### The skill can also be installed with `npx skills add`
 
 **Where it came from:** Claude Code Desktop reads `~/.claude/skills/`, and the [skills](https://skills.sh)

@@ -318,3 +318,20 @@ cam doctor        # integrity, schema, freshness, attribution drift, size
 The sources are not damaged in any of these cases: every foreign store is
 opened read-only, and the worst that can happen is that the index has to be
 built from scratch.
+
+## Cutting a release
+
+The version lives in `package.json`. `package-lock.json` must show the same
+root `version` — it is a copy, not the source. After CI is green on `main`,
+Actions either tags the number you already wrote, or bumps it so a fix cannot
+ship under yesterday's version.
+
+- **You bumped** `package.json`, the lockfile, `SERVER_VERSION`, and moved
+  `[Unreleased]` to `## [x.y.z]`: that number is tagged.
+- **You did not:** if HEAD is ahead of the last release, the patch goes up
+  (`0.5.0` → `0.5.1`). If `[Unreleased]` names a breaking change, the minor
+  goes up (`0.5.0` → `0.6.0`). The job writes the files, commits
+  `chore: release vX.Y.Z`, and tags.
+
+The Release workflow then installs the tarball on three platforms before
+publishing. A tag is still the promise.

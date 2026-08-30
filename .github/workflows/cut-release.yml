@@ -1,0 +1,43 @@
+name: Cut release tag
+
+# After CI is green on main: tag a version the human already wrote, or bump
+# the patch (minor, if Unreleased names a breaking change) so a fix cannot
+# sit on main under yesterday's number. The Release workflow still installs
+# the tarball on three platforms before publishing.
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: version and tag
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       contains(fromJSON('["main","master"]'), github.event.workflow_run.head_branch))
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Tag or bump so main always has a version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: node .github/scripts/cut-release-tag.mjs

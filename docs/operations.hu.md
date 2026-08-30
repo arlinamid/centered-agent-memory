@@ -301,3 +301,18 @@ cam doctor        # integritás, séma, frissesség, hozzárendelés-sodródás,
 
 A források egyik esetben sem sérülnek: minden idegen tároló read-only nyílik, és a legrosszabb, ami
 történhet, hogy az indexet elölről kell építeni.
+
+## Kiadás
+
+A verzió a `package.json`-ban van. A `package-lock.json` gyökér-`version` mezőjének egyeznie kell —
+az egy másolat, nem a forrás. Ha a `main` CI zöld, az Actions vagy a már beírt számot tageeli, vagy
+megemeli, hogy egy javítás ne tegnapi verziószám alatt menjen ki.
+
+- **Te emelted** a `package.json`-t, a lockot, a `SERVER_VERSION`-t, és a `[Unreleased]` már
+  `## [x.y.z]`: az a szám kap taget.
+- **Nem emelted:** ha a HEAD a legutóbbi release után van, a patch nő (`0.5.0` → `0.5.1`).
+  Ha a `[Unreleased]` törő változást ír, a minor nő (`0.5.0` → `0.6.0`). A job beírja a
+  fájlokat, commitolja a `chore: release vX.Y.Z`-t, és tageel.
+
+A Release workflow ezután három platformon telepíti a tarballt, mielőtt publikálna. A tag
+továbbra is az ígéret.
