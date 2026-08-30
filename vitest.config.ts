@@ -19,9 +19,10 @@ export default defineConfig({
     // A large part of this suite spawns the CLI as a real subprocess, so each
     // worker costs far more than a worker usually does. On a two-core runner
     // that starved vitest's own main thread until it gave up on a worker
-    // ("Timeout calling onTaskUpdate") — once, on the slowest platform, with
-    // all 454 tests passing. Capping the workers on CI trades some wall time
-    // for a run that does not fail for reasons unrelated to the code.
-    maxWorkers: process.env.CI ? 2 : undefined,
+    // ("Timeout calling onTaskUpdate") — first at 454 tests with no cap, then
+    // again at 606 with two workers on Windows Node 26, every test green.
+    // One worker on CI trades wall time for a run that does not fail for
+    // reasons unrelated to the code.
+    maxWorkers: process.env.CI ? 1 : undefined,
   },
 });

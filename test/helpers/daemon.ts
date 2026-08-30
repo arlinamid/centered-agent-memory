@@ -4,6 +4,11 @@
  * Windows asks PowerShell for one number per line; Linux asks `ss` then `lsof`;
  * macOS asks `lsof`. A mock that only speaks PowerShell passes on the author's
  * machine and fails in CI.
+ *
+ * `commandLine` must contain `language_server`: Linux and macOS list every
+ * process with `ps` and keep only those whose args match that substring.
+ * Windows filters by process name before we see the listing, so a short
+ * `ls.exe` mock is green locally and empty everywhere else.
  */
 
 export interface FakeDaemon {
@@ -13,6 +18,13 @@ export interface FakeDaemon {
 }
 
 export function fakeLanguageServers(daemons: ReadonlyArray<FakeDaemon>) {
+  for (const d of daemons) {
+    if (!/language_server/.test(d.commandLine)) {
+      throw new Error(
+        `fakeLanguageServers: commandLine must contain "language_server" so Linux/macOS ps filtering sees it (got ${JSON.stringify(d.commandLine)})`,
+      );
+    }
+  }
   return ((cmd: string, args: string[]) => {
     const joined = [cmd, ...args].join(" ");
     if (/Win32_Process|-eo/.test(joined)) {

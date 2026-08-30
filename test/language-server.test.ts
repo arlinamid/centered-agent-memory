@@ -248,8 +248,8 @@ describe("holding on to the daemon address", () => {
 
   it("returns every live daemon, because the first one may be the wrong surface", async () => {
     const run = fakeLanguageServers([
-      { pid: 1, commandLine: "ls.exe --csrf_token a", ports: [55027, 55026] },
-      { pid: 2, commandLine: "ls.exe --csrf_token b", ports: [56027, 56026] },
+      { pid: 1, commandLine: "language_server --csrf_token a", ports: [55027, 55026] },
+      { pid: 2, commandLine: "language_server --csrf_token b", ports: [56027, 56026] },
     ]);
     const session = new DaemonSession({ run, fetchImpl: answering });
     expect(await session.acquireAll()).toEqual([
