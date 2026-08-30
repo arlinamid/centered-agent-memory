@@ -16,6 +16,7 @@ import {
 } from "../src/install/mcp.js";
 import { schedulePlan, scheduleState, type SchedulePlan } from "../src/install/schedule.js";
 import { renderSkill } from "../src/install/skills.js";
+import { appSupportDir } from "../src/paths.js";
 
 /**
  * The installer writes into other people's configuration files and registers
@@ -53,6 +54,13 @@ afterEach(() => {
 
 const mk = (...parts: string[]): string => {
   const dir = path.join(home, ...parts);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+/** Same path `clientTargets` uses — not a Windows-only AppData tree. */
+const mkDevin = (): string => {
+  const dir = appSupportDir("devin", home);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 };
@@ -236,7 +244,7 @@ describe("gemini, antigravity and devin targets", () => {
   });
 
   it("gives Devin the server but not a second copy of the skill", () => {
-    const devinHome = mk("AppData", "Roaming", "devin");
+    const devinHome = mkDevin();
     mk(".claude");
     install({ scope: "user", home, cwd, entry: ENTRY });
 
@@ -251,19 +259,19 @@ describe("gemini, antigravity and devin targets", () => {
   it("leaves all three alone when none of them is installed", () => {
     install({ scope: "user", home, cwd, entry: ENTRY });
     expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
-    expect(fs.existsSync(path.join(home, "AppData", "Roaming", "devin"))).toBe(false);
+    expect(fs.existsSync(appSupportDir("devin", home))).toBe(false);
   });
 
   it("removes itself from all three again", () => {
     mk(".gemini", "antigravity");
-    mk("AppData", "Roaming", "devin");
+    mkDevin();
     install({ scope: "user", home, cwd, entry: ENTRY });
     uninstall({ scope: "user", home, cwd });
 
     for (const file of [
       path.join(home, ".gemini", "settings.json"),
       path.join(home, ".gemini", "config", "mcp_config.json"),
-      path.join(home, "AppData", "Roaming", "devin", "mcp_config.json"),
+      path.join(appSupportDir("devin", home), "mcp_config.json"),
     ]) {
       expect(JSON.parse(read(file)).mcpServers[SERVER_KEY]).toBeUndefined();
     }

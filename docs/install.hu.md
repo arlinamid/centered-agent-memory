@@ -78,6 +78,9 @@ Az útvonal-döntés sorrendje, az elsőtől: `--db` → `CAM_DB` → `config.js
 | Claude Desktop / Cowork | `claude_desktop_config.json` az app-adatkönyvtárban | JSON |
 | Codex | `~/.codex/config.toml` | TOML |
 | Cursor | `~/.cursor/mcp.json` | JSON |
+| Gemini CLI | `~/.gemini/settings.json` | JSON |
+| Antigravity | `~/.gemini/config/mcp_config.json` | JSON |
+| Devin | `mcp_config.json` az app-adatkönyvtárban | JSON |
 
 A szerver `cam` néven kerül be, és mindig **abszolút útvonallal** — akkor is, ha a `cam-mcp` éppen
 ott van a `PATH`-on. A klienst nem a te shelled indítja: egy dockból indított asztali alkalmazásnak
@@ -114,7 +117,7 @@ Ilyenkor a repóba ír: `.mcp.json` (Claude Code) és `.cursor/mcp.json` (Cursor
 mert csak ez a kettő olvas repónkénti konfigurációt — a Codex globálisan konfigurálja a szervereit,
 a Claude Desktopnak pedig nincs fogalma repóról.
 
-Egyetlen kliensre: `--client claude_code|claude_desktop|codex|cursor`.
+Egyetlen kliensre: `--client claude_code|claude_desktop|codex|cursor|gemini_cli|antigravity|devin`.
 
 ## Skill
 
@@ -123,8 +126,11 @@ Az MCP-bekötés attól még nem használja az ágens az indexet: attól haszná
 megbízhatósági jelzéseket, és mit ne csináljon.
 
 Egy törzsből készül, kliensenként rendereltve `~/.claude/skills/agent-memory/SKILL.md`,
-`~/.codex/skills/…`, `~/.cursor/skills/…` alá. Ami eszközönként eltér, az egyetlen szakasz a végén:
-van-e terminál is, vagy csak az MCP-toolok.
+`~/.codex/skills/…`, `~/.cursor/skills/…`, `~/.gemini/skills/…` és
+`~/.gemini/antigravity/skills/…` alá. A Devinnek nincs saját skill-mappája:
+a Claude Code másolatát olvassa a `~/.claude/skills/` alatt, ezért egy második
+fájl kétszer jelenne meg a skill-menüjében. Ami eszközönként eltér, az egyetlen
+szakasz a végén: van-e terminál is, vagy csak az MCP-toolok.
 
 A Claude Code Desktop ugyanazt a `~/.claude/skills/` mappát olvassa, mint a CLI. A skill oda a
 `cam install`-lal, vagy a [skills](https://skills.sh) CLI-vel kerül:

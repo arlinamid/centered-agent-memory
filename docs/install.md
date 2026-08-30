@@ -84,6 +84,9 @@ the checkout's `.data/hub.sqlite`, if it exists → user data directory.
 | Claude Desktop / Cowork | `claude_desktop_config.json` in the app data directory | JSON |
 | Codex | `~/.codex/config.toml` | TOML |
 | Cursor | `~/.cursor/mcp.json` | JSON |
+| Gemini CLI | `~/.gemini/settings.json` | JSON |
+| Antigravity | `~/.gemini/config/mcp_config.json` | JSON |
+| Devin | `mcp_config.json` in the app data directory | JSON |
 
 The server is registered as `cam`, always with an **absolute path** — even if
 `cam-mcp` happens to be on the `PATH`. The client is not started by your shell:
@@ -124,7 +127,7 @@ This writes into the repo: `.mcp.json` (Claude Code) and `.cursor/mcp.json`
 Codex configures its servers globally, and Claude Desktop has no notion of a
 repo.
 
-A single client: `--client claude_code|claude_desktop|codex|cursor`.
+A single client: `--client claude_code|claude_desktop|codex|cursor|gemini_cli|antigravity|devin`.
 
 ## Skill
 
@@ -134,8 +137,11 @@ what order, how to read the confidence signals, and what not to do.
 
 It is built from one body, rendered per client under
 `~/.claude/skills/agent-memory/SKILL.md`, `~/.codex/skills/…`,
-`~/.cursor/skills/…`. What differs per tool is a single section at the end:
-whether there is a terminal as well, or only the MCP tools.
+`~/.cursor/skills/…`, `~/.gemini/skills/…`, and
+`~/.gemini/antigravity/skills/…`. Devin has no skill directory of its own:
+it reads the Claude Code copy under `~/.claude/skills/`, so a second file
+would show up twice in its skill menu. What differs per tool is a single
+section at the end: whether there is a terminal as well, or only the MCP tools.
 
 Claude Code Desktop reads the same `~/.claude/skills/` folder as the CLI. The
 skill gets there with `cam install`, or with the [skills](https://skills.sh)
