@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-30
+
 > **Breaking change:** the supported Node floor rose from 22 to **24**. Anyone running Node 22
 > has to upgrade before switching to the next release.
 
