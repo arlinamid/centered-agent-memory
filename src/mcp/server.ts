@@ -27,7 +27,7 @@ import { fetchDevinCascade } from "../sources/devin-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.9.2";
+export const SERVER_VERSION = "0.9.3";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
 Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and

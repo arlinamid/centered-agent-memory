@@ -105,6 +105,103 @@ export interface InstallResult {
  * being used as an unpacker that knows where global binaries go on this
  * platform.
  */
+export interface PostUpdateResult {
+  ok: boolean;
+  detail: string;
+}
+
+/** Path to the globally installed CLI entry point, or empty when npm will not say. */
+export function installedCliPath(root?: string | null): string {
+  const r = root ?? globalRoot();
+  return r ? path.join(r, "centered-agent-memory", "dist", "cli.js") : "";
+}
+
+export interface InstalledCliSpawn {
+  /** What we tell the user we tried to run. */
+  cli: string;
+  cmd: string;
+  args: string[];
+}
+
+/**
+ * How to spawn the globally installed `cam` without platform-specific traps.
+ *
+ * Always prefer `node dist/cli.js` — the same rule as the detached updater and
+ * the scheduled task. A `.cmd` shim on Windows cannot be spawned with
+ * `shell: false` on Node 20+ (EINVAL), and spawning it with `shell: true`
+ * would flash a console every hour.
+ */
+export function installedCliSpawn(
+  subcommand: readonly string[],
+  dbPath: string,
+  opts: { root?: string | null; cli?: string } = {},
+): InstalledCliSpawn | null {
+  const cli = opts.cli ?? installedCliPath(opts.root);
+  const args = [...subcommand, "--db", dbPath];
+  if (cli) return { cli, cmd: process.execPath, args: [cli, ...args] };
+  if (process.platform === "win32") return null;
+  return { cli: "cam", cmd: "cam", args };
+}
+
+/** Run a subcommand with the copy of `cam` npm just installed. */
+export function runInstalledCli(
+  dbPath: string,
+  subcommand: readonly string[],
+  opts: { run?: typeof spawnSync; root?: string | null; cli?: string } = {},
+): { cli: string; status: number | null; error?: Error; text: string } {
+  const spawnSpec = installedCliSpawn(subcommand, dbPath, opts);
+  if (!spawnSpec) {
+    return {
+      cli: installedCliPath(opts.root) || "cam",
+      status: null,
+      error: new Error("npm global root is unknown — cannot run cam on Windows without dist/cli.js"),
+      text: "",
+    };
+  }
+  const run = opts.run ?? spawnSync;
+  const r = run(spawnSpec.cmd, spawnSpec.args, { encoding: "utf8", windowsHide: true, shell: false });
+  return { cli: spawnSpec.cli, status: r.status, error: r.error, text: `${r.stderr ?? ""}${r.stdout ?? ""}`.trim() };
+}
+
+/**
+ * Open the index with the new binary, then re-read every source.
+ *
+ * Incremental sync is not enough after a collector fix: sources that were
+ * already watermarked can still hold turns the old code never indexed.
+ */
+export function postUpdateWithNewBinary(
+  dbPath: string,
+  opts: { run?: typeof spawnSync; root?: string | null; cli?: string } = {},
+): PostUpdateResult {
+  const migrate = runInstalledCli(dbPath, ["status", "--quiet"], opts);
+  if (migrate.error) {
+    return {
+      ok: true,
+      detail: `migrates on first use (could not run \`${migrate.cli}\`: ${migrate.error.message})`,
+    };
+  }
+  if (migrate.status !== 0) {
+    const lines = migrate.text.split("\n").filter(Boolean);
+    return {
+      ok: false,
+      detail: `migration FAILED — ${lines[lines.length - 1] ?? `cam status exited ${migrate.status}`}`,
+    };
+  }
+
+  const sync = runInstalledCli(dbPath, ["sync", "--repair", "--quiet"], opts);
+  if (sync.error) {
+    return { ok: true, detail: "migrated; repair sync skipped (could not run cam: " + sync.error.message + ")" };
+  }
+  if (sync.status !== 0) {
+    const lines = sync.text.split("\n").filter(Boolean);
+    return {
+      ok: true,
+      detail: `migrated; repair sync failed — ${lines[lines.length - 1] ?? `cam sync exited ${sync.status}`}`,
+    };
+  }
+  return { ok: true, detail: "migrated and reindexed from sources" };
+}
+
 export function installTarball(file: string, opts: { npm?: string; run?: typeof spawnSync } = {}): InstallResult {
   const { cmd, prefix } = npmInvocation(opts.npm);
   const args = [...prefix, "install", "-g", file];
@@ -184,6 +281,14 @@ const migrate = spawnSync(process.execPath, [cli, "status", "--db", dbPath, "--q
 if (migrate.error) say("index migrates on first use (could not run " + cli + ": " + migrate.error.message + ")");
 else if (migrate.status !== 0) say("MIGRATION FAILED: " + (migrate.stderr || migrate.stdout || "").trim());
 else say("index migrated and readable by the new version");
+
+const sync = spawnSync(process.execPath, [cli, "sync", "--repair", "--quiet", "--db", dbPath], {
+  encoding: "utf8",
+  windowsHide: true,
+});
+if (sync.error) say("repair sync skipped: " + sync.error.message);
+else if (sync.status !== 0) say("REPAIR SYNC FAILED: " + (sync.stderr || sync.stdout || "").trim());
+else say("repair sync completed");
 
 say("done");
 `;

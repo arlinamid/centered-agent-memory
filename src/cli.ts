@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { configFilePath, loadConfig, type HubConfig } from "./config.js";
 import {
   HubUnreadableError,
@@ -39,7 +38,13 @@ import {
   latestReleaseUrl,
   verdict,
 } from "./update/check.js";
-import { downloadRelease, globalRoot, installTarball, isSelfReplacing, stageUpdater } from "./update/apply.js";
+import {
+  downloadRelease,
+  installTarball,
+  isSelfReplacing,
+  postUpdateWithNewBinary,
+  stageUpdater,
+} from "./update/apply.js";
 import { findRunningServers, stopServers } from "./update/servers.js";
 import { DaemonSession } from "./sources/language-server.js";
 import { fetchConversation } from "./sources/antigravity-fetch.js";
@@ -1126,7 +1131,7 @@ async function cmdUpdate(a: ParsedArgs): Promise<number> {
       return EXIT_OK;
     }
     log.result("then:       download the tarball, stop any running cam-mcp server, npm install -g it,");
-    log.result("            and open the index with the new binary so it migrates now.");
+    log.result("            open the index with the new binary so it migrates now, then cam sync --repair.");
     const running = findRunningServers();
     log.result(
       running.listed
@@ -1247,7 +1252,7 @@ async function cmdUpdate(a: ParsedArgs): Promise<number> {
     //
     // The lock is released first: the new binary opens the same index, and
     // would find it held by this process.
-    const migrated = migrateWithNewBinary(config.dbPath);
+    const migrated = postUpdateWithNewBinary(config.dbPath);
     log.status(`index: ${migrated.detail}`);
     return finishUpdate(migrated.ok);
   });
@@ -1297,39 +1302,6 @@ function finishUpdate(migrated: boolean): number {
   log.result("If `cam sync` is scheduled, re-register it so the job points at the new copy:");
   log.result("  cam install --no-mcp --no-skills --no-dream");
   return migrated ? EXIT_OK : EXIT_FAILED;
-}
-
-/**
- * Run the freshly installed `cam` against the index, so its migration happens
- * here rather than in the next unattended job.
- *
- * `status` is the cheapest command that opens the hub, and opening it is what
- * migrates it. A `cam` that is not on PATH is not a failed update — the
- * install worked, the index simply migrates on first use — so that case is
- * reported, not counted as an error.
- */
-function migrateWithNewBinary(dbPath: string): { ok: boolean; detail: string } {
-  const root = globalRoot();
-  const cli = root ? path.join(root, "centered-agent-memory", "dist", "cli.js") : "";
-  const r = cli
-    ? spawnSync(process.execPath, [cli, "status", "--db", dbPath, "--quiet"], {
-        encoding: "utf8",
-        windowsHide: true,
-        shell: false,
-      })
-    : spawnSync(process.platform === "win32" ? "cam.cmd" : "cam", ["status", "--db", dbPath, "--quiet"], {
-        encoding: "utf8",
-        windowsHide: true,
-        shell: false,
-      });
-  if (r.error) {
-    return { ok: true, detail: `migrates on first use (could not run \`${cli || "cam"}\`: ${r.error.message})` };
-  }
-  if (r.status !== 0) {
-    const text = `${r.stderr ?? ""}${r.stdout ?? ""}`.trim().split("\n").filter(Boolean);
-    return { ok: false, detail: `migration FAILED — ${text[text.length - 1] ?? `cam status exited ${r.status}`}` };
-  }
-  return { ok: true, detail: "migrated and readable by the new version" };
 }
 
 /**

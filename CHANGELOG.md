@@ -4,6 +4,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-08-31
+
+### Codex item_completed rollout format
+
+- **New Codex rollouts index again.** Recent Codex sessions used
+  `event_msg → item_completed → UserMessage/AgentMessage` instead of the legacy
+  `user_message` / `agent_message` events. Those sessions showed up with **0
+  turn** until the rollout was re-read. Legacy rollouts still work; `Reasoning`,
+  `CommandExecution`, and other item types stay skipped.
+
+### Recall logs what it showed
+
+- **`recordRecall` takes the filtered hits**, not `rows.slice(0, out.length)`.
+  A higher-ranked weak result that was hidden used to be written to
+  `recall_events` instead of the strong hit the caller actually saw, and
+  consolidation promoted from that.
+
+### Update runs repair sync
+
+- **`cam update --yes` re-reads every source after the install.** Migration
+  alone is not enough when a collector fix changes what an already-watermarked
+  file indexes — the detached updater and the in-process path both run
+  `cam sync --repair --quiet` through `node dist/cli.js`, never a Windows
+  `.cmd` shim.
+
 ## [0.9.2] — 2026-08-30
 
 ### Rewrite a flashing Windows sync task

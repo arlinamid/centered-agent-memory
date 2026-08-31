@@ -19,8 +19,10 @@ import {
 import {
   downloadRelease,
   installTarball,
+  installedCliSpawn,
   isSelfReplacing,
   npmInvocation,
+  postUpdateWithNewBinary,
   stageUpdater,
   updaterScript,
 } from "../src/update/apply.js";
@@ -315,6 +317,10 @@ describe("replacing the running copy", () => {
     }
     expect(text).toContain("install");
     expect(text).toContain("npm-cli.js");
+    expect(text).toContain("sync");
+    expect(text).toContain("--repair");
+    expect(text).toContain("process.execPath");
+    expect(text).not.toContain("cam.cmd");
     // It waits for the caller to let go of its own files.
     expect(text).toContain("process.kill");
   });
@@ -352,6 +358,89 @@ describe("replacing the running copy", () => {
       "/tmp/hub.sqlite",
       "npm",
     ]);
+  });
+});
+
+describe("post-update repair sync", () => {
+  let dir: string;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "cam-post-upd-"));
+    dbPath = path.join(dir, "hub.sqlite");
+    const db = openHub(dbPath);
+    initSchema(db);
+    db.close();
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("uses node + dist/cli.js on every platform when npm names a global root", () => {
+    const cli = path.join(dir, "centered-agent-memory", "dist", "cli.js");
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.writeFileSync(cli, "// stub\n", "utf8");
+
+    const spawn = installedCliSpawn(["sync", "--repair", "--quiet"], dbPath, { root: dir });
+    expect(spawn).toEqual({
+      cli,
+      cmd: process.execPath,
+      args: [cli, "sync", "--repair", "--quiet", "--db", dbPath],
+    });
+  });
+
+  it("falls back to cam on PATH only off Windows", () => {
+    const spawn = installedCliSpawn(["status", "--quiet"], dbPath, { root: "" });
+    if (process.platform === "win32") {
+      expect(spawn).toBeNull();
+    } else {
+      expect(spawn).toEqual({
+        cli: "cam",
+        cmd: "cam",
+        args: ["status", "--quiet", "--db", dbPath],
+      });
+    }
+  });
+
+  it("migrates, then runs sync --repair with the new binary", () => {
+    const cli = path.join(dir, "cli.js");
+    fs.writeFileSync(cli, "// stub\n", "utf8");
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const run = ((cmd: string, args: string[]) => {
+      calls.push({ cmd, args });
+      return { status: 0, stdout: "", stderr: "", error: undefined };
+    }) as unknown as typeof spawnSync;
+
+    const out = postUpdateWithNewBinary(dbPath, { run, cli });
+    expect(out).toEqual({ ok: true, detail: "migrated and reindexed from sources" });
+    expect(calls).toEqual([
+      { cmd: process.execPath, args: [cli, "status", "--quiet", "--db", dbPath] },
+      { cmd: process.execPath, args: [cli, "sync", "--repair", "--quiet", "--db", dbPath] },
+    ]);
+  });
+
+  it("reports migration failure and skips repair sync", () => {
+    const cli = path.join(dir, "cli.js");
+    let n = 0;
+    const run = (() => {
+      n++;
+      return { status: n === 1 ? 1 : 0, stdout: "bad schema", stderr: "", error: undefined };
+    }) as unknown as typeof spawnSync;
+
+    const out = postUpdateWithNewBinary(dbPath, { run, cli });
+    expect(out.ok).toBe(false);
+    expect(out.detail).toContain("migration FAILED");
+    expect(n).toBe(1);
+  });
+
+  it("keeps the update successful when repair sync fails", () => {
+    const cli = path.join(dir, "cli.js");
+    let n = 0;
+    const run = (() => {
+      n++;
+      return { status: n === 1 ? 0 : 1, stdout: "source locked", stderr: "", error: undefined };
+    }) as unknown as typeof spawnSync;
+
+    const out = postUpdateWithNewBinary(dbPath, { run, cli });
+    expect(out).toEqual({ ok: true, detail: "migrated; repair sync failed — source locked" });
   });
 });
 

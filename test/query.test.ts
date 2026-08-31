@@ -212,6 +212,54 @@ describe("recall confidence", () => {
     expect(recall(h.hub, { query: "arvizturo" })).toHaveLength(1);
     expect(recall(h.hub, { query: "arvizturo", project: "demo" })).toHaveLength(1);
   });
+
+  it("records the surfaced hit, not a higher-ranked weak one that was hidden", async () => {
+    const SID3 = "33333333-4444-5555-6666-777777777777";
+    writeTranscript(h.roots, "C--work-masik", SID3, [
+      {
+        type: "user",
+        sessionId: SID3,
+        cwd: "C:\\work\\masik",
+        timestamp: "2026-08-06T10:00:00.000Z",
+        message: { content: "Az árvíztűrő tükörfúrógép a másik projektben is előkerült." },
+      },
+    ]);
+    await claudeCodeCollector.sync(h.ctx);
+    collectCwdEvidence(h.hub);
+    learnRoots(h.hub);
+    reattribute(h.hub);
+    setConfidence(SID, "weak", true);
+    h.hub.prepare("delete from recall_events").run();
+
+    const hits = recall(h.hub, { query: "arvizturo" });
+    expect(hits.map((x) => x.sessionExtId)).toEqual([SID3]);
+
+    const logged = h.hub
+      .prepare(
+        `select s.ext_id from recall_events e
+         join chunks c on c.id = e.chunk_id
+         join sessions s on s.id = c.session_id
+         order by e.id`,
+      )
+      .all() as Array<{ ext_id: string }>;
+    expect(logged.map((r) => r.ext_id)).toEqual([SID3]);
+  });
+
+  it("records only as many hits as the limit returned", () => {
+    h.hub.prepare("delete from recall_events").run();
+    const hits = recall(h.hub, { query: "arvizturo migráció", limit: 1 });
+    expect(hits).toHaveLength(1);
+    const n = h.hub.prepare("select count(*) c from recall_events").get() as { c: number };
+    expect(n.c).toBe(1);
+    const row = h.hub
+      .prepare(
+        `select s.ext_id from recall_events e
+         join chunks c on c.id = e.chunk_id
+         join sessions s on s.id = c.session_id`,
+      )
+      .get() as { ext_id: string };
+    expect(row.ext_id).toBe(hits[0]!.sessionExtId);
+  });
 });
 
 describe("a source that changed under us", () => {

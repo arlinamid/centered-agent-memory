@@ -110,6 +110,7 @@ export function recall(db: Db, opts: RecallOptions): RecallHit[] {
 
   const hydrator = new Hydrator(db);
   const out: RecallHit[] = [];
+  const surfaced: Array<{ chunk_id: number; rank: number }> = [];
   try {
     for (const r of rows) {
       const conf = r.confidence ?? "none";
@@ -137,20 +138,14 @@ export function recall(db: Db, opts: RecallOptions): RecallHit[] {
         availability: status,
         citation: `${r.tool}:${r.ext_id}#seq${range.seq_start}-${range.seq_end}`,
       });
+      surfaced.push({ chunk_id: r.chunk_id, rank: r.rank });
       if (out.length >= limit) break;
     }
   } finally {
     hydrator.close();
   }
 
-  recordRecall(
-    db,
-    opts.query,
-    parsed.terms,
-    out.length ? rows.slice(0, out.length) : [],
-    opts.nowMs ?? Date.now(),
-    opts.logQuery ?? true,
-  );
+  recordRecall(db, opts.query, parsed.terms, surfaced, opts.nowMs ?? Date.now(), opts.logQuery ?? true);
   return out;
 }
 
