@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-06
+
+- Query-coverage scoring makes promotion work on small corpora without manually boosted scores. Full-query candidates, early attribution filtering, and overlap suppression improve retrieval.
+- Optional command-based embeddings support generation, caching, validation, and semantic recall in the CLI and MCP. Providers remain opt-in and failures fall back to keyword search.
+- Dream batches advance past cached items. Prompts preserve decisions and constraints, and stale digests are hidden.
+- Schema 6 adds embedding source hashes and invalidates derived records when indexed chunk content changes. Existing databases migrate automatically; no full rebuild is required.
+- Integration tests cover retrieval through promotion and dreaming, plus embedding generation and CLI/MCP retrieval.
+
 ## [0.9.3] — 2026-08-31
 
 ### Codex item_completed rollout format

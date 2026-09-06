@@ -103,12 +103,13 @@ function toFact(r: FactRow, hydrator: Hydrator, hydrate: boolean): MemoryFact {
     citation: `${r.tool}:${r.ext_id}#seq${r.seq_start}-${r.seq_end}`,
     text: resolved?.text ?? "",
     availability: resolved?.status ?? "unknown",
-    digest: r.digest,
-    digestModel: r.digest_model,
+    digest: resolved && resolved.status !== "ok" ? null : r.digest,
+    digestModel: resolved && resolved.status !== "ok" ? null : r.digest_model,
   };
 }
 
 export interface ListOptions {
+  offset?: number;
   project?: string | null;
   limit?: number;
   /** Read the text back from the sources. Off for a bare count. */
@@ -118,10 +119,11 @@ export interface ListOptions {
 export function listFacts(db: Db, opts: ListOptions = {}): MemoryFact[] {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 200);
   const where = opts.project ? " where p.key = ?" : "";
-  const params: Array<string | number> = opts.project ? [opts.project, limit] : [limit];
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
+  const params: Array<string | number> = opts.project ? [opts.project, limit, offset] : [limit, offset];
 
   const rows = db
-    .prepare(`${SELECT}${where} order by f.score desc, f.id asc limit ?`)
+    .prepare(`${SELECT}${where} order by f.score desc, f.id asc limit ? offset ?`)
     .all(...params) as FactRow[];
 
   const hydrator = new Hydrator(db);

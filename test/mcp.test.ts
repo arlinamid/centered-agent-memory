@@ -3,6 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import fs from "node:fs";
+import path from "node:path";
+import { planEmbeddings, runEmbeddings } from "../src/search/embeddings.js";
 import { SERVER_VERSION, createServer, type ServerOptions } from "../src/mcp/server.js";
 import { claudeCodeCollector } from "../src/collectors/claude-code.js";
 import { collectCwdEvidence, learnRoots, reattribute } from "../src/attribution/resolve.js";
@@ -66,6 +68,17 @@ afterEach(async () => {
 });
 
 describe("mcp server", () => {
+  it("uses the configured embedding provider for semantic recall", async () => {
+    const script = path.join(h.dir, "embedding.mjs");
+    fs.writeFileSync(script, `process.stdin.resume(); process.stdin.on('end',()=>process.stdout.write('{"embeddings":[[1,0]]}'));`);
+    const embedding = { provider: "command" as const, model: "fixture", command: [process.execPath, script] };
+    expect((await runEmbeddings(h.hub, embedding, planEmbeddings(h.hub, embedding))).generated).toBeGreaterThan(0);
+    await reconnect({ embedding });
+    const res = await client.callTool({ name: "cam_recall", arguments: { query: "paraphrasewithoutkeywords" } });
+    expect(textOf(res)).toContain(SID);
+    const tools = await client.listTools();
+    expect(tools.tools.find((t) => t.name === "cam_recall")?.annotations?.openWorldHint).toBe(true);
+  });
   it("reports the package version, not a stale copy of it", () => {
     const pkg = JSON.parse(
       fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -203,7 +216,6 @@ describe("cam_memory", () => {
     for (const [i, q] of ["arvizturo", "tukorfurogep", "projekt"].entries()) {
       recall(h.hub, { query: q, nowMs: t0 + i * day, minConfidence: "weak" });
     }
-    h.hub.prepare("update recall_events set score = 0.95").run();
     consolidate(h.hub);
   }
 

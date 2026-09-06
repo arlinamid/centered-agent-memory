@@ -19,7 +19,8 @@ import {
   formatTopics,
   formatTurns,
 } from "../query/format.js";
-import { getTurns, parseCitation, recall } from "../query/recall.js";
+import { getTurns, parseCitation, recallWithEmbeddings } from "../query/recall.js";
+import type { EmbeddingConfig } from "../search/embeddings.js";
 import { defaultRoots } from "../paths.js";
 import { DaemonSession } from "../sources/language-server.js";
 import { fetchConversation } from "../sources/antigravity-fetch.js";
@@ -27,7 +28,7 @@ import { fetchDevinCascade } from "../sources/devin-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.9.3";
+export const SERVER_VERSION = "0.10.0";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
 Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and
@@ -47,6 +48,7 @@ STALE, conversations since then are not in it — tell the user rather than
 quoting old data as current.`;
 
 export interface ServerOptions {
+  embedding?: EmbeddingConfig;
   /** Past this age the index reports itself as stale. */
   staleAfterMs?: number;
   nowMs?: () => number;
@@ -178,7 +180,8 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       description:
         "Full-text search over indexed conversations. Accent-insensitive, with prefix " +
         "matching on longer words (so inflection is not a barrier). Every hit carries a " +
-        "citation that cam_get expands.",
+        "citation that cam_get expands. Uses the configured embedding command for semantic " +
+        "retrieval when vectors are available; this passes query text to that command.",
       inputSchema: {
         query: z.string().min(1),
         project: z.string().optional(),
@@ -187,10 +190,10 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         limit: z.number().int().min(1).max(50).optional(),
         includeWeak: z.boolean().optional().describe("Include weakly attributed hits"),
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, openWorldHint: opts.embedding?.provider === "command" },
     },
     dated(
-      ({
+      async ({
         query,
         project,
         tool,
@@ -205,15 +208,16 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         limit?: number;
         includeWeak?: boolean;
       }) => {
-        const hits = recall(db, {
+        const warnings: string[] = [];
+        const hits = await recallWithEmbeddings(db, {
           query,
           project: project ?? null,
           tool: tool ?? null,
           sinceMs: parseDate(since),
           limit: limit ?? 10,
           minConfidence: includeWeak ? "weak" : "medium",
-        });
-        return text(formatRecall(hits, query));
+        }, opts.embedding, (message) => warnings.push(message));
+        return text([formatRecall(hits, query), ...warnings].join("\n"));
       },
     ),
   );
@@ -386,7 +390,7 @@ export async function main(argv: ReadonlyArray<string> = process.argv.slice(2)):
   const cfg = loadConfig(dbPath ? { dbPath } : {}, (m) => process.stderr.write(`${m}\n`));
   const db = openHub(cfg.dbPath);
   initSchema(db);
-  const server = createServer(db, { staleAfterMs: cfg.staleAfterMs });
+  const server = createServer(db, { staleAfterMs: cfg.staleAfterMs, embedding: cfg.embedding });
   // stdout is the JSON-RPC channel; anything human-readable goes to stderr.
   process.stderr.write(`${SERVER_NAME} ${SERVER_VERSION} — ${cfg.dbPath}\n`);
   await server.connect(new StdioServerTransport());

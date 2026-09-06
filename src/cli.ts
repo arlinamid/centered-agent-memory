@@ -77,7 +77,8 @@ import {
   formatTopics,
   formatTurns,
 } from "./query/format.js";
-import { getTurns, parseCitation, recall } from "./query/recall.js";
+import { getTurns, parseCitation, recallWithEmbeddings } from "./query/recall.js";
+import { planEmbeddings, runEmbeddings } from "./search/embeddings.js";
 import {
   EphemeralInstallError,
   ephemeralRoot,
@@ -417,22 +418,22 @@ function cmdDossier(a: ParsedArgs): number {
   });
 }
 
-function cmdRecall(a: ParsedArgs): number {
+async function cmdRecall(a: ParsedArgs): Promise<number> {
   const query = a.positional.join(" ");
   if (!query) return usage('cam recall "<query>"');
   const max = limit(a, 10);
   const sinceMs = dateFlag(a, "since");
   if (a.errors.length > 0) return reportErrors(a);
 
-  return withHub((db) => {
-    const hits = recall(db, {
+  return withHubAsync(async (db) => {
+    const hits = await recallWithEmbeddings(db, {
       query,
       project: flag(a, "project") ?? null,
       tool: flag(a, "tool") ?? null,
       sinceMs,
       limit: max,
       minConfidence: has(a, "include-weak") ? "weak" : "medium",
-    });
+    }, cfg().embedding, log.warn);
     log.result(has(a, "json") ? JSON.stringify(hits, null, 2) : formatRecall(hits, query));
     return EXIT_OK;
   });
@@ -651,6 +652,23 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
   if (a.errors.length > 0) return reportErrors(a);
 
   switch (sub) {
+    case "embed":
+      return withHubAsync(async (db) => {
+        const config = cfg().embedding;
+        if (config.provider !== "command" || !config.model || !config.command?.length) {
+          return usage("Configure memory.embedding with provider: command, model, and command; see docs/memory.md.");
+        }
+        const items = planEmbeddings(db, config, { project: flag(a, "project"), limit: max, force: has(a, "force") });
+        log.fail(`${items.length} chunk(s) · ${items.reduce((sum, item) => sum + item.text.length, 0)} characters would go to embedding model ${config.model}`);
+        if (has(a, "dry-run")) {
+          log.result(JSON.stringify({ candidates: items.length, model: config.model, dryRun: true }));
+          return EXIT_OK;
+        }
+        const stat = await runEmbeddings(db, config, items);
+        log.result(has(a, "json") ? JSON.stringify(stat, null, 2) : `embeddings: ${stat.generated} generated, ${stat.failed} failed`);
+        for (const error of stat.errors.slice(0, 5)) log.warn(error);
+        return stat.failed ? EXIT_FAILED : EXIT_OK;
+      });
     case "consolidate":
       return withHub((db) => {
         const lock = acquireLock(db, "memory");
@@ -708,7 +726,7 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
     }
 
     case "dream": {
-      // The one command that may hand conversation text to a model. Never
+      // This command hands promoted conversation excerpts to a model. Never
       // called by consolidate, never automatic, and it says what it will send
       // before it sends it.
       const dream = { ...cfg().dream };
@@ -801,7 +819,7 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
       });
 
     default:
-      return usage("cam memory <consolidate|list|show <id>|dream [forget]|topics|status>");
+      return usage("cam memory <consolidate|list|show <id>|embed|dream [forget]|topics|status>");
   }
 }
 
@@ -1598,6 +1616,7 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
   cam memory list [--project p]          the promoted facts
   cam memory show <id>                   one fact with its evidence
   cam memory dream [--dry-run]           write a summary with a model (optional)
+  cam memory embed [--dry-run]           index vectors with a configured model (optional)
   cam memory topics                      recurring topics
   cam memory status                      how much trace gathered, what was promoted
 
@@ -1654,7 +1673,7 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
       case "dossier":
         return cmdDossier(a);
       case "recall":
-        return cmdRecall(a);
+        return await cmdRecall(a);
       case "get":
         return await cmdGet(a);
       case "alias":

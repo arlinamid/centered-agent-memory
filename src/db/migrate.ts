@@ -34,6 +34,7 @@ export function migrate(db: Db): string[] {
   // NULL, which is exactly right: no existing locator is a `sqlite_row`.
   addColumn("turns", "loc_table", "loc_table TEXT");
   addColumn("turns", "loc_column", "loc_column TEXT");
+  addColumn("chunk_embeddings", "input_sha256", "input_sha256 TEXT");
 
   if (hasTable(db, "meta")) {
     db.prepare("insert or replace into meta(key, value) values ('schema_version', ?)").run(String(SCHEMA_VERSION));

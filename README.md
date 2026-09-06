@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.9.3-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -66,7 +66,7 @@ The index stores **locators**, not copies. Sources stay read-only. Nothing leave
 | Locators, not copies | A turn is a file + byte offset, or an SQLite key. Text is re-read at query time. Volatile scratchpads are the one exception (`artifacts`). |
 | No guessing | Unknown project stays `unattributed`. Every hit names its signal and confidence (`strong` / `medium` / `weak` / `none`). |
 | Sources are read-only | Structural: `openSourceReadonly`. The tool never writes another agent's store. |
-| Nothing leaves the machine | No telemetry, ever. Two things can reach the network and both are off until you turn them on: `cam memory dream` and `cam update`. Each prints what it will contact before contacting it. |
+| Optional model access | No telemetry. Dreaming, embeddings, and updates are opt-in. Embedding and dream generation report planned text volume; enabling semantic recall also hands query text to your configured embedding command. |
 | Says how old it is | Every MCP answer ends with the index age. `STALE` means do not quote it as current. |
 
 ---
@@ -191,6 +191,7 @@ cam memory consolidate         # fold the trace, promote what earned it
 cam memory list                # the promoted memories
 cam memory show <id>           # one memory with the evidence
 cam memory dream [--dry-run]   # optional sentence, written by a model you configure
+cam memory embed [--dry-run]   # optional vectors, using an embedding command you configure
 ```
 
 Same database, same promotions. A promoted memory stores no text either — it references a chunk. Details: [`docs/memory.md`](docs/memory.md).

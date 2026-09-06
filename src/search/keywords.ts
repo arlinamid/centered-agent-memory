@@ -27,8 +27,8 @@ function stopwords(): Set<string> {
   return set;
 }
 
-/** Words shorter than this are dropped unless they are the whole query. */
-const MIN_TOKEN = 3;
+/** Keep short technical identifiers such as UI, DB and Go. */
+const MIN_TOKEN = 2;
 /** Hungarian is agglutinative and there is no stemmer, so long tokens match by prefix. */
 const PREFIX_FROM = 5;
 
@@ -80,20 +80,37 @@ export function parseQuery(raw: string, nowMs = Date.now()): ParsedQuery {
       continue;
     }
     if (stop.has(w)) continue;
-    if (w.length < MIN_TOKEN) continue;
+    if (w.length < 2) continue;
     terms.push(w);
   }
 
   // A query made only of stopwords still has to search for something.
   if (terms.length === 0) {
-    for (const w of words) if (w.length >= MIN_TOKEN) terms.push(w);
+    for (const w of words) if (w.length >= 2 && DATE_WORDS[w] === undefined) terms.push(w);
   }
 
-  const match = terms
+  const unique = [...new Set(terms)];
+  const match = unique
     .map((t) => (t.length >= PREFIX_FROM ? `${quote(t)}*` : quote(t)))
     .join(" OR ");
 
-  return { match, terms, sinceMs };
+  return { match, terms: unique, sinceMs };
+}
+
+/** Corpus-independent lexical evidence; an FTS rank is not a probability. */
+export function termCoverage(text: string, terms: ReadonlyArray<string>): number {
+  if (!terms.length) return 0;
+  const words = fold(text).match(/[\p{L}\p{N}]+/gu) ?? [];
+  const unique = [...new Set(terms.map(fold))];
+  return unique.filter((term) => {
+    // Intl.Segmenter can keep identifiers such as node_modules together;
+    // unicode61 treats their separators as token boundaries within a phrase.
+    const parts = term.match(/[\p{L}\p{N}]+/gu) ?? [];
+    return parts.length > 0 && words.some((_, index) => parts.every((part, offset) => {
+      const word = words[index + offset] ?? "";
+      return offset === parts.length - 1 && term.length >= PREFIX_FROM ? word.startsWith(part) : word === part;
+    }));
+  }).length / unique.length;
 }
 
 /**
@@ -110,9 +127,15 @@ export function highlight(text: string, terms: ReadonlyArray<string>, open = "«
     if (needle.length < MIN_TOKEN) continue;
     let i = folded.indexOf(needle);
     while (i !== -1) {
+      const wordChar = (ch: string): boolean => /[\p{L}\p{N}]/u.test(ch);
+      if ((i > 0 && wordChar(folded[i - 1]!)) ||
+          (needle.length < PREFIX_FROM && wordChar(folded[i + needle.length] ?? ""))) {
+        i = folded.indexOf(needle, i + needle.length);
+        continue;
+      }
       // Prefix match: extend to the end of the word, as the index does.
       let end = i + needle.length;
-      while (end < folded.length && /[\p{L}\p{N}]/u.test(folded[end]!)) end++;
+      while (needle.length >= PREFIX_FROM && end < folded.length && wordChar(folded[end]!)) end++;
       marks.push([i, end]);
       i = folded.indexOf(needle, end);
     }

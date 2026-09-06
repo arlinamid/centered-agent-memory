@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.9.3-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -68,7 +68,7 @@ Az index **hivatkozásokat** tárol, nem másolatot. A források read-onlyak. Se
 | Hivatkozás, nem másolat | Egy turn: fájl + bájt-offset, vagy SQLite-kulcs. A szöveget lekérdezéskor olvassuk vissza. Kivétel a múlandó scratchpad (`artifacts`). |
 | Nem tippelünk | Ismeretlen projekt `unattributed` marad. Minden találat megnevezi a jelet és a megbízhatóságot (`strong` / `medium` / `weak` / `none`). |
 | A forrás read-only | Szerkezeti: `openSourceReadonly`. A `cam` sosem ír másik ágens tárolójába. |
-| Semmi nem hagyja el a gépet | Telemetria soha. Két dolog érheti el a hálózatot, és mindkettő ki van kapcsolva, amíg be nem kapcsolod: a `cam memory dream` és a `cam update`. Mindkettő kiírja, mit fog megkeresni, mielőtt megkeresi. |
+| Opcionális modellhasználat | Nincs telemetria. Az álomfázis, az embedding és a frissítés külön bekapcsolást igényel. A generálás kiírja a tervezett szövegmennyiséget; bekapcsolt szemantikus keresésnél a kérdés szövege is átkerül a beállított embedding parancshoz. |
 | Megmondja, milyen régi | Minden MCP-válasz az index korával végződik. A `STALE` azt jelenti: ne idézd frissként. |
 
 ---

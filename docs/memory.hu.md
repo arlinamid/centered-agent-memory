@@ -53,9 +53,20 @@ nagyon aktív részlet így nem tudja kiszorítani az összes többit.
 és legalább 0,8 pontszám. A kapu nem váltható ki magas pontszámmal: amit egyetlen kérdés hívott elő
 kilencszer, az nem emlék.
 
-Ez szigorú. A gyakorlatban ez a legkisebb átmenő nyom: **három kérdés, három napon, jó találati
-pontszámmal** (0,834). A referenciagépen a valódi találati pontszám 0,90–0,93 — kis korpuszon a bm25
-nem szór, ezért fixtúrán mért érték helyett a mért valóságos értékkel dolgozunk a tesztekben is.
+A találati pontszám most a forrásban megtalálható különböző keresőkifejezések arányán alapul;
+bekapcsolt embedding esetén a koszinuszhasonlóságot is figyelembe veszi. A BM25 azonos pontszámnál
+rendez, nem relevancia-valószínűségként szolgál. Az integrációs tesztek kis korpuszon is a tényleges
+keresési pontszámokból jutnak el a promócióig, kézi pontszámemelés nélkül. A korábbi pontszámok
+megmaradnak; az új számítás az új keresésekre vonatkozik.
+
+A keresésben való megjelenés továbbra sem bizonyítja a tartalom hasznosságát vagy igazságát.
+A még soha elő nem hívott fontos döntéseket ez a mechanizmus nem emeli automatikusan emlékké.
+
+Az opcionális embedding parancsa: `cam memory embed --dry-run`, majd `cam memory embed --limit 100`.
+A `memory.embedding` beállítás külső embedding parancsot igényel; modellt nem tölt le automatikusan.
+A beállítás után a CLI és az MCP keresés is használja a vektorokat. Az álomfázis a gyorsítótárazott
+emlékek után folytatja a feldolgozást; a limit az új munkát korlátozza. A beállítás, az adatátadás
+és a jelenlegi korlátok részletes leírása az [angol dokumentációban](memory.md#optional-embeddings) található.
 
 ## Felejtés
 

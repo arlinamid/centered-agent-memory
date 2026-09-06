@@ -55,17 +55,13 @@ const search = (query: string, nowMs: number): number =>
  * The trace that just clears every gate: three questions, on three days, with
  * three recalls.
  *
- * The relevance of a hit comes from bm25, which is a property of the corpus:
- * two chunks carry no IDF spread at all, so every score here collapses to
- * ~1e-7 and no fixture could ever be promoted. On the reference machine's real
- * index the same figure is 0.90-0.93, so the scores are set to that measured
- * value — everything else about the trace is produced by real searches.
+ * Relevance comes directly from query coverage, including in this small corpus.
+ * No score override: this exercises the real retrieval-to-promotion path.
  */
-function threeDaysOfSearches(relevance = 0.95): void {
+function threeDaysOfSearches(): void {
   search("arvizturo", T0 + DAY);
   search("tukorfurogep hiba", T0 + 2 * DAY);
   search("docker compose", T0 + 3 * DAY);
-  h.hub.prepare("update recall_events set score = ?").run(relevance);
 }
 
 beforeEach(async () => {

@@ -330,13 +330,25 @@ async function trace(): Promise<void> {
     for (const [i, q] of ["arvizturo", "tukorfurogep", "docker compose"].entries()) {
       recall(db, { query: q, nowMs: t0 + i * day, minConfidence: "weak" });
     }
-    // bm25 has no spread in a two-chunk fixture; use the value measured on a
-    // real index (see test/memory.test.ts).
-    db.prepare("update recall_events set score = 0.95").run();
   });
 }
 
 describe("memory", () => {
+  it("previews and generates embeddings, then uses them for CLI recall", async () => {
+    await seed();
+    const script = path.join(dir, "embedding.mjs");
+    fs.writeFileSync(script, `process.stdin.resume(); process.stdin.on('end',()=>process.stdout.write('{"embeddings":[[1,0]]}'));`);
+    fs.writeFileSync(process.env.CAM_CONFIG!, JSON.stringify({ memory: { embedding: {
+      provider: "command", model: "fixture", command: [process.execPath, script],
+    } } }));
+    expect(await run(["memory", "embed", "--dry-run", "--json"])).toBe(EXIT_OK);
+    expect(withHub((db) => (db.prepare("select count(*) n from chunk_embeddings").get() as { n: number }).n)).toBe(0);
+    expect(await run(["memory", "embed", "--json"])).toBe(EXIT_OK);
+    out.length = 0;
+    expect(await run(["recall", "paraphrasewithoutkeywords", "--json"])).toBe(EXIT_OK);
+    expect(JSON.parse(stdout()).length).toBeGreaterThan(0);
+    expect(stderr()).toContain("embedding model fixture");
+  });
   it("says plainly that there is nothing to show yet", async () => {
     await seed();
     expect(await run(["memory", "list"])).toBe(EXIT_OK);

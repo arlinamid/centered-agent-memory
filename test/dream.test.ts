@@ -77,8 +77,6 @@ async function seedPromoted(): Promise<void> {
   for (const [i, q] of ["arvizturo", "tukorfurogep hiba", "docker compose"].entries()) {
     recall(h.hub, { query: q, nowMs: T0 + (i + 1) * DAY, minConfidence: "weak" });
   }
-  // Real bm25 has no spread in a two-chunk fixture; see test/memory.test.ts.
-  h.hub.prepare("update recall_events set score = 0.95").run();
   consolidate(h.hub, { nowMs: T0 + 3 * DAY });
 }
 

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DreamConfig } from "./memory/dream.js";
+import type { EmbeddingConfig } from "./search/embeddings.js";
 import { DEFAULT_STALE_MS } from "./ops/freshness.js";
 import type { RetentionPolicy } from "./ops/prune.js";
 import type { UpdateConfig } from "./update/check.js";
@@ -19,14 +20,14 @@ export interface HubConfig {
    * and "none" (the default) sends nothing anywhere.
    */
   dream: DreamConfig;
+  embedding: EmbeddingConfig;
   /** What `cam prune` removes. Empty means the built-in policy applies. */
   retention: Partial<RetentionPolicy>;
   /** Past this age the index reports itself as stale, everywhere it is quoted. */
   staleAfterMs: number;
   /**
-   * Looking for a newer release. Off unless the user turns it on: this is the
-   * only other thing in the tool that can reach the network, and like the
-   * dream phase it stays silent until asked.
+   * Looking for a newer release. Like the optional model commands, this stays
+   * disabled unless the user turns it on.
    */
   update: UpdateConfig;
 }
@@ -78,8 +79,8 @@ export interface FileConfig {
   maxInlineBytes?: number;
   /** Any subset of the ten store locations. */
   roots?: Partial<ResolvedRoots>;
-  /** The memory layer. Only the dream phase has anything to configure. */
-  memory?: { dream?: DreamConfig };
+  /** Optional model commands; deterministic consolidation needs no provider. */
+  memory?: { dream?: DreamConfig; embedding?: EmbeddingConfig };
   retention?: Partial<RetentionPolicy>;
   /** Hours, because that is the unit the answer is thought about in. */
   staleAfterHours?: number;
@@ -131,6 +132,7 @@ export function loadConfig(overrides: Partial<HubConfig> = {}, warn?: (msg: stri
     roots: overrides.roots ?? { ...defaultRoots(home), ...(file.roots ?? {}) },
     maxInlineBytes: overrides.maxInlineBytes ?? file.maxInlineBytes ?? 256 * 1024,
     dream: overrides.dream ?? file.memory?.dream ?? {},
+    embedding: overrides.embedding ?? file.memory?.embedding ?? {},
     retention: overrides.retention ?? file.retention ?? {},
     update: overrides.update ?? file.update ?? {},
     staleAfterMs:

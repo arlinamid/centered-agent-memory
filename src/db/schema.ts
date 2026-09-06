@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Every source we can index. */
 export const TOOL_IDS = [
@@ -159,8 +159,19 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
   chunk_id INTEGER PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
   model    TEXT NOT NULL,
   dims     INTEGER NOT NULL,
-  embedding BLOB NOT NULL
+  embedding BLOB NOT NULL,
+  input_sha256 TEXT
 );
+
+-- Derived data must never describe an earlier version of the same chunk.
+CREATE TRIGGER IF NOT EXISTS chunks_after_content_update AFTER UPDATE OF text_sha256 ON chunks
+WHEN old.text_sha256 != new.text_sha256 BEGIN
+  DELETE FROM chunk_embeddings WHERE chunk_id = new.id;
+  DELETE FROM memory_dreams WHERE chunk_id = new.id;
+  DELETE FROM recall_events WHERE chunk_id = new.id;
+  DELETE FROM memory_traces WHERE chunk_id = new.id;
+  DELETE FROM memory_facts WHERE chunk_id = new.id;
+END;
 
 CREATE TABLE IF NOT EXISTS path_evidence (
   id          INTEGER PRIMARY KEY,

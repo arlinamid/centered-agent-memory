@@ -1,6 +1,7 @@
 # Memory layer
 
-The hub does not only find the past, it also learns from it. Without a model.
+The hub indexes conversations and promotes repeatedly retrieved excerpts.
+Consolidation works without a model; semantic retrieval and dreaming are optional.
 
 The basic idea: **a memory becomes long-term not because it looks important,
 but because it came back several times, on several days, to several different
@@ -59,11 +60,21 @@ least 3 **different** questions, and a score of at least 0.8. The gate cannot
 be bought with a high score: something one question recalled nine times is not
 a memory.
 
-This is strict. In practice this is the smallest passing trace: **three
-questions, on three days, with a good hit score** (0.834). On the reference
-machine the real hit score is 0.90–0.93 — on a small corpus bm25 does not
-spread, so the tests work with the measured real value rather than one
-measured on a fixture.
+Recall scores now measure the fraction of distinct query terms present in the
+source, with cosine similarity also considered when embeddings are enabled.
+BM25 breaks ranking ties; its corpus-dependent magnitude is no longer treated
+as a relevance probability. Full-query candidates are retrieved alongside OR
+candidates, attribution is filtered before limiting, and heavily overlapping
+results are suppressed. Two-letter identifiers such as UI and DB are searchable.
+
+Three questions on three days can pass on a small corpus using actual search
+scores; the integration tests no longer substitute high scores to force a
+promotion. Stale and missing sources remain visible but add no recall evidence.
+Earlier stored scores are retained; this change applies to new recalls.
+
+These are retrieval signals, not confirmation that a result was useful or that
+its contents are true. Promotion still requires previous searches: an important
+decision that nobody has recalled does not automatically become a memory.
 
 ## Forgetting
 
@@ -99,6 +110,7 @@ cam memory topics                                        # recurring topics
 cam memory status                                        # how much trace has been collected
 cam memory dream [--dry-run] [--force] [--project p]     # a summary with a model (optional)
 cam memory dream forget                                  # drop every dream
+cam memory embed [--dry-run] [--force] [--project p]       # optional vector index
 ```
 
 From MCP the same thing with the `cam_memory` tool: without `id` a list, with
@@ -108,7 +120,55 @@ The output of `cam memory show` includes all six components of the score and,
 row by row, the evidence: which question, how many times, from when to when.
 A promotion never appears without a way to see what justified it.
 
-## Why not a model
+## Optional embeddings
+
+Embeddings are disabled by default. Configure a command that runs your chosen
+embedding model; the hub does not bundle or download a model:
+
+```json
+{
+  "memory": {
+    "embedding": {
+      "provider": "command",
+      "model": "your-embedding-model-version",
+      "command": ["path/to/embedding-adapter"],
+      "timeoutMs": 120000,
+      "maxInputChars": 8000,
+      "minSimilarity": 0.5
+    }
+  }
+}
+```
+
+The command reads one JSON object from stdin:
+`{"model":"your-embedding-model-version","input":["text to embed"]}`.
+It must write only `{"embeddings":[[0.1,0.2,0.3]]}` to stdout, with the actual
+model vector replacing those example numbers. Diagnostics belong on stderr.
+Use the same vector space for documents and queries; give changed model weights,
+dimensions, or preprocessing a new model identifier.
+
+`cam memory embed --dry-run` reports the planned text volume without starting the
+command. `cam memory embed --limit 100` embeds uncached chunks; repeat to drain
+the backlog. Successful items are cached and failed items can be retried.
+`--force` regenerates cached vectors, including after changing `maxInputChars`.
+The source excerpt sent to the model is capped at that character limit.
+
+Once configured and indexed, both `cam recall` and MCP `cam_recall` also embed
+the query and combine semantic candidates with lexical candidates. This means
+query text is handed to the configured command on each search; whether the
+command uses a network service is determined by your adapter. Generation of
+document embeddings happens only through the explicit `memory embed` command.
+Provider failures report a warning and fall back to keyword retrieval.
+
+Vectors are normalized and validated. Model, dimension, source hash, project,
+tool, date, and attribution checks apply before returning semantic results.
+Content changes invalidate embeddings, dreams, and promotion evidence for that
+chunk. Legacy vectors without a source hash are regenerated. Search uses an
+exact scan over eligible vectors, so query cost grows with corpus size; it is
+not an approximate nearest-neighbor index. Similarity thresholds and model
+quality need evaluation on representative Hungarian and English queries.
+
+## Why consolidation does not require a model
 
 A generative summary would be optional and retryable — but that is not the
 core. The reason is measurable: Codex's own, LLM-dependent memory pipeline
@@ -117,7 +177,7 @@ produced nothing since July. What is deterministic runs every morning.
 
 ## The dream phase (optional)
 
-The only place a model gets anywhere near the text at all. What determinism
+Alongside optional embeddings, this is a model-assisted operation. What determinism
 cannot give is a sentence about what a recalled excerpt **is about**;
 `cam memory dream` writes that. It does not promote, does not demote, and
 touches no evidence table — promotion is still decided by the trace, not by
@@ -151,3 +211,15 @@ memory, the command exits non-zero, and it can be retried tomorrow. The dream
 sentence appears everywhere together with the model name — neither
 `cam memory list` nor `cam_memory` can return generated text in a way that
 looks like a source.
+
+The batch limit counts uncached work. Cached high-scoring memories do not block
+later memories, and the planner pages beyond the first 200 facts. Only current,
+readable sources are sent; digests are hidden when a source becomes stale or
+missing. Prompts ask for concrete decisions, preferences, constraints and open
+questions, and distinguish proposals from settled decisions. This remains a
+per-excerpt digest, not cross-session synthesis or contradiction resolution.
+
+`test/memory-pipeline.test.ts` exercises retrieval, promotion and dreaming
+without score overrides, plus vector generation, caching, filtering, fallback,
+and source invalidation. Its deterministic providers verify pipeline behavior;
+they do not measure the semantic quality of a real embedding or dream model.
