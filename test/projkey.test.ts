@@ -141,6 +141,16 @@ describe("ProjectResolver (marker-based, no hardcoded roots)", () => {
     expect(r.key("C:/work")).toBeNull();
   });
 
+  it("does not let a null workspace-root verdict poison markerless children", () => {
+    const r = resolver({ workspaceRoots: ["C:/work"] });
+    expect(r.key("C:/work")).toBeNull();
+    expect(r.resolve("C:/work/wide-font/src/x.ts")).toEqual({
+      key: "wide-font",
+      rootPath: "c:/work/wide-font",
+      via: "workspace-root",
+    });
+  });
+
   it("lets a workspace root override a marker on the aggregator directory", () => {
     // C:/work is itself a git repo holding twenty projects — the marker must
     // not win over the learned root.

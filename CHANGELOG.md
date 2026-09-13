@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [0.10.0] — 2026-09-06
 
+### Workspace-root attribution cache
+
+- **Markerless projects under a learned workspace root stay attributed.** Resolving the workspace root itself used to cache `null` on that path and poison every child without its own marker for the rest of `reattribute`. Ancestor reuse now only keeps positive hits.
+
 - Query-coverage scoring makes promotion work on small corpora without manually boosted scores. Full-query candidates, early attribution filtering, and overlap suppression improve retrieval.
 - Optional command-based embeddings support generation, caching, validation, and semantic recall in the CLI and MCP. Providers remain opt-in and failures fall back to keyword search.
 - Dream batches advance past cached items. Prompts preserve decisions and constraints, and stale digests are hidden.

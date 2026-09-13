@@ -140,10 +140,12 @@ export class ProjectResolver {
       const learnedKey = this.learned.get(dir);
       if (learnedKey) return this.decide(dir, this.applyAlias(learnedKey, dir, "learned"));
 
-      // Reuse a decided ancestor: everything under a resolved directory
-      // shares its answer.
+      // Reuse a decided ancestor: everything under a resolved project root
+      // shares its answer. A cached `null` must not win — resolving the
+      // workspace root itself (genuinely unattributed) would otherwise poison
+      // every markerless child under it for the rest of the run.
       const hit = this.resultCache.get(dir);
-      if (hit !== undefined) return hit;
+      if (hit) return hit;
 
       const name = basename(dir);
 
