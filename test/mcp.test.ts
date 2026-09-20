@@ -95,9 +95,10 @@ describe("mcp server", () => {
     expect(instructions).toContain("Read-only");
   });
 
-  it("exposes exactly the seven read-only tools", async () => {
+  it("exposes exactly the eight read-only tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "cam_docs",
       "cam_dossier",
       "cam_get",
       "cam_memory",
@@ -285,6 +286,9 @@ describe("cam_memory", () => {
 describe("index age", () => {
   const ARGS: Record<string, Record<string, unknown>> = {
     cam_dossier: { project: "demo" },
+    // With no runtime the tool reports that and still gets dated, which is the
+    // property under test: the footer does not depend on the answer succeeding.
+    cam_docs: { query: "anything" },
     cam_timeline: { project: "demo" },
     cam_recall: { query: "arvizturo" },
     cam_get: { citation: `claude_code:${SID}` },

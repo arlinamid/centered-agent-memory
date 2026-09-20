@@ -523,6 +523,11 @@ describe("every command", () => {
     { argv: ["attribute", `claude_code:${SID}`, "demo"] },
     { argv: ["reattribute"] },
     { argv: ["rebuild"] },
+    // The layer is off for the suite (CAM_QMD=0), so these exercise the command
+    // surface and the "no runtime" path — which is the one a machine without
+    // models actually takes, and it must be an orderly failure, not a crash.
+    { argv: ["docs", "list"], exit: EXIT_FAILED },
+    { argv: ["note", "list"], exit: EXIT_FAILED },
     { argv: ["memory", "status"] },
     { argv: ["memory", "dream", "--dry-run"] },
     { argv: ["status"] },

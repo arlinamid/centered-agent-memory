@@ -93,6 +93,21 @@ export function limit(a: ParsedArgs, fallback: number, max = 1000): number {
   return Math.min(n, max);
 }
 
+/**
+ * A relevance threshold between 0 and 1. Out of range is a mistake worth
+ * naming: `--min-score 30` meaning 30% would otherwise silently drop every hit.
+ */
+export function scoreFlag(a: ParsedArgs, name: string): number | undefined {
+  const raw = a.values.get(name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 1) {
+    a.errors.push(`--${name} must be between 0 and 1, not "${raw}"`);
+    return undefined;
+  }
+  return n;
+}
+
 /** ISO date or anything Date.parse understands; an unparsable one is an error. */
 export function dateFlag(a: ParsedArgs, name: string): number | null {
   const raw = a.values.get(name);

@@ -1,3 +1,4 @@
+import { CURRENT_RENDER_VERSION, RENDER_RAW, writeRenderVersion } from "../index/denoise.js";
 import type { Db } from "./open.js";
 import { SCHEMA_VERSION } from "./schema.js";
 
@@ -38,6 +39,18 @@ export function migrate(db: Db): string[] {
 
   if (hasTable(db, "meta")) {
     db.prepare("insert or replace into meta(key, value) values ('schema_version', ?)").run(String(SCHEMA_VERSION));
+    // Which rendering produced this hub's chunk hashes. A hub with no chunks
+    // has rendered nothing yet, so it starts current. One that already holds
+    // chunks keeps the raw rendering that produced them — changing it here
+    // would invalidate every hash at once, and re-rendering is `cam rebuild`'s
+    // job, where it can be reported and paid for deliberately.
+    const known = db.prepare("select value from meta where key = 'render_version'").get();
+    if (!known) {
+      const chunks = hasTable(db, "chunks")
+        ? ((db.prepare("select count(*) as n from chunks").get() as { n: number }).n ?? 0)
+        : 0;
+      writeRenderVersion(db, chunks === 0 ? CURRENT_RENDER_VERSION : RENDER_RAW);
+    }
   }
   return applied;
 }

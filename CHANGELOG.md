@@ -4,6 +4,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-09-20
+
+### The relevance layer: qmd as cam's model runtime
+
+[qmd](https://github.com/tobi/qmd) is now a dependency, used as a **model runtime** rather than a second index. cam keeps its own chunks, attribution, hydration and citations; nothing about a conversation is written into qmd's store. Three local models join the recall path: `qmd-query-expansion-1.7B-q4_k_m` for expansion, `embeddinggemma-300M-Q8_0` for embeddings, `Qwen3-Reranker-0.6B-Q8_0` for reranking. Weights download on first use; the machine is never left.
+
+- **`cam recall` drops what a relevance model rejects instead of demoting it.** A passage below `minRerankScore` (0.3 by default) is cut, because a tool-call dump at position nine is still in a ten-hit answer. Fewer hits is the intended behaviour, and the skill and MCP instructions now say so, so an agent does not read a short answer as an empty index. `--no-rerank` / `rerank: false` returns the raw match set, `--min-score` / `minScore` moves the threshold.
+- **Question expansion, off by default.** One question becomes several typed sub-queries; `lex` variants widen the FTS candidate set and `vec`/`hyde` variants each retrieve on their own, a chunk keeping its best similarity. It is opt-in on measurement: expansion runs a 1.7B generative model and cost ~74 s per new question on a GPU, ~197 s on CPU, against ~8 s for the reranking that actually does the de-noising. `--expand` / `expand: true` turns it on.
+- **`memory.embedding.provider: "qmd"`** embeds with the bundled model, with no command to configure and no query text leaving the machine. The `command` provider is unchanged.
+- **Turn de-noising at render time.** Tool-call blocks, long diffs, pasted files and injected boilerplate become counted markers (`[42 lines elided]`) — visible, never silent. `meta.render_version` records which rendering produced a hub's chunk hashes, and the chunker and hydrator both read it, because one writes the hash and the other recomputes it. `cam rebuild` re-renders, rewrites the hashes of chunks that read back cleanly and leaves a drifted source alone; follow it with `cam memory embed`. An existing hub keeps the raw rendering until then.
+- **`cam dossier --focus "<topic>"` / `cam_dossier` `focus`** orders the session lists by relevance instead of size. Sessions too short to be a topic are folded into a count rather than crowding the lists.
+- **Every stage degrades on its own and says so.** A missing model costs precision, never recall: expansion, embedding and reranking each fall back with a warning rather than an empty answer. Reranking is skipped for a single hit, and if the model rejects everything the best retrieval hit survives, so a mis-scoring model cannot turn an answer into silence. `CAM_QMD=0` disables the layer for one run, `memory.qmd.enabled: false` for good.
+- **A deadline per stage, not one shared pot.** A cold model held an MCP call for three and a half minutes until the client closed the connection. Each stage now gets its own share of `deadlineMs` (45 s by default): a shared budget let a slow embedding command spend everything and switch reranking off silently, which is the one stage the layer is for.
+- **The two surfaces wait differently, because loading a model blocks the event loop.** Native model loading takes about a minute and no timeout can interrupt it — a server that does it on startup answers nothing meanwhile, not even the tool listing a client asks for on connect, which is exactly how clients timed out at sixty seconds. So the MCP server loads nothing unless `memory.qmd.warmUp` says to, answers without the relevance model until it is ready and says so, and `cam_docs` falls back to keyword search for the same reason. The CLI waits without a deadline, since a one-shot command has no next question and would otherwise never rerank at all.
+- **Only the top 10 candidates are reranked, as ~500-character excerpts.** The cost scales with the text handed over rather than the candidate count: 24 chunks at 2000 characters took 14 s, the same 24 at 600 took 5 s. Reranking all eighty candidates at full length blew every deadline.
+- **`gpu` defaults to `"auto"`, `cacheHome` moves the weights.** CPU measured ~83 s for a rerank against ~8 s on a GPU — not a slower option, not an option. `memory.qmd.cacheHome` puts qmd's index and its two gigabytes of weights on a drive with room; cam now resolves that cache the way qmd does (`XDG_CACHE_HOME` or `~/.cache`) on Windows too, instead of looking in `LOCALAPPDATA` where qmd never writes.
+- `cam doctor` reports which models are cached, qmd's index path, and whether the hub's rendering matches the configured one.
+
+### A project's own files, and notes on them
+
+- **`cam docs`** indexes a project's own files into qmd — the one place cam writes documents rather than locators, because these are already on disk. It covers code as well as prose (`.ts`, `.tsx`, `.js`, `.py`, `.go`, `.rs` and more), chunked by syntax, so a hit lands on a function instead of halfway through one. `cam docs add [path]`, `index`, `query`, `get`, `list`, `remove`.
+- **`cam note add <path> "<what it is for>"`** attaches a sentence to a file or folder, stored as qmd's context for that path. Every file hit carries its note, and the most specific one wins — a note on `src/qmd/` describes the folder, one on `src/qmd/runtime.ts` overrides it for that file. It is the part a codebase cannot state about itself.
+- **`cam_docs`** exposes the same to agents (`query`, `get`, `notes`), bringing the MCP surface to eight tools. With nothing indexed it says so plainly instead of returning a tool error: an empty read is not a failure.
+- `node_modules`, `dist`, lock files and other generated trees are excluded by default — burying a project's own files under a hundred thousand someone else wrote is the opposite of the point.
+
+### Install asks where the models go
+
+- **`cam install` proposes a location for the ~2.4 GB of weights and lets you take it or name another.** It is a question rather than a default because the answer is about the machine: the drive a home directory sits on is often the one with no room, and guessing wrong does not fail politely — the download dies partway with `ENOSPC`, minutes in. The proposal is a real answer (what the config says, else wherever the weights already are, else qmd's own location), so Enter is enough.
+- The prompt shows free space and how many of the three are already cached there, and says plainly when the chosen place is too small — without refusing to record the choice, since the user may be about to free space.
+- Nothing is downloaded during install; the weights arrive on first use. `--models <path>` answers without a prompt, `--no-models` leaves the setting alone, and a non-interactive run reports where they would go and changes nothing.
+
+### Also
+
+- `recall()` takes `embeddings` (plural) and `extraMatches`; `dossier()` takes an options object. Both keep their old call shapes working.
+- The MCP smoke test now passes the environment to the server it spawns. The SDK's stdio client sends a minimal one by default, so the smoke test had been exercising different configuration than the shell that started it — which is how a layer nobody meant to enable ended up loading models mid-request.
+
+
 ## [0.10.0] — 2026-09-06
 
 ### Workspace-root attribution cache

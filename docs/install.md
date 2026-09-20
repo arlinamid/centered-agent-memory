@@ -25,12 +25,13 @@ approximation. No file is modified, no model is called.
 
 ## What happens
 
-Four independent parts, each separately opt-out and separately reported:
+Five independent parts, each separately opt-out and separately reported:
 
 | part | what it does | opt-out |
 |---|---|---|
 | MCP | registers the server in every client config it finds | `--no-mcp` |
 | skill | puts the usage instructions where the tool reads them | `--no-skills` |
+| models | asks where the relevance models are kept | `--no-models` |
 | dream | picks a model for the phase from an agent CLI already installed | `--no-dream` |
 | scheduling | hourly sync, nightly maintenance | `--no-schedule` |
 
@@ -155,6 +156,44 @@ This command looks for `skills/agent-memory/SKILL.md` in the repo. The classic
 Claude Desktop / Cowork app has no such folder — Cowork only registers through
 the Customize → Skills uploader, not by file copy. There the server's own
 instructions arrive, with every response.
+
+## Relevance models
+
+Three local GGUF models power reranking, embedding and query expansion — a
+little over 2 GB in total. The installer asks where they should live:
+
+```
+relevance models (~2.4 GB): ~/.cache/qmd/models
+  0/3 cached · 13.1 GB free
+  Keep them there? [Y/n]
+```
+
+The proposal is a real answer, not a placeholder: what the config already says,
+else wherever the weights already are, else qmd's own location
+(`XDG_CACHE_HOME/qmd` or `~/.cache/qmd` — on Windows too; qmd does not use
+`LOCALAPPDATA`). Pressing Enter accepts it, `n` offers the other drives with
+their free space, and the last option takes a typed path.
+
+It is a question rather than a default because the answer is about the machine,
+not the software. The drive a home directory sits on is often the one with no
+room left, and a wrong guess does not fail politely: the download dies partway
+with `ENOSPC`, several minutes in.
+
+**Nothing is downloaded here.** The choice is written to
+`memory.qmd.cacheHome`; the weights arrive the first time a model is actually
+needed, which keeps `cam install` a configuration step rather than a
+two-gigabyte one. `cam doctor` reports which of the three are cached and where.
+
+| flag | effect |
+|---|---|
+| `--models <path>` | answers without prompting |
+| `--no-models` | leaves the setting exactly as it is |
+
+A non-interactive run — a script, a pipe, `--dry-run` — never prompts: it
+reports where the models would go and changes nothing.
+
+Accepting the built-in default writes nothing to the config, so a machine that
+is happy with `~/.cache` keeps a config file that does not mention it.
 
 ## Dream model
 

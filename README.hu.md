@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.11.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -57,8 +57,9 @@ flowchart LR
   E[Gemini CLI] --> H
   F[Antigravity] --> H
   G[Devin] --> H
-  H --> CLI
-  H --> MCP
+  H --> Q{{qmd: expand · embed · rerank}}
+  Q --> CLI
+  Q --> MCP
 ```
 
 Az index **hivatkozásokat** tárol, nem másolatot. A források read-onlyak. Semmi nem hagyja el a gépet.
@@ -70,6 +71,8 @@ Az index **hivatkozásokat** tárol, nem másolatot. A források read-onlyak. Se
 | A forrás read-only | Szerkezeti: `openSourceReadonly`. A `cam` sosem ír másik ágens tárolójába. |
 | Opcionális modellhasználat | Nincs telemetria. Az álomfázis, az embedding és a frissítés külön bekapcsolást igényel. A generálás kiírja a tervezett szövegmennyiséget; bekapcsolt szemantikus keresésnél a kérdés szövege is átkerül a beállított embedding parancshoz. |
 | Megmondja, milyen régi | Minden MCP-válasz az index korával végződik. A `STALE` azt jelenti: ne idézd frissként. |
+| Relevancia a gépen | A találatokat a beépített [qmd](https://github.com/tobi/qmd) modellek rangsorolják újra (embeddinggemma-300M, Qwen3-Reranker-0.6B). Amit a modell elutasít, azt eldobjuk — a kevés találat kevés *releváns* találatot jelent. |
+| Fájlok és megjegyzések | A `cam docs` indexeli a projekt saját fájljait (`.ts`, `.tsx`, `.js`, …), a `cam note` pedig egy mondatot fűz egy útvonalhoz — azt, amit a kódbázis nem tud magáról elmondani. |
 
 ---
 
@@ -88,7 +91,17 @@ cam install --dry-run          # a terv
 cam install                    # MCP, skill, ütemezés
 ```
 
-A `cam install` beköti a szervert minden megtalált ágens-eszközbe, melléteszi a skillt, ad az álom fázisnak modellt a gépen már meglévő CLI-k közül, és beállítja az óránkénti frissítést. Kikapcsolók: [`docs/install.hu.md`](docs/install.hu.md).
+A `cam install` beköti a szervert minden megtalált ágens-eszközbe, melléteszi a skillt, ad az álom fázisnak modellt a gépen már meglévő CLI-k közül, megkérdezi, hova kerüljenek a relevancia-modellek, és beállítja az óránkénti frissítést. Kikapcsolók: [`docs/install.hu.md`](docs/install.hu.md).
+
+**Hova kerülnek a modellek.** A relevancia-réteg három helyi GGUF modellt használ, összesen valamivel több mint 2 GB. A telepítő javasol egy helyet, te pedig Entert nyomsz vagy megadsz másikat — azért kérdés, mert a home könyvtár meghajtóján gyakran épp nincs hely, és a rossz tipp félbeszakadt letöltéssel végződik:
+
+```
+relevance models (~2.4 GB): ~/.cache/qmd/models
+  0/3 cached · 13.1 GB free
+  Keep them there? [Y/n]
+```
+
+Telepítéskor semmi nem töltődik le; a súlyok az első használatkor érkeznek. A `cam install --models <útvonal>` kérdés nélkül válaszol, a `--no-models` pedig békén hagyja a beállítást.
 
 A Claude Code (és a Claude Code Desktop, ugyanaz a mappa) skilljét külön is fel lehet tenni:
 
@@ -134,8 +147,12 @@ A `roots` alatt mind a tíz tárolóhely felülírható.
 cam sync                       # inkrementális beolvasás
 cam projects                   # amit az index ismer
 cam dossier <projekt>          # egy projekt, minden eszköz
-cam recall "ahogy megbeszéltük" # teljes szöveg; ékezetre érzéketlen
+cam recall "ahogy megbeszéltük" # helyben újrarangsorolva; a lényegtelent eldobja
 cam get cursor:9f2a…#seq12-18  # a recall által adott hivatkozás
+
+cam docs add .                 # a projekt saját fájljainak indexelése
+cam docs query "hol dől el X"  # .ts, .tsx, .js, .py … szintaxis szerint darabolva
+cam note add src/a.ts "…"      # mire való a fájl; minden találat hozza
 ```
 
 Közös kapcsolók: `--json`, `--since` / `--until`, `--tool <eszköz>`, `--subagents`, `--include-weak`, `--limit N`, `--db <útvonal>`, `--quiet`, `--verbose`. Kilépés `0` / `1` / `2` = rendben / hiba / használat. Két `cam sync` közül a második kilép.
@@ -151,7 +168,7 @@ cam install                    # bekötés minden kliensbe
 cam-mcp                        # vagy kézzel: stdio, JSON-RPC a stdout-on
 ```
 
-Hét csak-olvasó tool: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Bekötés: [`docs/mcp.hu.md`](docs/mcp.hu.md).
+Nyolc csak-olvasó tool: `cam_dossier`, `cam_docs`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Bekötés: [`docs/mcp.hu.md`](docs/mcp.hu.md).
 
 Minden válasz — a hibás is — az index korával végződik:
 
@@ -198,6 +215,45 @@ cam memory dream [--dry-run]   # opcionális mondat, beállított modelltől
 Ugyanaz az adatbázis, ugyanaz a promóció. A promotált emlék sem tárol szöveget — chunk-hivatkozás. Részletek: [`docs/memory.hu.md`](docs/memory.hu.md).
 
 A `cam memory dream` alapból ki van kapcsolva, a `consolidate` sosem hívja, kiírja, mi menne ki *mielőtt* kimegy, és a generált mondatot a modell nevével címkézi.
+
+## Relevancia a gépen
+
+A recall korábban azt adta vissza, ami szó szerint egyezett. Most a találatokat egy helyi cross-encoder pontozza, és amit elutasít, azt **eldobjuk**, nem hátrasoroljuk — a kevés találat tehát kevés *releváns* találatot jelent, nem vékony indexet. Három GGUF modell dolgozik, mind a gépen, semmi nem megy ki:
+
+| lépés | modell | alapértelmezés |
+|---|---|---|
+| újrarangsorolás | Qwen3-Reranker-0.6B-Q8_0 | be |
+| beágyazás | embeddinggemma-300M-Q8_0 | `memory.embedding.provider: "qmd"` |
+| kérdés-kiterjesztés | qmd-query-expansion-1.7B-q4_k_m | ki — mérve ~74 s új kérdésenként |
+
+```bash
+cam recall "miért változott a docker port"   # újrarangsorolva
+cam recall "docker" --no-rerank              # a nyers találati halmaz
+cam recall "docker" --min-score 0.1          # lazább küszöb
+cam dossier <projekt> --focus "attribution"  # relevancia szerint, nem méret szerint
+```
+
+Az indexelésnél is vágunk: a tool-hívás blokkok, hosszú diffek és bemásolt fájlok számlált jelölőkké válnak (`[42 lines elided]`), így az index beszélgetést tárol, nem gépezetet. Ez megváltoztatja az indexelt szöveget, ezért verziózott — a `cam doctor` szól, ha egy hubnak `cam rebuild` kell.
+
+**Visszaesik, nem akad meg.** A hiányzó vagy még töltődő modell pontosságba kerül, sosem találatba: minden lépés figyelmeztetéssel esik vissza. Egy modell betöltése kb. egy perc natív, megszakíthatatlan munka, ezért az MCP szerver nem tölt be modellt, amíg a `memory.qmd.warmUp` nem kéri — azonnal válaszol, modell nélkül, és ezt ki is mondja —, a terminálban futó `cam recall` viszont megvárja, mert egy egyszeri parancsnak nincs következő kérdése. A `CAM_QMD=0` egy futásra kikapcsolja a réteget. Számok és indoklás: [`docs/memory.hu.md`](docs/memory.hu.md).
+
+---
+
+## A projekt saját fájljai
+
+A beszélgetések hivatkozásként maradnak a hubban. A projekt **fájljai** a qmd indexébe kerülnek, szintaxis szerint darabolva — így a találat egy függvényre esik, nem annak a közepére —, és mindegyikhez tartozhat egy megjegyzés arról, mire való.
+
+```bash
+cam docs add . --project myapp               # ts, tsx, js, py, go, rs, md …
+cam docs index                               # beolvasás és beágyazás
+cam docs query "hol dől el az auth"
+cam note add src/auth/session.ts "A refresh szándékos; lásd RFC-14."
+cam note list
+```
+
+A megjegyzés az, amit a kódbázis nem tud magáról elmondani — miért létezik egy modul, mihez ne nyúlj. Minden fájl-találat hozza az útvonalához tartozó megjegyzést, és a legpontosabb nyer: a `src/auth/`-ra írt a mappát írja le, a `src/auth/session.ts`-re írt pedig felülírja arra a fájlra. A `node_modules`, a `dist` és a lock fájlok alapból kimaradnak. Ágensből ugyanez a `cam_docs`.
+
+---
 
 ## Frissítés
 

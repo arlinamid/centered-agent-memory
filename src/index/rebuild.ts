@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { initSchema, type Db } from "../db/open.js";
+import { CURRENT_RENDER_VERSION, readRenderVersion, writeRenderVersion, type RenderVersion } from "./denoise.js";
 import { Hydrator, MISSING_MARK } from "./hydrate.js";
 
 export interface RebuildStat {
@@ -9,6 +11,10 @@ export interface RebuildStat {
   stale: number;
   /** Chunks with at least one turn whose source is gone. */
   missing: number;
+  /** Chunks whose stored hash was recomputed because the rendering changed. */
+  rehashed: number;
+  /** The rendering this hub now holds. */
+  renderVersion: RenderVersion;
 }
 
 /**
@@ -24,8 +30,13 @@ export interface RebuildStat {
  * `sync --repair` cannot do this job: it re-reads the sources for turns it does
  * not already have, and every turn here is already known.
  */
-export function rebuildFts(db: Db, onProgress?: (done: number, total: number) => void): RebuildStat {
-  const stat: RebuildStat = { chunks: 0, indexed: 0, stale: 0, missing: 0 };
+export function rebuildFts(
+  db: Db,
+  onProgress?: (done: number, total: number) => void,
+  target: RenderVersion = CURRENT_RENDER_VERSION,
+): RebuildStat {
+  const was = readRenderVersion(db);
+  const stat: RebuildStat = { chunks: 0, indexed: 0, stale: 0, missing: 0, rehashed: 0, renderVersion: target };
 
   // A corrupt virtual table cannot be deleted from, only dropped. initSchema
   // recreates it (and the delete trigger) from the same DDL as a fresh hub.
@@ -34,9 +45,15 @@ export function rebuildFts(db: Db, onProgress?: (done: number, total: number) =>
 
   const ids = (db.prepare("select id from chunks order by id").all() as Array<{ id: number }>).map((r) => r.id);
   stat.chunks = ids.length;
-  if (ids.length === 0) return stat;
+  if (ids.length === 0) {
+    writeRenderVersion(db, target);
+    return stat;
+  }
 
-  const hydrator = new Hydrator(db);
+  // Read with the rendering we are moving to, not the one the hub holds: this
+  // pass is what makes the two agree again.
+  const hydrator = new Hydrator(db, target);
+  const rehash = db.prepare("update chunks set text_sha256 = ? where id = ?");
   const insert = db.prepare("insert into chunks_fts(rowid, text) values (?, ?)");
   // Batched so a large corpus neither holds one enormous transaction nor pays
   // a commit per chunk.
@@ -49,6 +66,14 @@ export function rebuildFts(db: Db, onProgress?: (done: number, total: number) =>
           const { text, status, readable } = hydrator.resolveChunk(id);
           if (status === "missing") stat.missing++;
           else if (status === "stale") stat.stale++;
+          // The stored hash is what `planEmbeddings` compares against, so a
+          // changed rendering has to be written back or every chunk silently
+          // stops being embeddable. Only a chunk that read back cleanly earns a
+          // new hash: rehashing a drifted source would record the drift as if
+          // it had always been there, and lose the one signal that says so.
+          if (was !== target && status === "ok") {
+            if (rehash.run(createHash("sha256").update(text).digest("hex"), id).changes) stat.rehashed++;
+          }
           // A chunk with one lost turn out of five is still worth finding; one
           // with nothing left would only index the placeholder text.
           if (readable === 0) continue;
@@ -63,5 +88,8 @@ export function rebuildFts(db: Db, onProgress?: (done: number, total: number) =>
     hydrator.close();
   }
 
+  // Last, so an interrupted rebuild leaves the hub claiming the rendering it
+  // still mostly holds rather than one it only partly has.
+  writeRenderVersion(db, target);
   return stat;
 }

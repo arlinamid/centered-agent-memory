@@ -14,7 +14,10 @@ export default defineConfig({
     // Pinned, but not nailed shut: `test.env` overrides the shell, so writing
     // "1" outright would silently ignore a caller asking for the other
     // folding — and CI runs the suite a second time doing exactly that.
-    env: { CAM_CASE_FOLD: process.env.CAM_CASE_FOLD ?? "1" },
+    // The relevance layer is off for the whole suite. Opening it would create
+    // qmd's index and download models onto the machine running the tests; the
+    // layer's own behaviour is covered with a stub runtime instead.
+    env: { CAM_CASE_FOLD: process.env.CAM_CASE_FOLD ?? "1", CAM_QMD: "0" },
 
     // A large part of this suite spawns the CLI as a real subprocess, so each
     // worker costs far more than a worker usually does. On a two-core runner

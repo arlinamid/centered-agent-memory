@@ -151,11 +151,12 @@ describe("optional semantic retrieval", () => {
     const config = embeddingConfig();
     await runEmbeddings(h.hub, config, planEmbeddings(h.hub, config));
     const embedding = { model: config.model!, vector: [1, 0, 0] };
-    expect(recall(h.hub, { query: "cycling", project: "demo", embedding }).map((h) => h.sessionExtId)).toEqual(["bike"]);
-    expect(recall(h.hub, { query: "cycling", tool: "claude_code", embedding })).toEqual([]);
-    expect(recall(h.hub, { query: "cycling", sinceMs: NOW + DAY, embedding })).toEqual([]);
-    expect(recall(h.hub, { query: "cycling", embedding: { ...embedding, model: "wrong" } })).toEqual([]);
-    expect(recall(h.hub, { query: "cycling", embedding: { ...embedding, vector: [1, 0] } })).toEqual([]);
+    const embeddings = [embedding];
+    expect(recall(h.hub, { query: "cycling", project: "demo", embeddings }).map((h) => h.sessionExtId)).toEqual(["bike"]);
+    expect(recall(h.hub, { query: "cycling", tool: "claude_code", embeddings })).toEqual([]);
+    expect(recall(h.hub, { query: "cycling", sinceMs: NOW + DAY, embeddings })).toEqual([]);
+    expect(recall(h.hub, { query: "cycling", embeddings: [{ ...embedding, model: "wrong" }] })).toEqual([]);
+    expect(recall(h.hub, { query: "cycling", embeddings: [{ ...embedding, vector: [1, 0] }] })).toEqual([]);
   });
 
   it("falls back visibly when the embedding command fails", async () => {

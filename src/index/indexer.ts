@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Db } from "../db/open.js";
 import type { ToolId } from "../db/schema.js";
 import { chunkTurns, type ChunkInput } from "./chunker.js";
+import { readRenderVersion } from "./denoise.js";
 
 /**
  * Where a turn's text actually lives. We store this, never the text itself.
@@ -194,7 +195,10 @@ export function addTurns(db: Db, sessionId: number, turns: ReadonlyArray<TurnInp
  */
 export function indexChunks(db: Db, sessionId: number, turns: ReadonlyArray<TurnInput>): void {
   const inputs: ChunkInput[] = turns.map((t) => ({ seq: t.seq, role: t.role, text: t.text, tsMs: t.tsMs }));
-  const chunks = chunkTurns(inputs);
+  // The hub's own rendering, so an incremental sync into an older index keeps
+  // producing hashes that index's hydrator can reproduce. Upgrading is
+  // `cam rebuild`'s job, and it is all-or-nothing.
+  const chunks = chunkTurns(inputs, { renderVersion: readRenderVersion(db) });
   if (chunks.length === 0) return;
 
   const session = db.prepare("select project_id, started_ms from sessions where id = ?").get(sessionId) as {

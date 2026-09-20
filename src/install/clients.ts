@@ -56,6 +56,14 @@ The \`cam_*\` MCP tools are also available from the terminal if \`cam\` is on PA
 \`cam timeline <project>\`, \`cam memory list\`. Each accepts \`--json\`. Rendering is shared,
 so you get the same text as from the tools.
 
+The relevance layer has flags there too: \`cam recall "<query>" --no-rerank\` for the raw
+match set, \`--min-score 0..1\` for the threshold, and \`cam dossier <project> --focus "<topic>"\`
+for a dossier ordered by relevance. \`cam doctor\` says whether the local models are cached.
+
+File collections are managed from the terminal only: \`cam docs add [path]\`, \`cam docs index\`,
+\`cam docs query "<q>"\`, and \`cam note add <path> "<what it is for>"\`. If nothing is indexed
+yet, say so rather than concluding the project has no such file.
+
 If the index is stale, \`cam sync\` refreshes it. That is the only write, and it writes
 only the index.`;
 
