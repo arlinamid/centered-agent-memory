@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { CURRENT_RENDER_VERSION, renderTurn, type RenderVersion } from "./denoise.js";
 
 /**
  * Vendored from telecodex `src/agent/memory/chunker.ts` and generalized:
@@ -27,19 +26,15 @@ export interface ChunkOptions {
   /** ~4 chars per token, matching the vendored heuristic. */
   maxTokens?: number;
   overlapTokens?: number;
-  /**
-   * Which rendering the hub holds. Comes from the database, never from
-   * configuration: the hydrator has to reproduce these exact bytes, and it only
-   * knows what the hub says.
-   */
-  renderVersion?: RenderVersion;
+}
+
+function render(turn: ChunkInput): string {
+  return `${turn.role}: ${turn.text}`;
 }
 
 export function chunkTurns(turns: ReadonlyArray<ChunkInput>, options: ChunkOptions = {}): ChunkRecord[] {
   const maxChars = Math.max(64, (options.maxTokens ?? 400) * 4);
   const overlapChars = Math.max(0, (options.overlapTokens ?? 80) * 4);
-  const version = options.renderVersion ?? CURRENT_RENDER_VERSION;
-  const render = (turn: ChunkInput): string => renderTurn(turn.role, turn.text, version);
   if (turns.length === 0) return [];
 
   const out: ChunkRecord[] = [];

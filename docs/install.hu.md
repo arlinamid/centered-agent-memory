@@ -23,13 +23,12 @@ sem módosul, egyetlen modellt sem hívunk meg.
 
 ## Mi történik
 
-Öt egymástól független rész, mindegyik külön kikapcsolható és külön jelentve:
+Négy egymástól független rész, mindegyik külön kikapcsolható és külön jelentve:
 
 | rész | mit csinál | kikapcsolás |
 |---|---|---|
 | MCP | felveszi a szervert minden megtalált kliens konfigurációjába | `--no-mcp` |
 | skill | odateszi a használati utasítást, ahol az eszköz olvassa | `--no-skills` |
-| modellek | megkérdezi, hol legyenek a relevancia-modellek | `--no-models` |
 | álom | modellt választ a fázishoz egy már telepített ágens-CLI-ból | `--no-dream` |
 | ütemezés | óránkénti szinkron, éjszakai karbantartás | `--no-schedule` |
 
@@ -143,42 +142,6 @@ npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent clau
 Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban. A klasszikus Claude Desktop /
 Cowork appnak nincs ilyen mappája — Cowork csak a Customize → Skills feltöltőn keresztül
 regisztrál, fájlmásolásra nem. Oda a szerver saját instrukciója jut el, minden válasszal.
-
-## Relevancia-modellek
-
-Három helyi GGUF modell végzi az újrarangsorolást, a beágyazást és a
-kérdés-kiterjesztést — összesen valamivel több mint 2 GB. A telepítő megkérdezi,
-hova kerüljenek:
-
-```
-relevance models (~2.4 GB): ~/.cache/qmd/models
-  0/3 cached · 13.1 GB free
-  Keep them there? [Y/n]
-```
-
-A javaslat valódi válasz, nem helykitöltő: amit a konfiguráció mond, különben
-ahol a súlyok már megvannak, különben a qmd saját helye (`XDG_CACHE_HOME/qmd`
-vagy `~/.cache/qmd` — Windowson is; a qmd nem a `LOCALAPPDATA`-t használja). Az
-Enter elfogadja, az `n` felkínálja a többi meghajtót a szabad hellyel, az utolsó
-lehetőség pedig beírt útvonalat vesz át.
-
-Azért kérdés és nem alapértelmezés, mert a válasz a gépről szól, nem a
-szoftverről. A home könyvtár meghajtóján gyakran épp nincs hely, és a rossz tipp
-nem udvariasan hibázik: a letöltés `ENOSPC`-vel áll meg félúton, percekkel
-később.
-
-**Itt semmi nem töltődik le.** A választás a `memory.qmd.cacheHome`-ba kerül; a
-súlyok akkor érkeznek, amikor először tényleg kell egy modell — így a
-`cam install` konfigurációs lépés marad, nem kétgigás. A `cam doctor` megmondja,
-a háromból melyik van meg és hol.
-
-| kapcsoló | hatás |
-|---|---|
-| `--models <útvonal>` | kérdés nélkül válaszol |
-| `--no-models` | pontosan úgy hagyja a beállítást, ahogy van |
-
-Nem interaktív futás — script, cső, `--dry-run` — sosem kérdez: kiírja, hova
-kerülnének, és nem változtat semmit.
 
 ## Álom-modell
 

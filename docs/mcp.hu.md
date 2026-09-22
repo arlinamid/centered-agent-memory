@@ -28,16 +28,15 @@ A `stdout` a JSON-RPC csatorna, ezért minden emberi olvasásra szánt kimenet a
 
 | tool | mire való |
 |---|---|
-| `cam_dossier` | egy projekt teljes képe: eszközönkénti számok, időtartomány, legnagyobb sessionök, legutóbbi témák, melléktermékek, forrás-állapot. `focus`-szal relevancia szerint rendezve |
+| `cam_dossier` | egy projekt teljes képe: eszközönkénti számok, időtartomány, legnagyobb sessionök, legutóbbi témák, melléktermékek, forrás-állapot |
 | `cam_timeline` | a projekt sessionjei időrendben, minden eszközből, a hozzárendelés módjával |
-| `cam_recall` | teljes szövegű keresés, idézhető hivatkozással. Kiterjesztve, majd helyi relevancia-modellel pontozva (`rerank`, `expand`, `minScore`) |
-| `cam_docs` | keresés a projekt saját fájljaiban (.ts, .tsx, .js, …), minden találat hozza az útvonalra írt megjegyzést |
+| `cam_recall` | teljes szövegű keresés, idézhető hivatkozással |
 | `cam_get` | egy hivatkozás kibontása teljes szöveggé (CLI-ból: `cam get`) |
 | `cam_projects` | az indexelt projektek listája |
 | `cam_memory` | a hosszú távú memória: amit több kérdés, több nap alatt többször előhívtál — a promóció bizonyítékával |
 | `cam_status` | mikor szinkronizált utoljára az index, mit tartalmaz, megbízható-e |
 
-Nyolc tool, szándékosan ennyi. Minden további tool minden bekötött kliensben, minden kérésnél kontextust
+Hét tool, szándékosan ennyi. Minden további tool minden bekötött kliensben, minden kérésnél kontextust
 fogyaszt.
 
 A `cam_memory` `id` nélkül a promotált emlékeket listázza (projektre szűrhető), `id`-vel egy emlék

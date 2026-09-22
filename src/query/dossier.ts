@@ -1,6 +1,4 @@
 import type { Db } from "../db/open.js";
-import type { EmbeddingConfig } from "../search/embeddings.js";
-import { recallWithEmbeddings, type RecallLayer } from "./recall.js";
 
 export interface TimelineEntry {
   tool: string;
@@ -90,79 +88,15 @@ export interface Dossier {
   availability: Record<string, number>;
   topSessions: TimelineEntry[];
   recentTitles: Array<{ tool: string; title: string; whenMs: number | null }>;
-  /** Sessions too short to be about anything, kept as a count instead of a list. */
-  trivialSessions: number;
-  /** The question the lists were ordered by, when one was asked. */
-  focus: string | null;
   artifacts: Array<{ kind: string; count: number; bytes: number }>;
   fileEvents: { count: number; firstMs: number | null; lastMs: number | null };
 }
 
 /**
- * Which of a project's sessions are about something, most relevant first.
- *
- * A thin wrapper over `recallWithEmbeddings` on purpose: a focused dossier and
- * a focused search must agree about what "relevant" means, and the only way to
- * guarantee that is for there to be one implementation of it.
- */
-export async function focusedSessions(
-  db: Db,
-  project: string,
-  focus: string,
-  opts: { embedding?: EmbeddingConfig; layer?: RecallLayer; limit?: number; warn?: (m: string) => void } = {},
-): Promise<string[]> {
-  const hits = await recallWithEmbeddings(
-    db,
-    {
-      query: focus,
-      project,
-      limit: Math.min(50, Math.max(10, opts.limit ?? 40)),
-      minConfidence: "weak",
-      // A dossier is a report, not a question the memory layer should learn
-      // from: ordering a summary must not promote what it happened to order by.
-      logQuery: false,
-    },
-    opts.embedding ?? {},
-    opts.warn,
-    opts.layer ?? {},
-  );
-  const seen = new Set<string>();
-  const order: string[] = [];
-  for (const h of hits) {
-    if (seen.has(h.sessionExtId)) continue;
-    seen.add(h.sessionExtId);
-    order.push(h.sessionExtId);
-  }
-  return order;
-}
-
-export interface DossierOptions {
-  /** Bounds the two list sections (`--limit` on the CLI). */
-  topN?: number;
-  /**
-   * A session shorter than this is a false start, not a topic. Folding them
-   * into a count is the whole point: eight one-turn sessions named after the
-   * same aborted prompt push out the one conversation that mattered.
-   */
-  minTurns?: number;
-  /** What the lists are about, for the report to state. */
-  focus?: string | null;
-  /**
-   * Session ids in relevance order, from a focused search. The caller runs
-   * that search — it needs a model and this function is synchronous — and the
-   * order is applied here so both surfaces render the same dossier.
-   */
-  focusOrder?: ReadonlyArray<string>;
-}
-
-/**
  * Everything the hub knows about one project, in a single pass of small
- * queries.
+ * queries. `topN` bounds the two list sections (`--limit` on the CLI).
  */
-export function dossier(db: Db, project: string, options: number | DossierOptions = {}): Dossier | null {
-  const opts: DossierOptions = typeof options === "number" ? { topN: options } : options;
-  const topN = opts.topN ?? 8;
-  const minTurns = opts.minTurns ?? 2;
+export function dossier(db: Db, project: string, topN = 8): Dossier | null {
   const proj = db.prepare("select id, key, root_path from projects where key = ?").get(project) as
     | { id: number; key: string; root_path: string | null }
     | undefined;
@@ -223,28 +157,12 @@ export function dossier(db: Db, project: string, options: number | DossierOption
 
   const wanted = Math.max(1, topN);
   const all = timeline(db, { project, includeSubagents: true, limit: 1000 });
-  const substantial = all.filter((e) => e.turns >= minTurns);
-  const trivialSessions = all.length - substantial.length;
-
-  // Relevance order when the caller asked about something; otherwise size, then
-  // recency, which is what "what happened here" means with no question.
-  const rank = new Map((opts.focusOrder ?? []).map((id, i) => [id, i]));
-  const byRelevance = (a: TimelineEntry, b: TimelineEntry): number =>
-    (rank.get(a.sessionExtId) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.sessionExtId) ?? Number.MAX_SAFE_INTEGER);
-
-  const topSessions = rank.size
-    ? [...substantial].sort((a, b) => byRelevance(a, b) || b.turns - a.turns).filter((e) => rank.has(e.sessionExtId)).slice(0, wanted)
-    : [...substantial].sort((a, b) => b.turns - a.turns).slice(0, wanted);
-
+  const topSessions = [...all].sort((a, b) => b.turns - a.turns).slice(0, wanted);
   // Repeated runs of the same prompt are one topic, not eight.
   const seenTitle = new Set<string>();
   const recentTitles: Array<{ tool: string; title: string; whenMs: number | null }> = [];
-  const ordered = rank.size
-    ? [...substantial].sort((a, b) => byRelevance(a, b) || (b.startedMs ?? 0) - (a.startedMs ?? 0))
-    : [...substantial].sort((a, b) => (b.startedMs ?? 0) - (a.startedMs ?? 0));
-  for (const e of ordered) {
+  for (const e of [...all].sort((a, b) => (b.startedMs ?? 0) - (a.startedMs ?? 0))) {
     if (!e.title) continue;
-    if (rank.size && !rank.has(e.sessionExtId)) continue;
     const key = e.title.slice(0, 40).toLowerCase();
     if (seenTitle.has(key)) continue;
     seenTitle.add(key);
@@ -267,8 +185,6 @@ export function dossier(db: Db, project: string, options: number | DossierOption
     availability,
     topSessions,
     recentTitles,
-    trivialSessions,
-    focus: opts.focus ?? null,
     artifacts,
     fileEvents: { count: fileEvents.count, firstMs: fileEvents.first_ms, lastMs: fileEvents.last_ms },
   };

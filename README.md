@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.11.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.0-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -55,9 +55,8 @@ flowchart LR
   E[Gemini CLI] --> H
   F[Antigravity] --> H
   G[Devin] --> H
-  H --> Q{{qmd: expand · embed · rerank}}
-  Q --> CLI
-  Q --> MCP
+  H --> CLI
+  H --> MCP
 ```
 
 The index stores **locators**, not copies. Sources stay read-only. Nothing leaves the machine.
@@ -69,8 +68,6 @@ The index stores **locators**, not copies. Sources stay read-only. Nothing leave
 | Sources are read-only | Structural: `openSourceReadonly`. The tool never writes another agent's store. |
 | Optional model access | No telemetry. Dreaming, embeddings, and updates are opt-in. Embedding and dream generation report planned text volume; enabling semantic recall also hands query text to your configured embedding command. |
 | Says how old it is | Every MCP answer ends with the index age. `STALE` means do not quote it as current. |
-| Relevance, on device | Results are reranked by bundled [qmd](https://github.com/tobi/qmd) models (embeddinggemma-300M, Qwen3-Reranker-0.6B). Passages the model rejects are dropped, so few hits means few relevant hits. |
-| Files and notes | `cam docs` indexes the project's own files (`.ts`, `.tsx`, `.js`, …) and `cam note` attaches a sentence to a path — the part a codebase cannot state about itself. |
 
 ---
 
@@ -89,17 +86,7 @@ cam install --dry-run          # read the plan
 cam install                    # wire MCP, skill, schedule
 ```
 
-`cam install` registers the server with every agent tool it finds, writes a skill, picks an optional dream model from a CLI already on the machine, asks where to keep the relevance models, and schedules hourly refresh. Opt-outs and the full plan: [`docs/install.md`](docs/install.md).
-
-**Where the models go.** The relevance layer uses three local GGUF models, a little over 2 GB in total. The installer proposes a location and you press Enter or name another — it is a question because the drive a home directory sits on is often the one with no room left, and guessing wrong ends in a half-finished download:
-
-```
-relevance models (~2.4 GB): ~/.cache/qmd/models
-  0/3 cached · 13.1 GB free
-  Keep them there? [Y/n]
-```
-
-Nothing is downloaded during install; the weights arrive on first use. `cam install --models <path>` answers it without a prompt, and `--no-models` leaves the setting alone.
+`cam install` registers the server with every agent tool it finds, writes a skill, picks an optional dream model from a CLI already on the machine, and schedules hourly refresh. Opt-outs and the full plan: [`docs/install.md`](docs/install.md).
 
 Claude Code (and Claude Code Desktop, same folder) can take the skill alone:
 
@@ -145,12 +132,8 @@ Any of the ten store locations can be overridden under `roots`.
 cam sync                       # incremental read of every source
 cam projects                   # what the index knows
 cam dossier <project>          # one project, every tool
-cam recall "as we discussed"   # reranked locally; irrelevant hits dropped
+cam recall "as we discussed"   # full-text; accent-insensitive
 cam get cursor:9f2a…#seq12-18  # the citation recall printed
-
-cam docs add .                 # index this project's own files
-cam docs query "where is X"    # .ts, .tsx, .js, .py … chunked by syntax
-cam note add src/a.ts "…"      # what a file is for; every hit carries it
 ```
 
 Shared flags: `--json`, `--since` / `--until`, `--tool <tool>`, `--subagents`, `--include-weak`, `--limit N`, `--db <path>`, `--quiet`, `--verbose`. Exit `0` / `1` / `2` = ok / fail / usage. A second `cam sync` steps back from the first.
@@ -166,7 +149,7 @@ cam install                    # register with every client on the machine
 cam-mcp                        # or start by hand: stdio, JSON-RPC on stdout
 ```
 
-Eight read-only tools: `cam_dossier`, `cam_docs`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Wiring: [`docs/mcp.md`](docs/mcp.md).
+Seven read-only tools: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Wiring: [`docs/mcp.md`](docs/mcp.md).
 
 Every response — including errors — ends with the index age:
 
@@ -214,45 +197,6 @@ cam memory embed [--dry-run]   # optional vectors, using an embedding command yo
 Same database, same promotions. A promoted memory stores no text either — it references a chunk. Details: [`docs/memory.md`](docs/memory.md).
 
 `cam memory dream` is off by default, never runs from `consolidate`, prints what would leave the machine before it leaves, and labels every generated sentence with the model that wrote it.
-
-## Relevance, on device
-
-Recall used to return whatever matched lexically. Now the results are scored by a local cross-encoder and the ones it rejects are **dropped**, not pushed down the list — so a short answer means little was relevant, not that the index is thin. Three GGUF models do the work, all on the machine, nothing leaving it:
-
-| stage | model | default |
-|---|---|---|
-| reranking | Qwen3-Reranker-0.6B-Q8_0 | on |
-| embedding | embeddinggemma-300M-Q8_0 | `memory.embedding.provider: "qmd"` |
-| query expansion | qmd-query-expansion-1.7B-q4_k_m | off — measured at ~74 s per new question |
-
-```bash
-cam recall "why the docker port changed"     # reranked
-cam recall "docker" --no-rerank              # the raw match set
-cam recall "docker" --min-score 0.1          # loosen the threshold
-cam dossier <project> --focus "attribution"  # sessions by relevance, not size
-```
-
-Transcript exhaust is cut at index time too: tool-call blocks, long diffs and pasted files become counted markers (`[42 lines elided]`), so the index holds conversation rather than machinery. That changes what is indexed, so it is versioned — `cam doctor` says when a hub needs `cam rebuild`.
-
-**It degrades rather than blocks.** A missing or still-loading model costs precision, never an answer: each stage falls back with a warning. Loading a model takes about a minute of native, uninterruptible work, so the MCP server does not load one unless `memory.qmd.warmUp` says to — it answers immediately without the model and says so — while `cam recall` in a terminal waits, because a one-shot command has no next question. `CAM_QMD=0` turns the layer off for a run. Full numbers and reasoning: [`docs/memory.md`](docs/memory.md).
-
----
-
-## The project's own files
-
-Conversations stay in the hub as locators. A project's **files** are indexed into qmd, chunked by syntax — so a hit lands on a function, not halfway through one — and each one can carry a note saying what it is for.
-
-```bash
-cam docs add . --project myapp               # ts, tsx, js, py, go, rs, md …
-cam docs index                               # read and embed them
-cam docs query "where is auth decided"
-cam note add src/auth/session.ts "Refresh is deliberate; see RFC-14."
-cam note list
-```
-
-A note is the part a codebase cannot state about itself — why a module exists, what not to touch. Every file hit carries the note for its path, and the most specific one wins: a note on `src/auth/` describes the folder, one on `src/auth/session.ts` overrides it for that file. `node_modules`, `dist` and lock files are excluded by default. Agents reach the same thing through `cam_docs`.
-
----
 
 ## Updating
 

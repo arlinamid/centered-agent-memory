@@ -9,7 +9,7 @@ import { checkPortability } from "../db/portability.js";
 import { initSchema, openHub, type Db } from "../db/open.js";
 import { getFact, listFacts, listTopics, memoryStatus } from "../memory/facts.js";
 import { describeFreshness, formatFreshness, freshness } from "../ops/freshness.js";
-import { dossier, focusedSessions, listProjects, timeline } from "../query/dossier.js";
+import { dossier, listProjects, timeline } from "../query/dossier.js";
 import {
   formatDossier,
   formatMemory,
@@ -20,8 +20,6 @@ import {
   formatTurns,
 } from "../query/format.js";
 import { getTurns, parseCitation, recallWithEmbeddings } from "../query/recall.js";
-import { docsApi, formatDocHits, formatNotes } from "../qmd/docs.js";
-import { openQmd, type QmdConfig } from "../qmd/runtime.js";
 import type { EmbeddingConfig } from "../search/embeddings.js";
 import { defaultRoots } from "../paths.js";
 import { DaemonSession } from "../sources/language-server.js";
@@ -30,7 +28,7 @@ import { fetchDevinCascade } from "../sources/devin-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.11.0";
+export const SERVER_VERSION = "0.10.0";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
 Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and
@@ -40,12 +38,6 @@ Use it before asking about or assuming earlier work on a project: cam_dossier
 gives the full picture, cam_timeline the chronology, cam_recall full-text
 search, and cam_get the full text of a hit. cam_memory returns what earlier
 searches brought up more than once, across days and questions — with evidence.
-
-cam_recall widens the question and then scores what it found with a local
-relevance model, dropping the passages that only matched words. So a short
-answer means little was relevant, not that the search was narrow — say that
-rather than guessing the index is empty. Pass rerank: false to see the raw
-match set, or lower minScore to loosen it.
 
 Every hit carries a project-attribution confidence (strong / medium / weak /
 none). Weak attribution comes from time overlap and can be wrong. If a source
@@ -57,8 +49,6 @@ quoting old data as current.`;
 
 export interface ServerOptions {
   embedding?: EmbeddingConfig;
-  /** The local relevance layer. Absent means its defaults, which is on. */
-  qmd?: QmdConfig;
   /** Past this age the index reports itself as stale. */
   staleAfterMs?: number;
   nowMs?: () => number;
@@ -113,25 +103,14 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       description:
         "What happened on a project: per-tool session and turn counts, date range, " +
         "largest sessions, recent topics, artifacts, source state. " +
-        "Start here when you want a project's history. Give focus a topic to order " +
-        "the session lists by relevance to it instead of by size and recency.",
+        "Start here when you want a project's history.",
       inputSchema: {
         project: z.string().min(1).describe("Project key, as listed by cam_projects"),
-        focus: z.string().optional().describe("Order the lists by relevance to this question"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    dated(async ({ project, focus }: { project: string; focus?: string }) => {
-      const warnings: string[] = [];
-      const runtime = focus ? await openQmd(opts.qmd ?? {}, (m) => warnings.push(m)) : null;
-      const focusOrder = focus
-        ? await focusedSessions(db, project, focus, {
-            embedding: opts.embedding,
-            layer: { runtime, qmd: opts.qmd ?? {} },
-            warn: (m) => warnings.push(m),
-          })
-        : undefined;
-      const d = dossier(db, project, { focus: focus ?? null, focusOrder });
+    dated(({ project }: { project: string }) => {
+      const d = dossier(db, project);
       if (!d) {
         const known = listProjects(db)
           .slice(0, 15)
@@ -139,67 +118,8 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
           .join(", ");
         return text(`No such project: ${project}\nKnown projects: ${known}`, true);
       }
-      return text([formatDossier(d), ...warnings].join("\n"));
+      return text(formatDossier(d));
     }),
-  );
-
-  server.registerTool(
-    "cam_docs",
-    {
-      title: "Search the project's files",
-      description:
-        "Search a project's own files — .ts, .tsx, .js, .py and the rest — indexed locally " +
-        "and chunked by syntax, so a hit lands on a function rather than mid-line. Each hit " +
-        "carries any note attached to that path: a sentence saying what the file is for, " +
-        "which the code cannot tell you itself. Use action 'get' for a file's full text and " +
-        "'notes' to list the notes. This searches files on disk now, not the conversation " +
-        "history — cam_recall is for what was said.",
-      inputSchema: {
-        query: z.string().optional().describe("What to look for; required for action 'query'"),
-        action: z.enum(["query", "get", "notes"]).optional().describe("Default: query"),
-        path: z.string().optional().describe("For 'get': a file path or #docid"),
-        collection: z.string().optional(),
-        limit: z.number().int().min(1).max(50).optional(),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    dated(
-      async ({ query, action, path: filePath, collection, limit }: {
-        query?: string; action?: "query" | "get" | "notes"; path?: string; collection?: string; limit?: number;
-      }) => {
-        const warnings: string[] = [];
-        const runtime = await openQmd(opts.qmd ?? {}, (m) => warnings.push(m));
-        // Not an error: a machine with no file collections has nothing to
-        // report, the same way a search with no hits is not a failure. Saying
-        // so plainly lets the agent move on instead of retrying.
-        if (!runtime) {
-          return text(
-            "No local file index on this machine. The user can create one with: cam docs add [path]",
-          );
-        }
-        const docs = docsApi(runtime);
-
-        if (action === "notes") return text(formatNotes(await docs.notes(collection)));
-        if (action === "get") {
-          if (!filePath) return text("action 'get' needs a path", true);
-          const doc = await docs.get(filePath);
-          return doc ? text(doc.text) : text(`Not in any indexed collection: ${filePath}`, true);
-        }
-        if (!query) return text("action 'query' needs a query", true);
-        // Until the models are loaded this stays on keyword search. The hybrid
-        // path would block the whole server while one loads, and a server that
-        // stops answering is worse than one that answers less precisely.
-        const keywordOnly = !runtime.ready;
-        const hits = await docs.query(query, { collection, limit: limit ?? 10, keywordOnly });
-        return text(
-          [
-            formatDocHits(hits, query),
-            ...(keywordOnly ? ["Keyword search: the local relevance model is not loaded."] : []),
-            ...warnings,
-          ].join("\n"),
-        );
-      },
-    ),
   );
 
   server.registerTool(
@@ -260,11 +180,8 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       description:
         "Full-text search over indexed conversations. Accent-insensitive, with prefix " +
         "matching on longer words (so inflection is not a barrier). Every hit carries a " +
-        "citation that cam_get expands. The question is widened and the results are then " +
-        "scored by a local relevance model, which drops the ones that only matched words — " +
-        "so few hits means few relevant hits, not a narrow search. Set rerank false to see " +
-        "the unfiltered match set. Nothing leaves the machine unless an embedding command " +
-        "is configured, in which case query text is passed to that command.",
+        "citation that cam_get expands. Uses the configured embedding command for semantic " +
+        "retrieval when vectors are available; this passes query text to that command.",
       inputSchema: {
         query: z.string().min(1),
         project: z.string().optional(),
@@ -272,14 +189,6 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         since: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional(),
         includeWeak: z.boolean().optional().describe("Include weakly attributed hits"),
-        rerank: z.boolean().optional().describe("Score hits with the local relevance model (default true)"),
-        expand: z.boolean().optional().describe("Widen the question before retrieving (default true)"),
-        minScore: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Relevance floor; hits below it are dropped. Lower it to see more."),
       },
       annotations: { readOnlyHint: true, openWorldHint: opts.embedding?.provider === "command" },
     },
@@ -291,9 +200,6 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         since,
         limit,
         includeWeak,
-        rerank,
-        expand,
-        minScore,
       }: {
         query: string;
         project?: string;
@@ -301,29 +207,16 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
         since?: string;
         limit?: number;
         includeWeak?: boolean;
-        rerank?: boolean;
-        expand?: boolean;
-        minScore?: number;
       }) => {
         const warnings: string[] = [];
-        const runtime = await openQmd(opts.qmd ?? {}, (message) => warnings.push(message));
-        const hits = await recallWithEmbeddings(
-          db,
-          {
-            query,
-            project: project ?? null,
-            tool: tool ?? null,
-            sinceMs: parseDate(since),
-            limit: limit ?? 10,
-            minConfidence: includeWeak ? "weak" : "medium",
-            rerank,
-            expand,
-            minRerankScore: minScore,
-          },
-          opts.embedding,
-          (message) => warnings.push(message),
-          { runtime, qmd: opts.qmd ?? {} },
-        );
+        const hits = await recallWithEmbeddings(db, {
+          query,
+          project: project ?? null,
+          tool: tool ?? null,
+          sinceMs: parseDate(since),
+          limit: limit ?? 10,
+          minConfidence: includeWeak ? "weak" : "medium",
+        }, opts.embedding, (message) => warnings.push(message));
         return text([formatRecall(hits, query), ...warnings].join("\n"));
       },
     ),
@@ -497,20 +390,7 @@ export async function main(argv: ReadonlyArray<string> = process.argv.slice(2)):
   const cfg = loadConfig(dbPath ? { dbPath } : {}, (m) => process.stderr.write(`${m}\n`));
   const db = openHub(cfg.dbPath);
   initSchema(db);
-  const server = createServer(db, { staleAfterMs: cfg.staleAfterMs, embedding: cfg.embedding, qmd: cfg.qmd });
-  // Loading the reranker blocks the event loop for about a minute in native
-  // code, and a server that does it on startup answers nothing until it
-  // finishes — not even the tool listing a client asks for on connect, which is
-  // exactly how clients ended up timing out at sixty seconds. So this is the
-  // user's decision rather than the default: without it the server answers
-  // immediately, without the relevance model, and says so.
-  if (cfg.qmd.warmUp === true) {
-    void openQmd(cfg.qmd, (m) => process.stderr.write(`${m}\n`)).then(
-      (runtime) => runtime?.warmUp().catch(() => undefined),
-      () => undefined,
-    );
-  }
-
+  const server = createServer(db, { staleAfterMs: cfg.staleAfterMs, embedding: cfg.embedding });
   // stdout is the JSON-RPC channel; anything human-readable goes to stderr.
   process.stderr.write(`${SERVER_NAME} ${SERVER_VERSION} — ${cfg.dbPath}\n`);
   await server.connect(new StdioServerTransport());

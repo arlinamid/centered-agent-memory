@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DreamConfig } from "./memory/dream.js";
-import type { QmdConfig } from "./qmd/runtime.js";
 import type { EmbeddingConfig } from "./search/embeddings.js";
 import { DEFAULT_STALE_MS } from "./ops/freshness.js";
 import type { RetentionPolicy } from "./ops/prune.js";
@@ -22,12 +21,6 @@ export interface HubConfig {
    */
   dream: DreamConfig;
   embedding: EmbeddingConfig;
-  /**
-   * The local relevance layer: query expansion, embeddings and reranking, all
-   * on-device. Empty means the defaults apply, which is the layer turned on —
-   * it costs nothing until a model is actually asked for something.
-   */
-  qmd: QmdConfig;
   /** What `cam prune` removes. Empty means the built-in policy applies. */
   retention: Partial<RetentionPolicy>;
   /** Past this age the index reports itself as stale, everywhere it is quoted. */
@@ -87,7 +80,7 @@ export interface FileConfig {
   /** Any subset of the ten store locations. */
   roots?: Partial<ResolvedRoots>;
   /** Optional model commands; deterministic consolidation needs no provider. */
-  memory?: { dream?: DreamConfig; embedding?: EmbeddingConfig; qmd?: QmdConfig };
+  memory?: { dream?: DreamConfig; embedding?: EmbeddingConfig };
   retention?: Partial<RetentionPolicy>;
   /** Hours, because that is the unit the answer is thought about in. */
   staleAfterHours?: number;
@@ -140,7 +133,6 @@ export function loadConfig(overrides: Partial<HubConfig> = {}, warn?: (msg: stri
     maxInlineBytes: overrides.maxInlineBytes ?? file.maxInlineBytes ?? 256 * 1024,
     dream: overrides.dream ?? file.memory?.dream ?? {},
     embedding: overrides.embedding ?? file.memory?.embedding ?? {},
-    qmd: overrides.qmd ?? file.memory?.qmd ?? {},
     retention: overrides.retention ?? file.retention ?? {},
     update: overrides.update ?? file.update ?? {},
     staleAfterMs:

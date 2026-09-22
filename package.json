@@ -1,6 +1,6 @@
 {
   "name": "centered-agent-memory",
-  "version": "0.11.0",
+  "version": "0.10.0",
   "private": true,
   "homepage": "https://github.com/arlinamid/centered-agent-memory#readme",
   "bugs": "https://github.com/arlinamid/centered-agent-memory/issues",
@@ -51,7 +51,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
-    "@tobilu/qmd": "^2.8.3",
     "better-sqlite3": "^13.0.3",
     "stopwords-iso": "^1.1.0",
     "zod": "^3.25.76"

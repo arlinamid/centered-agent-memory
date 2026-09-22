@@ -120,155 +120,10 @@ The output of `cam memory show` includes all six components of the score and,
 row by row, the evidence: which question, how many times, from when to when.
 A promotion never appears without a way to see what justified it.
 
-## The relevance layer (qmd)
+## Optional embeddings
 
-`cam` bundles [qmd](https://github.com/tobi/qmd) and uses it as a **model
-runtime**, not as a second index. Nothing about a conversation is written into
-qmd's store: the hub keeps its own chunks, attribution and citations, and
-borrows three local models.
-
-| stage | model | what it does |
-|---|---|---|
-| expansion | `qmd-query-expansion-1.7B-q4_k_m` | turns one question into typed sub-queries (`lex`/`vec`/`hyde`) |
-| embedding | `embeddinggemma-300M-Q8_0` | vectors for chunks and for the question |
-| reranking | `Qwen3-Reranker-0.6B-Q8_0` | scores each retrieved passage against the question |
-
-The order is: widen, retrieve with everything, then cut. Reranking is where the
-de-noising happens — a passage the model scores below `minRerankScore` is
-**dropped**, not demoted, because a tool-call dump at position nine is still in
-a ten-hit answer.
-
-Everything runs on the machine. Weights are downloaded on first use into
-qmd's model cache (`XDG_CACHE_HOME/qmd/models`, or `~/.cache/qmd/models` — on
-Windows too; qmd does not use `LOCALAPPDATA`), and the qmd index at
-`<cache>/qmd/index.sqlite` is reused so the expansion and rerank caches survive
-between runs. `cacheHome` moves both when the home drive has no room for two
-gigabytes of weights.
-
-### What it costs
-
-Measured on one Windows machine, Vulkan GPU, uncached query:
-
-| stage | CPU | GPU |
-|---|---|---|
-| expansion | ~197 s | ~74 s |
-| reranking | ~83 s | ~8 s warm, ~22 s cold |
-| embedding | ~45 s | ~0.2 s warm, ~15 s cold |
-
-Three things follow, and they are the defaults:
-
-- **`expand` is off.** A minute and a half to phrase the question three more
-  ways is not a trade a search should make by itself.
-- **`gpu` is `"auto"`.** CPU is not a slower option here, it is not an option.
-- **Only the top 10 candidates are reranked, as ~500-character excerpts.** The
-  cost scales with the text handed over, not the number of candidates: 24 chunks
-  at 2000 characters took 14 s, the same 24 at 600 took 5 s. An answer shows ten
-  hits, so judging the sixtieth was never going to matter.
-
-Loading a model takes about a minute, in native code that blocks the event loop
-— no timeout can interrupt it. So the two surfaces behave differently, on
-purpose:
-
-- **The MCP server does not load models unless told to.** `warmUp: true` makes
-  it load the reranker at startup, paying a ~60 s freeze once — during which it
-  answers nothing at all, not even the tool listing a client asks for on
-  connect. Off (the default) it answers immediately without the relevance model
-  and says so, and `cam_docs` falls back to keyword search for the same reason.
-- **The CLI waits, without a deadline.** A one-shot command has no next
-  question: if it will not wait, it never reranks at all. So `cam recall` does
-  rerank — at the cost of loading the model on every run.
-
-The honest summary: reranking is cheap once a model is loaded and expensive to
-load, and nothing in-process can make that load interruptible. Running qmd as a
-separate daemon (`qmd mcp --http`) would move the load out of cam's process
-entirely; until then, the CLI is where reranking is practical, and the MCP
-server either accepts one startup freeze or answers without it.
-
-```json
-{
-  "memory": {
-    "qmd": {
-      "enabled": true,
-      "cacheHome": "D:\.cache",
-      "gpu": "auto",
-      "expand": false,
-      "rerank": true,
-      "minRerankScore": 0.3,
-      "deadlineMs": 45000,
-      "warmUp": false,
-      "denoise": true
-    },
-    "embedding": { "provider": "qmd" }
-  }
-}
-```
-
-Every stage degrades on its own and says so. A missing model costs precision,
-never recall: expansion failing costs breadth, embedding failing costs semantic
-matches, reranking failing leaves the keyword order — and each prints a warning
-rather than an empty answer. Each stage also gets **its own share** of
-`deadlineMs` rather than drawing from one pot in order: a slow embedding command
-would otherwise spend the whole budget and switch reranking off silently, which
-is the one stage the layer exists for. `CAM_QMD=0` turns the whole layer off for
-one run, `"enabled": false` for good. Reranking is skipped when only one hit was found;
-and if the model rejects *everything*, the best retrieval hit is kept, so a
-mis-scoring model can never turn an answer into silence.
-
-`cam doctor` reports which of the three models are cached and which rendering
-the hub holds.
-
-### Turn de-noising
-
-With `denoise` on (the default), a turn is cleaned as it is rendered into chunk
-text: tool-call blocks, long diffs, pasted files and injected boilerplate are
-replaced with counted markers like `[42 lines elided]`. The elision is always
-visible — a citation has to mean what it says.
-
-This changes what is indexed, so it is versioned. `meta.render_version` records
-which rendering produced a hub's `chunks.text_sha256`, and **both** the chunker
-and the hydrator read it, because the hash is written by one and recomputed by
-the other. Switching renderings is `cam rebuild`'s job: it re-renders, rewrites
-the hashes of chunks that read back cleanly, and leaves a drifted or missing
-source alone so the drift signal is not overwritten. Vectors invalidate
-themselves afterwards, so follow it with `cam memory embed`.
-
-An existing hub keeps the raw rendering until you rebuild. A fresh one starts
-denoised.
-
-## A project's own files, and notes on them
-
-Conversations live in the hub; a project's **files** go into qmd's index, which
-is the one place cam writes documents rather than locators. They are already on
-disk and already the user's, and qmd chunks `.ts`, `.tsx`, `.js`, `.py`, `.go`
-and `.rs` by syntax rather than by line, so a hit lands on a function instead of
-halfway through one.
-
-```bash
-cam docs add [path] [--project p]      # a collection over the project's files
-cam docs index                         # read them and embed them
-cam docs query "where is X decided"    # search them
-cam docs get <path|#docid>             # one file's text
-cam note add src/qmd/runtime.ts "Borrows qmd's models; writes nothing into qmd."
-cam note list
-```
-
-A **note** is qmd's `context` for a path: a sentence about what a file or folder
-is for. The search reads it alongside the file and every hit carries it, because
-it is the part a codebase cannot state about itself — why this module exists,
-what not to touch. The most specific note wins, so a note on `src/qmd/` describes
-the folder and one on `src/qmd/runtime.ts` overrides it for that file.
-
-The default pattern covers code and prose alike; `node_modules`, `dist`, lock
-files and other generated trees are excluded, because burying a project's own
-files under a hundred thousand someone else wrote is the opposite of the point.
-
-Agents reach the same thing through the `cam_docs` MCP tool (`query`, `get`,
-`notes`).
-
-## Optional embeddings without qmd
-
-The `command` provider remains, for a model of your own. Configure a command
-that runs it; the hub does not bundle or download anything for this path:
+Embeddings are disabled by default. Configure a command that runs your chosen
+embedding model; the hub does not bundle or download a model:
 
 ```json
 {
@@ -299,10 +154,9 @@ the backlog. Successful items are cached and failed items can be retried.
 The source excerpt sent to the model is capped at that character limit.
 
 Once configured and indexed, both `cam recall` and MCP `cam_recall` also embed
-the query and combine semantic candidates with lexical candidates. With
-`provider: "command"` this means query text is handed to the configured command
-on each search; whether the command uses a network service is determined by
-your adapter. With `provider: "qmd"` it does not leave the machine. Generation of
+the query and combine semantic candidates with lexical candidates. This means
+query text is handed to the configured command on each search; whether the
+command uses a network service is determined by your adapter. Generation of
 document embeddings happens only through the explicit `memory embed` command.
 Provider failures report a warning and fall back to keyword retrieval.
 

@@ -33,16 +33,15 @@ environment variable; without that it opens the same database the CLI does
 
 | tool | what it is for |
 |---|---|
-| `cam_dossier` | the full picture of one project: per-tool counts, date range, largest sessions, recent topics, artifacts, source status. With `focus`, ordered by relevance to a topic |
+| `cam_dossier` | the full picture of one project: per-tool counts, date range, largest sessions, recent topics, artifacts, source status |
 | `cam_timeline` | the project's sessions in time order, from every tool, with how they were attributed |
-| `cam_recall` | full-text search, with a citable reference. Widened, then scored by a local relevance model (`rerank`, `expand`, `minScore`) |
-| `cam_docs` | search the project's own files (.ts, .tsx, .js, …), each hit carrying the note attached to that path |
+| `cam_recall` | full-text search, with a citable reference |
 | `cam_get` | expand a citation into full text (from the CLI: `cam get`) |
 | `cam_projects` | the list of indexed projects |
 | `cam_memory` | long-term memory: what came back across several questions, on several days — with the evidence behind the promotion |
 | `cam_status` | when the index last synced, what it holds, whether it is trustworthy |
 
-Eight tools, deliberately that few. Every further tool consumes context in
+Seven tools, deliberately that many. Every further tool consumes context in
 every wired client, on every request.
 
 `cam_memory` without `id` lists the promoted memories (filterable by project),
@@ -50,14 +49,6 @@ with `id` returns one memory's full text with the evidence (when, on which
 questions it came up), and with `topics: true` the recurring topics. If the
 reply is empty, not enough recall trace has been collected yet — see
 [`memory.md`](memory.md).
-
-`cam_recall` does not return everything that matched. The question is widened
-into sub-queries, the index is searched with all of them, and the results are
-scored by a local relevance model that **drops** what it rejects. A short answer
-therefore means little was relevant — not that the index is empty. `rerank:
-false` returns the raw match set, `minScore` moves the threshold, and a hit that
-was scored carries its `relevance` alongside the citation. It all runs on the
-machine; see [`memory.md`](memory.md#the-relevance-layer-qmd).
 
 Each goes out with a `readOnlyHint: true` annotation, and returns an error as a
 tool error, not a crash.

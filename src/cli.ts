@@ -58,11 +58,7 @@ import {
   reattribute,
   resolveFileEvents,
 } from "./attribution/resolve.js";
-import { CURRENT_RENDER_VERSION, RENDER_RAW, readRenderVersion } from "./index/denoise.js";
 import { rebuildFts } from "./index/rebuild.js";
-import { QMD_MODELS, closeQmd, modelsPresent, openQmd, qmdCacheHome, qmdIndexPath, qmdModelCacheDir } from "./qmd/runtime.js";
-import { candidates, gb, plan, writeCacheHome } from "./install/models.js";
-import { collectionName, docsApi, formatDocHits, formatNotes } from "./qmd/docs.js";
 import * as log from "./log.js";
 import { backup, defaultBackupPath } from "./ops/backup.js";
 import { describeFreshness, freshness } from "./ops/freshness.js";
@@ -70,7 +66,7 @@ import { ForgetTargetError, forget, prune, vacuum } from "./ops/prune.js";
 import { consolidate, DEFAULT_BUDGET_CHARS } from "./memory/consolidate.js";
 import { getFact, listFacts, listTopics, memoryStatus } from "./memory/facts.js";
 import { DreamNotConfiguredError, forgetDreams, planDream, runDream } from "./memory/dream.js";
-import { dossier, focusedSessions, listProjects, timeline } from "./query/dossier.js";
+import { dossier, listProjects, timeline } from "./query/dossier.js";
 import {
   day,
   formatDossier,
@@ -82,7 +78,7 @@ import {
   formatTurns,
 } from "./query/format.js";
 import { getTurns, parseCitation, recallWithEmbeddings } from "./query/recall.js";
-import { embeddingModel, planEmbeddings, runEmbeddings, semanticProvider } from "./search/embeddings.js";
+import { planEmbeddings, runEmbeddings } from "./search/embeddings.js";
 import {
   EphemeralInstallError,
   ephemeralRoot,
@@ -105,9 +101,9 @@ import {
   writeDreamConfig,
   type DreamCandidate,
 } from "./install/dream.js";
-import { ask, confirm, interactive, select } from "./install/prompt.js";
+import { ask, interactive, select } from "./install/prompt.js";
 import { applySchedule, schedulePlan, scheduleState } from "./install/schedule.js";
-import { dateFlag, flag, has, limit, parseArgs, scoreFlag, type FlagSpec, type ParsedArgs } from "./args.js";
+import { dateFlag, flag, has, limit, parseArgs, type FlagSpec, type ParsedArgs } from "./args.js";
 
 /** Order matters: transcripts first, then enrichment, then derived artifacts. */
 const COLLECTORS: Collector[] = [
@@ -212,18 +208,16 @@ export const SPECS: Record<string, FlagSpec> = {
     bools: [...(QUERY_FLAGS.bools ?? []), "subagents"],
     values: [...(QUERY_FLAGS.values ?? []), "since", "until", "tool"],
   },
-  dossier: { bools: [...(QUERY_FLAGS.bools ?? [])], values: [...(QUERY_FLAGS.values ?? []), "focus"] },
+  dossier: QUERY_FLAGS,
   recall: {
-    bools: [...(QUERY_FLAGS.bools ?? []), "include-weak", "no-rerank", "no-expand"],
-    values: [...(QUERY_FLAGS.values ?? []), "project", "tool", "since", "min-score"],
+    bools: [...(QUERY_FLAGS.bools ?? []), "include-weak"],
+    values: [...(QUERY_FLAGS.values ?? []), "project", "tool", "since"],
   },
   get: { bools: [...(QUERY_FLAGS.bools ?? []), "refresh"], values: [...(QUERY_FLAGS.values ?? [])] },
   alias: {},
   attribute: {},
   reattribute: {},
   rebuild: {},
-  docs: { bools: ["json"], values: ["project", "pattern", "collection", "limit"] },
-  note: { bools: ["json"], values: ["project", "collection"] },
   doctor: {},
   memory: {
     bools: [...(QUERY_FLAGS.bools ?? []), "dry-run", "force"],
@@ -247,11 +241,10 @@ export const SPECS: Record<string, FlagSpec> = {
       "no-mcp",
       "no-skills",
       "no-dream",
-      "no-models",
       "no-schedule",
       "force",
     ],
-    values: [...(QUERY_FLAGS.values ?? []), "client", "dream", "model", "models"],
+    values: [...(QUERY_FLAGS.values ?? []), "client", "dream", "model"],
   },
   uninstall: {
     bools: [...(QUERY_FLAGS.bools ?? []), "project", "dry-run", "no-mcp", "no-skills", "no-dream", "no-schedule"],
@@ -408,34 +401,20 @@ function cmdTimeline(a: ParsedArgs): number {
   });
 }
 
-async function cmdDossier(a: ParsedArgs): Promise<number> {
+function cmdDossier(a: ParsedArgs): number {
   const [project, ...extra] = a.positional;
   if (!project || extra.length > 0) return usage("cam dossier <project>");
   const max = limit(a, 8);
-  const focus = flag(a, "focus") ?? null;
   if (a.errors.length > 0) return reportErrors(a);
 
-  return withHubAsync(async (db) => {
-    const qmd = cfg().qmd;
-    const runtime = focus ? await openQmd(qmd, log.warn) : null;
-    try {
-      const focusOrder = focus
-        ? await focusedSessions(db, project, focus, {
-            embedding: cfg().embedding,
-            layer: { runtime, qmd, waitForModel: true },
-            warn: log.warn,
-          })
-        : undefined;
-      const d = dossier(db, project, { topN: max, focus, focusOrder });
-      if (!d) {
-        log.fail(`No such project: ${project}`);
-        return EXIT_FAILED;
-      }
-      log.result(has(a, "json") ? JSON.stringify(d, null, 2) : formatDossier(d));
-      return EXIT_OK;
-    } finally {
-      await closeQmd();
+  return withHub((db) => {
+    const d = dossier(db, project, max);
+    if (!d) {
+      log.fail(`No such project: ${project}`);
+      return EXIT_FAILED;
     }
+    log.result(has(a, "json") ? JSON.stringify(d, null, 2) : formatDossier(d));
+    return EXIT_OK;
   });
 }
 
@@ -444,180 +423,20 @@ async function cmdRecall(a: ParsedArgs): Promise<number> {
   if (!query) return usage('cam recall "<query>"');
   const max = limit(a, 10);
   const sinceMs = dateFlag(a, "since");
-  const minScore = scoreFlag(a, "min-score");
   if (a.errors.length > 0) return reportErrors(a);
 
   return withHubAsync(async (db) => {
-    const qmd = cfg().qmd;
-    const runtime = await openQmd(qmd, log.warn);
-    try {
-      const hits = await recallWithEmbeddings(db, {
-        query,
-        project: flag(a, "project") ?? null,
-        tool: flag(a, "tool") ?? null,
-        sinceMs,
-        limit: max,
-        minConfidence: has(a, "include-weak") ? "weak" : "medium",
-        expand: !has(a, "no-expand"),
-        rerank: !has(a, "no-rerank"),
-        minRerankScore: minScore,
-      }, cfg().embedding, log.warn, { runtime, qmd, waitForModel: true });
-      log.result(has(a, "json") ? JSON.stringify(hits, null, 2) : formatRecall(hits, query));
-      return EXIT_OK;
-    } finally {
-      // The store holds an open handle and a live timer; a CLI run that leaves
-      // it open prints its answer and then hangs instead of exiting.
-      await closeQmd();
-    }
+    const hits = await recallWithEmbeddings(db, {
+      query,
+      project: flag(a, "project") ?? null,
+      tool: flag(a, "tool") ?? null,
+      sinceMs,
+      limit: max,
+      minConfidence: has(a, "include-weak") ? "weak" : "medium",
+    }, cfg().embedding, log.warn);
+    log.result(has(a, "json") ? JSON.stringify(hits, null, 2) : formatRecall(hits, query));
+    return EXIT_OK;
   });
-}
-
-/**
- * A project's own files, and the notes attached to them.
- *
- * Conversations live in the hub because they belong to other applications;
- * files are already on disk, so these go into qmd's index, where a `.tsx` is
- * chunked by syntax rather than by line. A note is a sentence about a path —
- * the thing a codebase cannot say about itself.
- */
-async function cmdDocs(a: ParsedArgs): Promise<number> {
-  const [sub = "list", ...rest] = a.positional;
-  const max = limit(a, 10);
-  if (a.errors.length > 0) return reportErrors(a);
-
-  const qmd = cfg().qmd;
-  const runtime = await openQmd(qmd, log.warn);
-  if (!runtime) {
-    log.fail("The qmd layer could not be opened; run cam doctor to see why.");
-    return EXIT_FAILED;
-  }
-  const docs = docsApi(runtime);
-
-  try {
-    switch (sub) {
-      case "add": {
-        const dir = rest[0] ?? process.cwd();
-        const name = collectionName(flag(a, "project") ?? path.basename(path.resolve(dir)));
-        await docs.add(name, { path: dir, pattern: flag(a, "pattern") });
-        log.status(`collection ${name} -> ${path.resolve(dir)}`);
-        log.status("Now run: cam docs index");
-        return EXIT_OK;
-      }
-      case "list": {
-        const rows = await docs.list();
-        log.result(
-          has(a, "json")
-            ? JSON.stringify(rows, null, 2)
-            : rows.length === 0
-              ? "No file collections. Add one with: cam docs add [path] [--project p]"
-              : rows.map((r) => `${r.name.padEnd(28)} ${String(r.files).padStart(6)} file(s)  ${r.path}`).join("\n"),
-        );
-        return EXIT_OK;
-      }
-      case "index": {
-        const t0 = Date.now();
-        const stat = await docs.index(rest[0]);
-        log.result(
-          has(a, "json")
-            ? JSON.stringify(stat, null, 2)
-            : `indexed ${stat.indexed}, updated ${stat.updated}, removed ${stat.removed} — ${Date.now() - t0} ms`,
-        );
-        return EXIT_OK;
-      }
-      case "query": {
-        const query = rest.join(" ");
-        if (!query) return usage('cam docs query "<question>"');
-        const hits = await docs.query(query, { collection: flag(a, "collection"), limit: max });
-        log.result(has(a, "json") ? JSON.stringify(hits, null, 2) : formatDocHits(hits, query));
-        return EXIT_OK;
-      }
-      case "get": {
-        const target = rest[0];
-        if (!target) return usage("cam docs get <path|#docid>");
-        const doc = await docs.get(target);
-        if (!doc) {
-          log.fail(`Not in any collection: ${target}`);
-          return EXIT_FAILED;
-        }
-        log.result(has(a, "json") ? JSON.stringify(doc, null, 2) : doc.text);
-        return EXIT_OK;
-      }
-      case "remove":
-      case "rm": {
-        const name = rest[0];
-        if (!name) return usage("cam docs remove <collection>");
-        log.result((await docs.remove(name)) ? `removed ${name}` : `no such collection: ${name}`);
-        return EXIT_OK;
-      }
-      default:
-        return usage("cam docs <add|list|index|query|get|remove>");
-    }
-  } finally {
-    await closeQmd();
-  }
-}
-
-/** File-level notes: what a path is for, kept next to the path. */
-async function cmdNote(a: ParsedArgs): Promise<number> {
-  const [sub = "list", ...rest] = a.positional;
-  if (a.errors.length > 0) return reportErrors(a);
-
-  const qmd = cfg().qmd;
-  const runtime = await openQmd(qmd, log.warn);
-  if (!runtime) {
-    log.fail("The qmd layer could not be opened; run cam doctor to see why.");
-    return EXIT_FAILED;
-  }
-  const docs = docsApi(runtime);
-
-  /** One collection, or the only one there is — a note needs a place to live. */
-  const whichCollection = async (): Promise<string | null> => {
-    const named = flag(a, "collection") ?? (flag(a, "project") ? collectionName(flag(a, "project")!) : undefined);
-    if (named) return named;
-    const all = await docs.list();
-    if (all.length === 1) return all[0]!.name;
-    log.fail(
-      all.length === 0
-        ? "No file collections yet. Run: cam docs add [path] [--project p]"
-        : `Several collections; name one with --collection: ${all.map((c) => c.name).join(", ")}`,
-    );
-    return null;
-  };
-
-  try {
-    switch (sub) {
-      case "add":
-      case "set": {
-        const [target, ...words] = rest;
-        const text = words.join(" ");
-        if (!target || !text) return usage('cam note add <path> "<what it is for>"');
-        const collection = await whichCollection();
-        if (!collection) return EXIT_FAILED;
-        await docs.note(collection, target, text);
-        log.status(`${collection}  ${target}
-  ${text}`);
-        return EXIT_OK;
-      }
-      case "rm":
-      case "remove": {
-        const target = rest[0];
-        if (!target) return usage("cam note rm <path>");
-        const collection = await whichCollection();
-        if (!collection) return EXIT_FAILED;
-        log.result((await docs.unnote(collection, target)) ? `removed note on ${target}` : `no note on ${target}`);
-        return EXIT_OK;
-      }
-      case "list": {
-        const notes = await docs.notes(flag(a, "collection"));
-        log.result(has(a, "json") ? JSON.stringify(notes, null, 2) : formatNotes(notes));
-        return EXIT_OK;
-      }
-      default:
-        return usage("cam note <add|list|rm>");
-    }
-  } finally {
-    await closeQmd();
-  }
 }
 
 /**
@@ -803,23 +622,13 @@ function cmdRebuild(): number {
     }
     const t0 = Date.now();
     try {
-      const target = cfg().qmd.denoise === false ? RENDER_RAW : CURRENT_RENDER_VERSION;
-      const stat = rebuildFts(
-        db,
-        (done, total) => {
-          if (done % 5000 === 0 || done === total) log.detail(`  ${done}/${total} chunk`);
-        },
-        target,
-      );
+      const stat = rebuildFts(db, (done, total) => {
+        if (done % 5000 === 0 || done === total) log.detail(`  ${done}/${total} chunk`);
+      });
       log.status(
         `reindexed: ${stat.indexed}/${stat.chunks} chunk(s)` +
           `  changed source: ${stat.stale}  missing: ${stat.missing}  ${Date.now() - t0} ms`,
       );
-      if (stat.rehashed > 0) {
-        log.status(
-          `rendering ${stat.renderVersion}: ${stat.rehashed} chunk hash(es) recomputed — run cam memory embed to refresh vectors.`,
-        );
-      }
       if (stat.missing > 0) {
         log.status("Chunks whose source is missing were left out of the index; those turns are marked 'missing'.");
       }
@@ -846,32 +655,19 @@ async function cmdMemory(a: ParsedArgs): Promise<number> {
     case "embed":
       return withHubAsync(async (db) => {
         const config = cfg().embedding;
-        const model = embeddingModel(config);
-        if (!semanticProvider(config) || !model || (config.provider === "command" && !config.command?.length)) {
-          return usage("Configure memory.embedding with provider: qmd, or provider: command with model and command; see docs/memory.md.");
-        }
-        // The qmd provider embeds on this machine, so "would go to" means the
-        // local model — but the plan is still printed before anything runs,
-        // because a dry run has to say the same thing either way.
-        const runtime = config.provider === "qmd" ? await openQmd(cfg().qmd, log.warn) : null;
-        if (config.provider === "qmd" && !runtime) {
-          return usage("The qmd layer could not be opened; run cam doctor to see which models are missing.");
+        if (config.provider !== "command" || !config.model || !config.command?.length) {
+          return usage("Configure memory.embedding with provider: command, model, and command; see docs/memory.md.");
         }
         const items = planEmbeddings(db, config, { project: flag(a, "project"), limit: max, force: has(a, "force") });
-        log.fail(`${items.length} chunk(s) · ${items.reduce((sum, item) => sum + item.text.length, 0)} characters would go to embedding model ${model}`);
+        log.fail(`${items.length} chunk(s) · ${items.reduce((sum, item) => sum + item.text.length, 0)} characters would go to embedding model ${config.model}`);
         if (has(a, "dry-run")) {
-          await closeQmd();
-          log.result(JSON.stringify({ candidates: items.length, model, dryRun: true }));
+          log.result(JSON.stringify({ candidates: items.length, model: config.model, dryRun: true }));
           return EXIT_OK;
         }
-        try {
-          const stat = await runEmbeddings(db, config, items, { runtime });
-          log.result(has(a, "json") ? JSON.stringify(stat, null, 2) : `embeddings: ${stat.generated} generated, ${stat.failed} failed`);
-          for (const error of stat.errors.slice(0, 5)) log.warn(error);
-          return stat.failed ? EXIT_FAILED : EXIT_OK;
-        } finally {
-          await closeQmd();
-        }
+        const stat = await runEmbeddings(db, config, items);
+        log.result(has(a, "json") ? JSON.stringify(stat, null, 2) : `embeddings: ${stat.generated} generated, ${stat.failed} failed`);
+        for (const error of stat.errors.slice(0, 5)) log.warn(error);
+        return stat.failed ? EXIT_FAILED : EXIT_OK;
       });
     case "consolidate":
       return withHub((db) => {
@@ -1150,31 +946,6 @@ function cmdDoctor(): number {
       log.status(`  ! fts broken: ${(err as Error).message} — run: cam rebuild`);
       healthy = false;
     }
-
-    // The relevance layer. None of this makes the hub unhealthy: a missing
-    // model costs precision, and the honest report is what it is missing, not
-    // a failure the user did not cause.
-    const qmd = cfg().qmd;
-    if (qmd.enabled === false) {
-      log.status("qmd layer: off (memory.qmd.enabled = false)");
-    } else {
-      const models = { ...QMD_MODELS, ...(qmd.models ?? {}) };
-      const present = modelsPresent(models, qmdModelCacheDir(qmd));
-      const missing = (Object.keys(present) as Array<keyof typeof present>).filter((k) => !present[k]);
-      log.status(`qmd layer: index ${qmd.dbPath ?? qmdIndexPath(qmd)}`);
-      log.status(`  models:  ${qmdModelCacheDir(qmd)}`);
-      log.status(
-        `  models: ${missing.length === 0 ? "all cached" : `${missing.join(", ")} not cached yet (downloaded on first use)`}`,
-      );
-    }
-
-    const render = readRenderVersion(db);
-    const wanted = qmd.denoise === false ? RENDER_RAW : CURRENT_RENDER_VERSION;
-    log.status(`chunk rendering:  version ${render}`);
-    if (render !== wanted) {
-      log.status(`  ! configured rendering is ${wanted} — run: cam rebuild, then cam memory embed`);
-    }
-
     return healthy ? EXIT_OK : EXIT_FAILED;
   } finally {
     db.close();
@@ -1572,7 +1343,6 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
     );
   }
   const doDream = !has(a, "no-dream") && !remove;
-  const doModels = !has(a, "no-models") && !remove;
   const doSchedule = !has(a, "no-schedule");
 
   // Checked here rather than only where the entry is built, because the
@@ -1629,8 +1399,6 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
   }
   for (const b of report.backups) log.detail(`backup: ${b}`);
 
-  if (doModels) failed = (await installModels(a, dryRun)) || failed;
-
   if (doDream) failed = (await installDream(a, dryRun)) || failed;
   else if (remove && clearDreamConfig()) log.status("\ndream model: removed from the config");
 
@@ -1650,88 +1418,6 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
     log.status("Done. Restart the agent clients so they pick up the server.");
   }
   return failed ? EXIT_FAILED : EXIT_OK;
-}
-
-/**
- * Ask where the relevance models should live.
- *
- * The installer works almost everything out for itself, and this is one of the
- * few things it cannot: two gigabytes of weights have to go on a drive with
- * room for them, and on a machine whose home drive is full that is not the
- * obvious place. Getting it wrong is not a polite failure — the download dies
- * partway with ENOSPC, minutes in — so it is worth one question.
- *
- * Nothing is downloaded here. The choice is written to the config and the
- * weights arrive on first use, which keeps `cam install` a configuration step
- * rather than a two-gigabyte one.
- */
-async function installModels(a: ParsedArgs, dryRun: boolean): Promise<boolean> {
-  log.status("");
-
-  const current = cfg().qmd;
-  const chosen = flag(a, "models");
-
-  if (chosen !== undefined) {
-    const p = plan(chosen);
-    if (!dryRun) writeCacheHome(p.cacheHome);
-    reportModelPlan(p, dryRun);
-    return false;
-  }
-
-  // The default is a real answer, not a placeholder: what the config already
-  // says, else wherever the weights already are, else qmd's own location.
-  const options = candidates(current);
-  const fallback = current.cacheHome ?? options.find((o) => o.cached > 0)?.cacheHome ?? qmdCacheHome(current);
-  const preferred = plan(fallback);
-
-  if (!interactive() || dryRun) {
-    // Nobody to ask, or nothing to write: say where they would go and move on.
-    reportModelPlan(preferred, dryRun);
-    if (!dryRun) log.status("  Somewhere else: cam install --models <path>");
-    return false;
-  }
-
-  log.status(`relevance models (~2.4 GB): ${preferred.modelsDir}`);
-  log.status(`  ${preferred.cached}/3 cached · ${gb(preferred.freeBytes)} free${preferred.tooSmall ? "  ! not enough room" : ""}`);
-
-  if (await confirm("  Keep them there?", true)) {
-    // Only written when it differs from what the defaults already produce, so
-    // accepting the default does not clutter the config with it.
-    if (!current.cacheHome && preferred.cacheHome !== path.resolve(qmdCacheHome({}))) {
-      writeCacheHome(preferred.cacheHome);
-    }
-    reportModelPlan(preferred, false);
-    return false;
-  }
-
-  const pick = await select(
-    "Where instead?",
-    options
-      .filter((o) => o.cacheHome !== preferred.cacheHome)
-      .map((o) => ({
-        value: o.cacheHome,
-        label: o.cacheHome,
-        hint: `${o.label} · ${gb(o.freeBytes)} free${o.cached > 0 ? ` · ${o.cached}/3 already here` : ""}`,
-      })),
-    { escape: "somewhere else (type a path)" },
-  );
-
-  const where = pick ?? (await ask("  Path: ", preferred.cacheHome));
-  const p = plan(where);
-  if (p.tooSmall) {
-    // Stated, not enforced: they may be about to free space, and refusing to
-    // record a choice they made is not the installer's call.
-    log.fail(`relevance models: ${gb(p.freeBytes)} free at ${p.cacheHome}, and ~2.4 GB are needed.`);
-  }
-  writeCacheHome(p.cacheHome);
-  reportModelPlan(p, false);
-  return false;
-}
-
-function reportModelPlan(p: ReturnType<typeof plan>, dryRun: boolean): void {
-  log.status(`relevance models: ${p.modelsDir}${dryRun ? "  (dry run: not written)" : ""}`);
-  log.status(`  ${p.cached}/3 cached · ${gb(p.freeBytes)} free`);
-  if (p.cached < 3) log.status("  The missing ones download on first use.");
 }
 
 /**
@@ -1913,23 +1599,12 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
   cam projects [--unattributed]          projects, or unattributed sessions
   cam timeline <project> [--since d]     timeline across every tool
   cam dossier <project> [--json]         the full picture of a project
-      [--focus "<topic>"]                ordered by relevance to a question
   cam recall "<query>" [--project p]     search the conversations
-      [--no-rerank] [--no-expand]        without the local relevance model
-      [--min-score 0..1]                 how relevant a hit must be to survive
   cam get <tool:id[#seqN-M]>             full text of a hit or session
   cam alias <folder> <project>           merge two folders into one project
   cam attribute <tool:id> <project>      manual attribution (overrides everything)
   cam reattribute                        recompute without reading stores
   cam rebuild                            rebuild the text index from sources
-
-  cam docs add [path] [--project p]      index a project's own files (ts, tsx, js, py, …)
-  cam docs index                         re-read and embed them
-  cam docs query "<question>"            search the files
-  cam docs get <path|#docid>             one file's text
-  cam docs list | remove <collection>    the collections
-  cam note add <path> "<text>"           what a file or folder is for
-  cam note list | rm <path>              the notes
   cam memory <subcommand>                long-term memory (see below)
 
   cam status [--json]                    when the index last synced
@@ -1947,8 +1622,6 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
 
   cam install [--dry-run] [--project]    wire into every agent tool found:
                                          MCP server, skill, dream model, schedule
-      [--models <path>]                  where the ~2.4 GB relevance models live
-      [--no-models]                      leave that choice alone
   cam uninstall [--dry-run]              the same in reverse; does not touch the index
   cam update [--check] [--yes]           look for a newer release (off by default:
                                          needs {"update":{"enabled":true}} in the config)
@@ -1998,7 +1671,7 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
       case "timeline":
         return cmdTimeline(a);
       case "dossier":
-        return await cmdDossier(a);
+        return cmdDossier(a);
       case "recall":
         return await cmdRecall(a);
       case "get":
@@ -2009,10 +1682,6 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
         return cmdAttribute(a);
       case "reattribute":
         return cmdReattribute();
-      case "docs":
-        return await cmdDocs(a);
-      case "note":
-        return await cmdNote(a);
       case "rebuild":
         return cmdRebuild();
       case "memory":

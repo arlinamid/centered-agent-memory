@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import type { Db } from "../db/open.js";
 import { openSourceReadonly } from "../db/open.js";
-import { readRenderVersion, renderTurn, type RenderVersion } from "./denoise.js";
 import { pluck, readLineAt, sha256 } from "./jsonl.js";
 
 export type Availability = "ok" | "stale" | "missing";
@@ -63,20 +62,8 @@ export interface Resolved {
  */
 export class Hydrator {
   private readonly sourceDbs = new Map<string, ReturnType<typeof openSourceReadonly> | null>();
-  /**
-   * Read once, from the hub. A chunk's stored hash was produced by whichever
-   * rendering was current when it was indexed, so reproducing it means asking
-   * the database which one that was — not the config, and not this build's
-   * default.
-   */
-  readonly renderVersion: RenderVersion;
 
-  constructor(
-    private readonly db: Db,
-    renderVersion?: RenderVersion,
-  ) {
-    this.renderVersion = renderVersion ?? readRenderVersion(db);
-  }
+  constructor(private readonly db: Db) {}
 
   close(): void {
     for (const handle of this.sourceDbs.values()) handle?.close();
@@ -216,13 +203,10 @@ export class Hydrator {
     for (const row of rows) {
       const r = this.resolve(row);
       if (r.status === "missing") {
-        // The placeholder stands for the turn, so it is not put through the
-        // same cleaning: there is nothing in it to clean, and passing it
-        // through would let a rule rewrite the one mark that says "gone".
         parts.push(`${row.role}: ${MISSING_MARK}`);
         worst = "missing";
       } else {
-        parts.push(renderTurn(row.role, r.text ?? "", this.renderVersion));
+        parts.push(`${row.role}: ${r.text ?? ""}`);
         readable++;
         if (r.status === "stale" && worst === "ok") worst = "stale";
       }

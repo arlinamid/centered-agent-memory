@@ -7,4 +7,3 @@ dist/
 *.sqlite-wal
 *.log
 *.tgz
-.cache/

@@ -11,18 +11,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-// The SDK's stdio client passes a minimal environment by default, so without
-// this the server would run against different configuration than the shell that
-// started the smoke test — which is how a layer nobody meant to exercise ended
-// up loading models mid-request and taking the connection down with it.
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: ["--import", "tsx", "src/mcp/server.ts"],
   cwd: process.cwd(),
   stderr: "pipe",
-  env: Object.fromEntries(
-    Object.entries(process.env).filter(([, v]) => v !== undefined),
-  ) as Record<string, string>,
 });
 const client = new Client({ name: "cam-smoke", version: "1.0.0" });
 await client.connect(transport);
@@ -46,9 +39,6 @@ const calls: Array<[string, Record<string, unknown>]> = [
   ["cam_dossier", { project }],
   ["cam_timeline", { project, limit: 3 }],
   ["cam_recall", { query: "memória konszolidáció", limit: 3 }],
-  // Usually nothing is indexed on a given machine; the answer then says so,
-  // which is a real answer and still has to carry the index's age.
-  ["cam_docs", { query: "runtime", limit: 3 }],
   ["cam_memory", {}],
   // The error path: a missing footer would be least noticed exactly here.
   ["cam_get", { citation: "nonsense" }],

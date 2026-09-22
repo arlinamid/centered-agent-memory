@@ -31,14 +31,10 @@ export function formatRecall(hits: ReadonlyArray<RecallHit>, query: string): str
         `${h.sessionTitle ? `  · ${h.sessionTitle}` : ""}`,
     );
     lines.push(`  ${h.snippet.replace(/\s+/g, " ")}`);
-    lines.push(`  ${h.citation}${h.rerank === undefined ? "" : `  relevance ${h.rerank.toFixed(2)}`}`);
+    lines.push(`  ${h.citation}`);
     lines.push("");
   }
-  const reranked = hits.some((h) => h.rerank !== undefined);
-  lines.push(
-    `${hits.length} hit(s). Marks: ~ medium, ? weak, ?? unattributed project.` +
-      (reranked ? "\nScored by the local relevance model; less relevant matches were dropped." : ""),
-  );
+  lines.push(`${hits.length} hit(s). Marks: ~ medium, ? weak, ?? unattributed project.`);
   return lines.join("\n");
 }
 
@@ -74,8 +70,6 @@ export function formatDossier(d: Dossier): string {
   L.push(`# ${d.project}${d.rootPath ? `  (${d.rootPath})` : ""}`);
   L.push("");
   L.push(`${d.totals.sessions} session · ${d.totals.turns} turn · ${d.totals.subagents} subagent thread(s)`);
-  if (d.focus) L.push(`Ordered by relevance to: ${d.focus}`);
-  if (d.trivialSessions > 0) L.push(`${d.trivialSessions} session(s) too short to be a topic, not listed below.`);
   L.push("");
 
   L.push("## Tools");
@@ -117,7 +111,7 @@ export function formatDossier(d: Dossier): string {
 
   if (d.topSessions.length > 0) {
     L.push("");
-    L.push(d.focus ? "## Most relevant sessions" : "## Largest sessions");
+    L.push("## Largest sessions");
     for (const s of d.topSessions) {
       L.push(`  ${String(s.turns).padStart(5)}t  ${s.tool.padEnd(14)} ${minute(s.startedMs)}  ${s.title ?? ""}`);
     }
@@ -125,7 +119,7 @@ export function formatDossier(d: Dossier): string {
 
   if (d.recentTitles.length > 0) {
     L.push("");
-    L.push(d.focus ? "## Topics, most relevant first" : "## Recent topics");
+    L.push("## Recent topics");
     for (const t of d.recentTitles) L.push(`  ${day(t.whenMs)}  ${t.tool.padEnd(14)} ${t.title}`);
   }
 
