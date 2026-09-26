@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-09-26
+
+### MCP server starts through a linked install
+
+- **`cam-mcp` answers again when installed with `npm link`.** The server
+  decided whether it was the entry module by comparing `import.meta.url` with
+  `process.argv[1]` raw. Node resolves symlinks in the first but not the
+  second, so through an `npm link` junction (or a version-manager symlink) the
+  check never matched: the server exited 0 before its first message and MCP
+  clients reported `CONNECTION_CLOSED`. It now uses the same resolved
+  comparison the CLI already had, shared in `src/entry.ts`.
+
+### 0.11.0 withdrawn
+
+- The 0.11.0 changes (qmd relevance layer, project files and notes) were
+  reverted; 0.10.1 is 0.10.0 plus the fix above.
+
 ## [0.10.0] — 2026-09-06
 
 ### Workspace-root attribution cache
