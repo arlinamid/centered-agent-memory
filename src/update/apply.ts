@@ -189,17 +189,22 @@ export function postUpdateWithNewBinary(
   }
 
   const sync = runInstalledCli(dbPath, ["sync", "--repair", "--quiet"], opts);
+  // The skills are copies in each client's directory; the package just
+  // replaced does not reach them. Run whatever the sync did, since a stale
+  // skill misleads every agent that reads it, and never fail the update on it.
+  const skills = runInstalledCli(dbPath, ["install", "--refresh-skills", "--quiet"], opts);
+  const skillNote = skills.error || skills.status !== 0 ? "; skills not refreshed (run: cam install --refresh-skills)" : "; skills refreshed";
   if (sync.error) {
-    return { ok: true, detail: "migrated; repair sync skipped (could not run cam: " + sync.error.message + ")" };
+    return { ok: true, detail: "migrated; repair sync skipped (could not run cam: " + sync.error.message + ")" + skillNote };
   }
   if (sync.status !== 0) {
     const lines = sync.text.split("\n").filter(Boolean);
     return {
       ok: true,
-      detail: `migrated; repair sync failed — ${lines[lines.length - 1] ?? `cam sync exited ${sync.status}`}`,
+      detail: `migrated; repair sync failed — ${lines[lines.length - 1] ?? `cam sync exited ${sync.status}`}${skillNote}`,
     };
   }
-  return { ok: true, detail: "migrated and reindexed from sources" };
+  return { ok: true, detail: `migrated and reindexed from sources${skillNote}` };
 }
 
 export function installTarball(file: string, opts: { npm?: string; run?: typeof spawnSync } = {}): InstallResult {
@@ -289,6 +294,15 @@ const sync = spawnSync(process.execPath, [cli, "sync", "--repair", "--quiet", "-
 if (sync.error) say("repair sync skipped: " + sync.error.message);
 else if (sync.status !== 0) say("REPAIR SYNC FAILED: " + (sync.stderr || sync.stdout || "").trim());
 else say("repair sync completed");
+
+// The skills live in each client's own directory, so the package just
+// installed does not replace them; only the ones already there are rewritten.
+const skills = spawnSync(process.execPath, [cli, "install", "--refresh-skills", "--quiet", "--db", dbPath], {
+  encoding: "utf8",
+  windowsHide: true,
+});
+if (skills.error || skills.status !== 0) say("skills not refreshed: " + (skills.error ? skills.error.message : (skills.stderr || skills.stdout || "").trim()) + " - run: cam install --refresh-skills");
+else say("skills refreshed");
 
 say("done");
 `;

@@ -147,6 +147,36 @@ function apply(opts: InstallOptions, remove: boolean): InstallReport {
 export const install = (opts: InstallOptions = {}): InstallReport => apply(opts, false);
 export const uninstall = (opts: InstallOptions = {}): InstallReport => apply(opts, true);
 
+export interface SkillRefresh {
+  client: string;
+  file: string;
+  change: "updated" | "unchanged";
+}
+
+/**
+ * Bring the skills cam already installed up to this version's text, and do
+ * nothing else.
+ *
+ * An update replaces the package, but the skill is a copy written into each
+ * client's own directory, and a copy does not update itself: after 0.10.1 the
+ * clients were still reading 0.11.0's skill, describing a reranker that no
+ * longer existed. Only files that are already there are rewritten — a client
+ * the user never installed the skill into, or removed it from, stays as it is.
+ */
+export function refreshSkills(opts: { scope?: Scope; only?: ClientId[]; home?: string; cwd?: string; dryRun?: boolean } = {}): SkillRefresh[] {
+  const body = skillBody();
+  const out: SkillRefresh[] = [];
+  for (const target of clientTargets(opts.scope ?? "user", opts.home, opts.cwd)) {
+    if (opts.only?.length && !opts.only.includes(target.id)) continue;
+    if (!target.skillFile || !fs.existsSync(target.skillFile)) continue;
+    const text = renderSkill(target, body);
+    const change = skillState(target.skillFile, text) === "unchanged" ? "unchanged" : "updated";
+    if (change === "updated" && !opts.dryRun) writeSkill(target.skillFile, text);
+    out.push({ client: target.name, file: target.skillFile, change });
+  }
+  return out;
+}
+
 export { clientTargets, SERVER_KEY, SKILL_NAME, isClientId } from "./clients.js";
 export type { ClientId, ClientTarget, Scope } from "./clients.js";
 export { serverEntry, ephemeralRoot, installRoot, resolved, EphemeralInstallError } from "./mcp.js";

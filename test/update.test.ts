@@ -319,6 +319,7 @@ describe("replacing the running copy", () => {
     expect(text).toContain("npm-cli.js");
     expect(text).toContain("sync");
     expect(text).toContain("--repair");
+    expect(text).toContain("--refresh-skills");
     expect(text).toContain("process.execPath");
     expect(text).not.toContain("cam.cmd");
     // It waits for the caller to let go of its own files.
@@ -400,7 +401,7 @@ describe("post-update repair sync", () => {
     }
   });
 
-  it("migrates, then runs sync --repair with the new binary", () => {
+  it("migrates, runs sync --repair, then refreshes the skills, all with the new binary", () => {
     const cli = path.join(dir, "cli.js");
     fs.writeFileSync(cli, "// stub\n", "utf8");
     const calls: Array<{ cmd: string; args: string[] }> = [];
@@ -410,10 +411,11 @@ describe("post-update repair sync", () => {
     }) as unknown as typeof spawnSync;
 
     const out = postUpdateWithNewBinary(dbPath, { run, cli });
-    expect(out).toEqual({ ok: true, detail: "migrated and reindexed from sources" });
+    expect(out).toEqual({ ok: true, detail: "migrated and reindexed from sources; skills refreshed" });
     expect(calls).toEqual([
       { cmd: process.execPath, args: [cli, "status", "--quiet", "--db", dbPath] },
       { cmd: process.execPath, args: [cli, "sync", "--repair", "--quiet", "--db", dbPath] },
+      { cmd: process.execPath, args: [cli, "install", "--refresh-skills", "--quiet", "--db", dbPath] },
     ]);
   });
 
@@ -440,7 +442,12 @@ describe("post-update repair sync", () => {
     }) as unknown as typeof spawnSync;
 
     const out = postUpdateWithNewBinary(dbPath, { run, cli });
-    expect(out).toEqual({ ok: true, detail: "migrated; repair sync failed — source locked" });
+    // The skills are refreshed even so: a stale one misleads every agent.
+    expect(out).toEqual({
+      ok: true,
+      detail: "migrated; repair sync failed — source locked; skills not refreshed (run: cam install --refresh-skills)",
+    });
+    expect(n).toBe(3);
   });
 });
 

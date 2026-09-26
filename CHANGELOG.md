@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.3] — 2026-09-26
+
+### Updates refresh the installed skills
+
+- **`cam update` now rewrites the agent skill it installed earlier.** The skill is a copy in each client's own directory, and replacing the package never reached it: after 0.10.1 and 0.10.2 every client was still reading 0.11.0's skill, which described a reranker, `rerank: false` and `minScore` that no longer existed. Only skills that are already installed are rewritten; a client that never had one, or had it removed, is left alone, and MCP entries, the dream model and the schedule are not touched.
+- **`cam sync --repair` does the same**, because it is the one step every released updater runs with the new binary — so updating from 0.10.2, whose updater predates this, refreshes the skills too. A partial `--tool` sync does not.
+- **`cam install --refresh-skills`** does it by hand, with `--dry-run`, `--client` and `--project`.
+
 ## [0.10.2] — 2026-09-26
 
 ### Project files, searched by keyword

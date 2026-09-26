@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.2-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.3-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -226,6 +226,8 @@ Same database, same promotions. A promoted memory stores no text either — it r
 `cam update --check` compares the installed version against the latest GitHub release; `cam update --yes` installs it. Both are off until the config file says `{"update": {"enabled": true}}`, and `cam update --dry-run` shows exactly what would be contacted without contacting it.
 
 An update stops any running `cam-mcp` server first (the MCP client starts a fresh one on its next tool call), takes the sync lock so a scheduled run cannot collide, and — when the copy being replaced is the one doing the replacing — hands the install to a script in a temp directory that waits for the process to exit. The index is then migrated immediately by the newly installed binary, rather than at 04:00 by an unattended job. An index written by a newer version is refused, not silently stamped back.
+
+The skill cam installed into each agent tool is a copy in that tool's own directory, so replacing the package does not reach it. After the install the new binary rewrites the skills that are already there — never adding one where there was none — and so does any full `cam sync --repair`. `cam install --refresh-skills` does it by hand.
 
 ---
 

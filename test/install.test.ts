@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clientTargets, SERVER_KEY, SKILL_NAME } from "../src/install/clients.js";
 import { dreamConfigFor, DreamModelRequiredError, describeBin, type DreamCandidate } from "../src/install/dream.js";
-import { install, uninstall } from "../src/install/index.js";
+import { install, refreshSkills, uninstall } from "../src/install/index.js";
 import { locate } from "../src/install/locate.js";
 import {
   EphemeralInstallError,
@@ -354,6 +354,43 @@ describe("install", () => {
 
     expect(fs.existsSync(path.join(home, ".codex", "config.toml"))).toBe(true);
     expect(fs.existsSync(path.join(home, ".cursor", "mcp.json"))).toBe(false);
+  });
+});
+
+describe("refreshing installed skills", () => {
+  const skill = (dir: string): string => path.join(home, dir, "skills", SKILL_NAME, "SKILL.md");
+
+  it("rewrites a stale skill, and touches nothing but the skills", () => {
+    mk(".codex");
+    mk(".cursor");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    // What 0.11.0 left behind: a skill describing a reranker that is gone.
+    fs.writeFileSync(skill(".codex"), "---\nname: agent-memory\n---\nPassages the model rejects are dropped.\n");
+    const config = read(path.join(home, ".codex", "config.toml"));
+
+    const out = refreshSkills({ home, cwd });
+    expect(out.map((r) => [r.client, r.change]).sort()).toEqual([
+      ["Codex", "updated"],
+      ["Cursor", "unchanged"],
+    ]);
+    expect(read(skill(".codex"))).not.toContain("rejects are dropped");
+    expect(read(path.join(home, ".codex", "config.toml"))).toBe(config);
+  });
+
+  it("never installs a skill that was not there", () => {
+    mk(".codex");
+    mk(".cursor");
+    install({ scope: "user", home, cwd, entry: ENTRY, only: ["codex"] });
+    expect(refreshSkills({ home, cwd }).map((r) => r.client)).toEqual(["Codex"]);
+    expect(fs.existsSync(skill(".cursor"))).toBe(false);
+  });
+
+  it("changes nothing on a dry run", () => {
+    mk(".codex");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    fs.writeFileSync(skill(".codex"), "old\n");
+    expect(refreshSkills({ home, cwd, dryRun: true })[0]!.change).toBe("updated");
+    expect(read(skill(".codex"))).toBe("old\n");
   });
 });
 

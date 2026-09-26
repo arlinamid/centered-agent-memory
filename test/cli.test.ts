@@ -510,6 +510,34 @@ describe("memory dream", () => {
  * The list is compared against `SPECS`, so a command added later fails this
  * test until it is exercised here.
  */
+describe("installed skills after an update", () => {
+  const skillFile = (): string => path.join(home, ".codex", "skills", "agent-memory", "SKILL.md");
+  const stale = "---\nname: agent-memory\n---\nPassages the model rejects are dropped.\n";
+
+  it("are rewritten by a repair sync, the one step every updater runs with the new binary", async () => {
+    fs.mkdirSync(path.dirname(skillFile()), { recursive: true });
+    fs.writeFileSync(skillFile(), stale);
+    expect(await run(["sync", "--tool", "codex", "--repair"])).toBe(EXIT_OK);
+    // --tool is a partial sync: it leaves the skills alone.
+    expect(fs.readFileSync(skillFile(), "utf8")).toBe(stale);
+    await run(["sync", "--repair"]);
+    expect(fs.readFileSync(skillFile(), "utf8")).not.toContain("rejects are dropped");
+    expect(stdout() + stderr()).toContain("Codex: updated to this version");
+  });
+
+  it("are rewritten by install --refresh-skills, and nothing else is written", async () => {
+    fs.mkdirSync(path.dirname(skillFile()), { recursive: true });
+    fs.writeFileSync(skillFile(), stale);
+    const before = fs.readdirSync(path.join(home, ".codex"));
+    expect(await run(["install", "--refresh-skills", "--dry-run"])).toBe(EXIT_OK);
+    expect(fs.readFileSync(skillFile(), "utf8")).toBe(stale);
+    expect(await run(["install", "--refresh-skills"])).toBe(EXIT_OK);
+    expect(fs.readFileSync(skillFile(), "utf8")).toContain("name: agent-memory");
+    expect(fs.readFileSync(skillFile(), "utf8")).not.toContain("rejects are dropped");
+    expect(fs.readdirSync(path.join(home, ".codex"))).toEqual(before);
+  });
+});
+
 describe("every command", () => {
   const CASES: Array<{ argv: string[]; exit?: number }> = [
     { argv: ["sync", "--tool", "codex"] },

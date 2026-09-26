@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.2-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.3-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -227,6 +227,8 @@ A `cam memory dream` alapból ki van kapcsolva, a `consolidate` sosem hívja, ki
 A `cam update --check` összeveti a telepített verziót a legutóbbi GitHub release-szel; a `cam update --yes` telepíti. Mindkettő ki van kapcsolva, amíg a konfigurációs fájl nem mondja, hogy `{"update": {"enabled": true}}`, a `cam update --dry-run` pedig megmutatja, mit keresne meg — anélkül, hogy megkeresné.
 
 A frissítés előbb leállítja a futó `cam-mcp` szervereket (az MCP kliens a következő eszközhívásnál újat indít), felveszi a sync-lockot, hogy ütemezett futás ne ütközzön bele, és — ha épp azt a példányt cserélné le, amelyik fut — egy ideiglenes könyvtárba írt szkriptre bízza a telepítést, ami megvárja a folyamat kilépését. Az indexet ezután azonnal az újonnan telepített bináris migrálja, nem hajnali 4-kor egy felügyelet nélküli job. Az újabb verzió által írt indexet visszautasítja, nem bélyegzi vissza csendben.
+
+A cam által az egyes agent-eszközökbe telepített skill az eszköz saját könyvtárában lévő másolat, így a csomag cseréje nem éri el. Telepítés után az új bináris átírja a már meglévő skilleket — oda, ahol nem volt, sosem tesz újat —, és ugyanezt teszi minden teljes `cam sync --repair` is. Kézzel: `cam install --refresh-skills`.
 
 ---
 

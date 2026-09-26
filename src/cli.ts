@@ -103,6 +103,7 @@ import {
   EphemeralInstallError,
   ephemeralRoot,
   install,
+  refreshSkills,
   installRoot,
   isClientId,
   resolved,
@@ -265,6 +266,7 @@ export const SPECS: Record<string, FlagSpec> = {
       "no-dream",
       "no-schedule",
       "force",
+      "refresh-skills",
     ],
     values: [...(QUERY_FLAGS.values ?? []), "client", "dream", "model"],
   },
@@ -355,6 +357,11 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
 
     // Only a full sync: `--tool` asks about one conversation store.
     if (!only) errors += await refreshDocs(db);
+
+    // A repair sync is the one step every released updater runs with the NEW
+    // binary, so it is where the installed skills catch up with it — an
+    // updater staged by an older version knows nothing of --refresh-skills.
+    if (repair && !only) refreshInstalledSkills();
 
     // A scheduled run learns about a broken source only from the exit code, so
     // this stays visible even under --quiet.
@@ -665,6 +672,23 @@ async function cmdNote(a: ParsedArgs): Promise<number> {
       }, false);
     default:
       return usage("cam note <add|list|rm>");
+  }
+}
+
+/**
+ * Rewrite the skills cam installed earlier to this version's text. Never adds
+ * one, and never fails the caller: a skill that cannot be written is reported,
+ * and the old text keeps working until the next try.
+ */
+function refreshInstalledSkills(): void {
+  try {
+    // CAM_HOME stands in for the profile everywhere else, and must here too:
+    // a test's repair sync would otherwise rewrite the developer's own skills.
+    for (const r of refreshSkills({ home: process.env.CAM_HOME || undefined })) {
+      if (r.change === "updated") log.status(`${"skill".padEnd(15)} ${r.client}: updated to this version`);
+    }
+  } catch (err) {
+    log.warn(`skills not refreshed: ${(err as Error).message}`);
   }
 }
 
@@ -1686,6 +1710,24 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
       "cam install --client <claude_code|claude_desktop|codex|cursor|gemini_cli|antigravity|devin>",
     );
   }
+
+  // Only the skill text, only where it is already installed: what an update
+  // runs after replacing the package. MCP entries, the dream model and the
+  // schedule are the user's choices, and an update has no business re-asking.
+  if (has(a, "refresh-skills")) {
+    if (remove) return usage("cam install --refresh-skills");
+    // CAM_HOME, like the repair sync: the profile a test points at, not the real one.
+    const refreshed = refreshSkills({ scope, only: only ? [only] : [], dryRun, home: process.env.CAM_HOME || undefined });
+    if (has(a, "json")) {
+      log.result(JSON.stringify(refreshed, null, 2));
+      return EXIT_OK;
+    }
+    for (const r of refreshed) {
+      log.status(`${r.client.padEnd(24)} skill ${r.change === "updated" ? (dryRun ? "would be updated" : "updated") : "unchanged"}`);
+    }
+    if (refreshed.length === 0) log.status("No installed skills to refresh. Install them with: cam install");
+    return EXIT_OK;
+  }
   const doDream = !has(a, "no-dream") && !remove;
   const doSchedule = !has(a, "no-schedule");
 
@@ -1974,6 +2016,7 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
 
   cam install [--dry-run] [--project]    wire into every agent tool found:
                                          MCP server, skill, dream model, schedule
+  cam install --refresh-skills           rewrite installed skills to this version (update does it)
   cam uninstall [--dry-run]              the same in reverse; does not touch the index
   cam update [--check] [--yes]           look for a newer release (off by default:
                                          needs {"update":{"enabled":true}} in the config)
