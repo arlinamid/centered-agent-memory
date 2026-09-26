@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { loadConfig } from "../config.js";
+import { isEntryPoint } from "../entry.js";
 import { checkPortability } from "../db/portability.js";
 import { initSchema, openHub, type Db } from "../db/open.js";
 import { getFact, listFacts, listTopics, memoryStatus } from "../memory/facts.js";
@@ -396,10 +396,11 @@ export async function main(argv: ReadonlyArray<string> = process.argv.slice(2)):
   await server.connect(new StdioServerTransport());
 }
 
-// Exact comparison, not a filename match: any module whose basename happened to
-// be server.js would otherwise start a stdio server on import.
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isEntry) {
+// Full-path comparison, not a filename match: any module whose basename happened
+// to be server.js would otherwise start a stdio server on import. Both sides are
+// resolved first — through an `npm link` junction a raw comparison never matched,
+// and the server exited silently before its first message.
+if (isEntryPoint(import.meta.url)) {
   main().catch((err: unknown) => {
     process.stderr.write(`${err instanceof Error ? err.stack : String(err)}\n`);
     process.exit(1);

@@ -16,6 +16,7 @@ import {
   type Db,
 } from "./db/open.js";
 import { TOOL_IDS } from "./db/schema.js";
+import { isEntryPoint as isEntry } from "./entry.js";
 import { acquireLock, describeHolder } from "./db/lock.js";
 import { checkPortability } from "./db/portability.js";
 import { claudeCodeCollector } from "./collectors/claude-code.js";
@@ -1719,26 +1720,8 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
   }
 }
 
-/**
- * Was this file run, or imported? A filename match would also fire on an
- * import, so the two paths are compared in full — but resolved first.
- *
- * Node hands out `import.meta.url` with symlinks resolved and `process.argv[1]`
- * exactly as the shell wrote it, and a Node version manager puts a symlink in
- * the middle of every global install (`C:\nvm\current`, `~/.nvm/versions/...`).
- * Comparing them raw made the globally installed CLI do nothing at all and exit
- * zero, which a scheduled task reports as an hourly success.
- */
 export function isEntryPoint(entry = import.meta.url, argv1 = process.argv[1]): boolean {
-  if (argv1 === undefined) return false;
-  const real = (p: string): string => {
-    try {
-      return fs.realpathSync.native(p);
-    } catch {
-      return path.resolve(p);
-    }
-  };
-  return real(fileURLToPath(entry)) === real(argv1);
+  return isEntry(entry, argv1);
 }
 
 if (isEntryPoint()) {
