@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { DocsConfig } from "./docs/files.js";
 import type { DreamConfig } from "./memory/dream.js";
 import type { EmbeddingConfig } from "./search/embeddings.js";
 import { DEFAULT_STALE_MS } from "./ops/freshness.js";
@@ -21,6 +22,8 @@ export interface HubConfig {
    */
   dream: DreamConfig;
   embedding: EmbeddingConfig;
+  /** Keyword search over a project's own files (`cam docs`). */
+  docs: DocsConfig;
   /** What `cam prune` removes. Empty means the built-in policy applies. */
   retention: Partial<RetentionPolicy>;
   /** Past this age the index reports itself as stale, everywhere it is quoted. */
@@ -81,6 +84,8 @@ export interface FileConfig {
   roots?: Partial<ResolvedRoots>;
   /** Optional model commands; deterministic consolidation needs no provider. */
   memory?: { dream?: DreamConfig; embedding?: EmbeddingConfig };
+  /** `{ "enabled": false }` turns project file search off; `dbPath` moves its index. */
+  docs?: DocsConfig;
   retention?: Partial<RetentionPolicy>;
   /** Hours, because that is the unit the answer is thought about in. */
   staleAfterHours?: number;
@@ -133,6 +138,7 @@ export function loadConfig(overrides: Partial<HubConfig> = {}, warn?: (msg: stri
     maxInlineBytes: overrides.maxInlineBytes ?? file.maxInlineBytes ?? 256 * 1024,
     dream: overrides.dream ?? file.memory?.dream ?? {},
     embedding: overrides.embedding ?? file.memory?.embedding ?? {},
+    docs: overrides.docs ?? file.docs ?? {},
     retention: overrides.retention ?? file.retention ?? {},
     update: overrides.update ?? file.update ?? {},
     staleAfterMs:

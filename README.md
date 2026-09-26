@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.1-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.2-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -149,7 +149,7 @@ cam install                    # register with every client on the machine
 cam-mcp                        # or start by hand: stdio, JSON-RPC on stdout
 ```
 
-Seven read-only tools: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Wiring: [`docs/mcp.md`](docs/mcp.md).
+Eight read-only tools: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`, and `cam_docs` for the project's own files. Wiring: [`docs/mcp.md`](docs/mcp.md).
 
 Every response — including errors — ends with the index age:
 
@@ -179,6 +179,29 @@ Past 24 hours (`staleAfterHours`) the line says `STALE, run: cam sync`, and the 
 Antigravity's conversation bodies (`conversations/*.pb`) are encrypted — measured at 7.998 bits of entropy per byte — so what is indexed is the summary, the typed prompts and the agent's plan documents. `cam get antigravity:<id>` asks the live language server for the body. Devin desktop / Windsurf Cascade is the same encrypted store without a summaries database: `cam sync` records the filename, and `cam get devin:<id>` fetches the text the same way.
 
 Formats and traps: [`docs/sources.md`](docs/sources.md). Schema: [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## Project files
+
+Conversations say why; the files say what. `cam docs` indexes a project's own files — code and prose — for keyword search, and `cam note` attaches a sentence to a file or folder that every hit under it carries.
+
+```bash
+cam docs add [path]                         # index a project (default: the current folder)
+cam docs add --known [--dry-run]            # every project cam knows, worked on in the last 90 days
+cam docs query "computeInvoiceTotal"        # BM25 keyword search, with line, snippet and notes
+cam docs get <collection>/<path>            # a file's indexed text
+cam note add src/billing "Money: every change needs a second reviewer."
+cam note list
+```
+
+Search is keyword-only (BM25 via [qmd](https://github.com/tobi/qmd)): no model is downloaded or loaded, so it answers in milliseconds on any machine, CPU-only included. Ask with the words the code would use.
+
+What a project does not count as its own stays out: whatever `.gitignore` (at every level, and `.git/info/exclude`), `.ignore`, `.vercelignore` and `.cursorignore` exclude, plus `node_modules`, `dist`, lock files and hidden files. The rules are read again on every refresh. `.npmignore` and `.dockerignore` are not used — they routinely list `src/` and `test/`.
+
+`--known` takes the projects from the hub whose folder still exists. A project that holds sub-projects (a monorepo with a marker such as `.git` or `package.json`) is indexed whole; a plain folder of projects is indexed one by one; hidden folders, folders past 3000 files and projects you removed with `cam docs remove` are left out, each with the reason. With `{"docs": {"autoAdd": true}}` every `cam sync` does the same for newly seen projects (`{"autoAdd": {"sinceDays": 30, "maxFiles": 5000}}` moves the limits).
+
+`cam sync` (and `cam docs index`) re-reads only the projects that changed. In a git repository git answers that: the commit checked out plus `git status`, with each changed file's size and mtime — two git calls, no file read. Elsewhere the folder is walked and sizes and mtimes are compared. With 54 projects an unchanged check takes about a second and a half; `cam docs index --force` reads everything anyway. Files over 1 MB (offline bundles, tokenizers, data dumps) are left out; `{"docs": {"maxFileBytes": …}}` moves the limit. So the MCP tool `cam_docs` sees the files as they are. The index is `docs.sqlite` next to the hub; `{"docs": {"enabled": false}}` turns it off.
 
 ---
 

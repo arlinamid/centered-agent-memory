@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.1-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.2-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -151,7 +151,7 @@ cam install                    # bekötés minden kliensbe
 cam-mcp                        # vagy kézzel: stdio, JSON-RPC a stdout-on
 ```
 
-Hét csak-olvasó tool: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`. Bekötés: [`docs/mcp.hu.md`](docs/mcp.hu.md).
+Nyolc csak-olvasó tool: `cam_dossier`, `cam_timeline`, `cam_recall`, `cam_get`, `cam_projects`, `cam_memory`, `cam_status`, valamint a `cam_docs` a projekt saját fájljaihoz. Bekötés: [`docs/mcp.hu.md`](docs/mcp.hu.md).
 
 Minden válasz — a hibás is — az index korával végződik:
 
@@ -181,6 +181,29 @@ Minden válasz — a hibás is — az index korával végződik:
 Az Antigravity beszélgetés-törzsei (`conversations/*.pb`) titkosítottak — mérve 7,998 bit entrópia bájtonként —, ezért az összefoglalót, a begépelt promptokat és az ügynök terv-dokumentumait indexeljük. A `cam get antigravity:<id>` az élő language servertől kéri a törzset. A Devin asztali / Windsurf Cascade ugyanez a titkosított store összefoglaló adatbázis nélkül: a `cam sync` a fájlnevet jegyzi, a `cam get devin:<id>` ugyanígy hozza a szöveget.
 
 Formátumok és buktatók: [`docs/sources.hu.md`](docs/sources.hu.md). Séma: [`docs/architecture.hu.md`](docs/architecture.hu.md).
+
+---
+
+## Projektfájlok
+
+A beszélgetések a miértet mondják el, a fájlok a mit. A `cam docs` kulcsszavas keresésre indexeli egy projekt saját fájljait — kódot és szöveget —, a `cam note` pedig egy mondatot csatol egy fájlhoz vagy mappához, amit minden alatta lévő találat magával visz.
+
+```bash
+cam docs add [útvonal]                      # projekt indexelése (alapból: az aktuális mappa)
+cam docs add --known [--dry-run]            # minden ismert projekt, amin az elmúlt 90 napban dolgoztál
+cam docs query "computeInvoiceTotal"        # BM25 kulcsszavas keresés, sorral, részlettel, jegyzettel
+cam docs get <gyűjtemény>/<útvonal>         # egy fájl indexelt szövege
+cam note add src/billing "Pénz: minden módosításhoz második átnéző kell."
+cam note list
+```
+
+A keresés csak kulcsszavas (BM25, [qmd](https://github.com/tobi/qmd)): modellt nem tölt le és nem tölt be, így bármilyen gépen — csak CPU-val is — ezredmásodpercek alatt válaszol. Azokkal a szavakkal keress, amiket a kód használna.
+
+Amit a projekt nem tart a sajátjának, kimarad: amit a `.gitignore` (minden szinten, és a `.git/info/exclude`), a `.ignore`, a `.vercelignore` és a `.cursorignore` kizár, valamint a `node_modules`, `dist`, lock fájlok és a rejtett fájlok. A szabályokat minden frissítés újraolvassa. A `.npmignore` és a `.dockerignore` nem számít — ezek rendszerint a `src/`-t és a `test/`-et is felsorolják.
+
+A `--known` a hubban ismert projekteket veszi, amelyeknek a mappája még megvan. Az alprojekteket tartalmazó projekt (monorepo, `.git` vagy `package.json` jelölővel) egészben kerül be; a sima projektgyűjtő mappa projektjei egyenként; a rejtett mappák, a 3000 fájl fölöttiek és a `cam docs remove`-val eltávolítottak kimaradnak, mindegyik indoklással. `{"docs": {"autoAdd": true}}` mellett minden `cam sync` ugyanezt teszi az újonnan látott projektekkel (`{"autoAdd": {"sinceDays": 30, "maxFiles": 5000}}` állítja a határokat).
+
+A `cam sync` (és a `cam docs index`) csak a megváltozott projekteket olvassa újra. Git-repóban ezt a git mondja meg: a kicsekkolt commit és a `git status`, a változott fájlok méretével és módosítási idejével — két git-hívás, fájlolvasás nélkül. Máshol a mappát bejárja, és a méreteket, módosítási időket veti össze. 54 projektnél a változatlan ellenőrzés kb. másfél másodperc; a `cam docs index --force` mindent újraolvas. Az 1 MB-nál nagyobb fájlok (offline bundle-ök, tokenizerek, adatdumpok) kimaradnak; a `{"docs": {"maxFileBytes": …}}` állítja a határt. Így a `cam_docs` MCP-tool a fájlokat a mostani állapotukban látja. Az index a hub melletti `docs.sqlite`; a `{"docs": {"enabled": false}}` kikapcsolja.
 
 ---
 

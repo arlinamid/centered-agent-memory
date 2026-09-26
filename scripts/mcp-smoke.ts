@@ -40,6 +40,7 @@ const calls: Array<[string, Record<string, unknown>]> = [
   ["cam_timeline", { project, limit: 3 }],
   ["cam_recall", { query: "memória konszolidáció", limit: 3 }],
   ["cam_memory", {}],
+  ["cam_docs", { query: "recall", limit: 3 }],
   // The error path: a missing footer would be least noticed exactly here.
   ["cam_get", { citation: "nonsense" }],
 ];

@@ -40,8 +40,9 @@ environment variable; without that it opens the same database the CLI does
 | `cam_projects` | the list of indexed projects |
 | `cam_memory` | long-term memory: what came back across several questions, on several days — with the evidence behind the promotion |
 | `cam_status` | when the index last synced, what it holds, whether it is trustworthy |
+| `cam_docs` | keyword search over the project's own files (`cam docs add`), with the notes attached to paths; `get` reads a file, `notes` lists the notes |
 
-Seven tools, deliberately that many. Every further tool consumes context in
+Eight tools, deliberately that many. Every further tool consumes context in
 every wired client, on every request.
 
 `cam_memory` without `id` lists the promoted memories (filterable by project),
@@ -69,7 +70,7 @@ rather than quote the old data as current.
 This is not in the individual handlers, but in the function that wraps tool
 registration: there is no way to register a tool that omits it — including
 error responses, where its absence would be least noticed. `npm run smoke`
-checks all seven tools with a real stdio client, against the real index.
+checks all eight tools with a real stdio client, against the real index.
 
 The longer story — scheduling, retention, backup — is in
 [`operations.md`](operations.md).

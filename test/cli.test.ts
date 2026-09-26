@@ -530,6 +530,10 @@ describe("every command", () => {
     { argv: ["prune", "--dry-run"] },
     { argv: ["forget", "--project", "masik"] },
     { argv: ["backup"] },
+    // Nothing indexed: both report that plainly, without loading qmd. The
+    // indexing path itself is covered in test/docs.test.ts.
+    { argv: ["docs", "list"] },
+    { argv: ["note", "list"] },
     // Dry runs only: these two are the commands that touch other people's
     // config files and the machine's scheduler. `--no-schedule` because even a
     // dry run asks the real scheduler who owns the jobs, and the answer on a

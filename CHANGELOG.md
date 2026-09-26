@@ -4,6 +4,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-09-26
+
+### Project files, searched by keyword
+
+The file search from the withdrawn 0.11.0 comes back without its models. 0.11.0 embedded and reranked every file with local GGUF models, and on a CPU-only machine a first index ran for hours; keyword search over the same files needs no weights and answers in milliseconds.
+
+- **`cam docs add [path]`** indexes a project's own files — code and prose — into `docs.sqlite` next to the hub, through [qmd](https://github.com/tobi/qmd)'s BM25 index. `query`, `get`, `index`, `list`, `remove`. `node_modules`, `dist`, lock files and other generated trees are skipped.
+- **`cam note add <path> "<text>"`** attaches a sentence to a file or folder. Every hit under that path carries it, the folder's note before the file's. `cam note list`, `cam note rm`.
+- **`cam_docs`** exposes both to agents (`query`, `get`, `notes`) — the eighth MCP tool. With nothing indexed it says so rather than returning an error.
+- **`cam sync` refreshes the file index** incrementally, so the MCP server, which never writes, sees the files as they are. A failure there is counted like a collector's and does not stop the sync.
+- qmd is an **optional dependency** and is only imported when a file index exists: a machine that cannot install it keeps everything else, and `cam doctor` says which it is. No model is ever loaded — embedding, reranking and query expansion are not called.
+- `{"docs": {"enabled": false}}` turns it off; `{"docs": {"dbPath": "…"}}` moves the index.
+- **Ignore files are honoured.** What `.gitignore` (every level, plus `.git/info/exclude`), `.ignore`, `.vercelignore` and `.cursorignore` exclude never reaches the index, with git's semantics: an ignored folder is not entered, and a `!` rule below it does not bring a file back. The rules are re-read on every refresh, so a new `.gitignore` line takes a file out of the index. `.npmignore` and `.dockerignore` are deliberately not read — they list sources.
+- **`cam docs add --known`** indexes the projects the hub already knows, where the folder still exists and there was a session in the last 90 days. A project with a marker keeps its sub-projects inside it; a folder of projects without one is indexed project by project; hidden folders (test scratch space, tool state), folders past 3000 files and projects the user removed are skipped, each with the reason. `--dry-run` shows the plan and writes nothing.
+- **`{"docs": {"autoAdd": true}}`** has `cam sync` do the same for projects as they appear. Off by default: reading every active project's files into an index is a decision to make once, not to discover.
+- **Only changed projects are read again.** Each collection keeps a fingerprint in the index file. In a git work tree it is the commit checked out plus `git status` — with every changed file's size and mtime, since a file edited twice shows the same status line — and a nested repository's folder is walked; that is two git processes and no file read. Without git the folder is walked and sizes and mtimes hashed. On 54 real projects an unchanged refresh went from 7 s (every file re-hashed) to 1.5 s; fingerprints run eight at a time. `cam docs index --force` reads everything.
+- **Files over 1 MB are left out** (`docs.maxFileBytes`). The first real index of 54 projects was 512 MB, most of it eleven generated files — offline HTML bundles, a tokenizer, a scene dump — that match every search and say nothing.
+- **`cam docs index` compacts** when files were removed: qmd keeps removed files' text until its maintenance runs, so the index only ever grew. The first run took it from 489 MB to 280 MB. `cam sync` does not, to keep a scheduled run short.
+- Re-adding a folder no longer erases the notes on it — qmd's collection upsert replaces the whole row, notes included, so they are carried over.
+
 ## [0.10.1] — 2026-09-26
 
 ### MCP server starts through a linked install

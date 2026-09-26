@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { loadConfig } from "../config.js";
 import { isEntryPoint } from "../entry.js";
+import { DocsError, docsDbPath, formatDocHits, formatNotes, openDocs, type DocsIndex } from "../docs/files.js";
 import { checkPortability } from "../db/portability.js";
 import { initSchema, openHub, type Db } from "../db/open.js";
 import { getFact, listFacts, listTopics, memoryStatus } from "../memory/facts.js";
@@ -28,7 +29,7 @@ import { fetchDevinCascade } from "../sources/devin-fetch.js";
 
 export const SERVER_NAME = "centered-agent-memory";
 /** Kept in step with package.json by a test, so the two cannot drift apart. */
-export const SERVER_VERSION = "0.10.1";
+export const SERVER_VERSION = "0.10.2";
 
 const INSTRUCTIONS = `A searchable index of conversations the user had with their OTHER AI tools:
 Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity and
@@ -38,6 +39,8 @@ Use it before asking about or assuming earlier work on a project: cam_dossier
 gives the full picture, cam_timeline the chronology, cam_recall full-text
 search, and cam_get the full text of a hit. cam_memory returns what earlier
 searches brought up more than once, across days and questions — with evidence.
+cam_docs is different: it searches the project's own files on disk by keyword,
+with the notes the user attached to files and folders.
 
 Every hit carries a project-attribution confidence (strong / medium / weak /
 none). Weak attribution comes from time overlap and can be wrong. If a source
@@ -54,6 +57,8 @@ export interface ServerOptions {
   nowMs?: () => number;
   /** Encrypted Cascade files; tests point this at a fixture. */
   cascadeDir?: string;
+  /** The project file index; absent or null means cam_docs has nothing to search. */
+  docsDbPath?: string | null;
 }
 
 /** Factory so tests can drive the server in-process over an in-memory transport. */
@@ -120,6 +125,63 @@ export function createServer(db: Db, opts: ServerOptions = {}): McpServer {
       }
       return text(formatDossier(d));
     }),
+  );
+
+  server.registerTool(
+    "cam_docs",
+    {
+      title: "Search the project's files",
+      description:
+        "Keyword (BM25) search over a project's own files on disk — code and prose — as the " +
+        "user indexed them with cam docs. Each hit names the file, the line and a snippet, and " +
+        "carries the notes attached to that path: what the file or folder is for, which the " +
+        "code cannot say itself. Use action 'get' for a file's text and 'notes' to list every " +
+        "note. Matches words, not meaning: try the identifiers and terms the code would use. " +
+        "For what was said in earlier conversations use cam_recall instead.",
+      inputSchema: {
+        query: z.string().optional().describe("Words to look for; required for action 'query'"),
+        action: z.enum(["query", "get", "notes"]).optional().describe("Default: query"),
+        path: z.string().optional().describe("For 'get': <collection>/<path> as a hit shows it, an absolute path, or #docid"),
+        collection: z.string().optional().describe("Limit to one collection (a project's files)"),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    dated(
+      async ({ query, action, path: target, collection, limit }: {
+        query?: string;
+        action?: "query" | "get" | "notes";
+        path?: string;
+        collection?: string;
+        limit?: number;
+      }) => {
+        // Opened per call and closed after: `cam docs index` and `cam sync`
+        // write the same file from another process, and a handle held for the
+        // server's lifetime would pin whatever it saw first.
+        let docs: DocsIndex | null = null;
+        try {
+          docs = opts.docsDbPath ? await openDocs(opts.docsDbPath) : null;
+          // Not an error: a machine with no file index has nothing to report,
+          // the same way a search with no hits is not a failure.
+          if (!docs || (await docs.list()).length === 0) {
+            return text("No project files are indexed on this machine. The user can add some with: cam docs add [path]");
+          }
+          if (action === "notes") return text(formatNotes(await docs.notes(collection)));
+          if (action === "get") {
+            if (!target) return text("action 'get' needs a path", true);
+            const doc = await docs.read(target, { collection });
+            return doc ? text(`${doc.file}\n\n${doc.text}`) : text(`Not in any indexed collection: ${target}`, true);
+          }
+          if (!query?.trim()) return text("action 'query' needs a query", true);
+          return text(formatDocHits(await docs.search(query, { collection, limit: limit ?? 10 }), query));
+        } catch (err) {
+          if (err instanceof DocsError) return text(err.message, true);
+          throw err;
+        } finally {
+          await docs?.close();
+        }
+      },
+    ),
   );
 
   server.registerTool(
@@ -390,7 +452,11 @@ export async function main(argv: ReadonlyArray<string> = process.argv.slice(2)):
   const cfg = loadConfig(dbPath ? { dbPath } : {}, (m) => process.stderr.write(`${m}\n`));
   const db = openHub(cfg.dbPath);
   initSchema(db);
-  const server = createServer(db, { staleAfterMs: cfg.staleAfterMs, embedding: cfg.embedding });
+  const server = createServer(db, {
+    staleAfterMs: cfg.staleAfterMs,
+    embedding: cfg.embedding,
+    docsDbPath: cfg.docs.enabled === false ? null : docsDbPath(cfg.dbPath, cfg.docs),
+  });
   // stdout is the JSON-RPC channel; anything human-readable goes to stderr.
   process.stderr.write(`${SERVER_NAME} ${SERVER_VERSION} — ${cfg.dbPath}\n`);
   await server.connect(new StdioServerTransport());

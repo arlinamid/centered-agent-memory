@@ -7,6 +7,7 @@ import {
   HubUnreadableError,
   SchemaTooNewError,
   getMeta,
+  setMeta,
   initSchema,
   isCorruption,
   openHub,
@@ -60,6 +61,24 @@ import {
   resolveFileEvents,
 } from "./attribution/resolve.js";
 import { rebuildFts } from "./index/rebuild.js";
+import {
+  DocsError,
+  collectionName,
+  docsDbPath,
+  formatCollections,
+  formatDocHits,
+  formatNotes,
+  KNOWN_DEFAULTS,
+  knownOptions,
+  openDocs,
+  planKnown,
+  qmdInstalled,
+  rememberKey,
+  type DocsIndex,
+  type KnownOptions,
+  type KnownPlan,
+  type KnownProject,
+} from "./docs/files.js";
 import * as log from "./log.js";
 import { backup, defaultBackupPath } from "./ops/backup.js";
 import { describeFreshness, freshness } from "./ops/freshness.js";
@@ -234,6 +253,8 @@ export const SPECS: Record<string, FlagSpec> = {
     values: [...(QUERY_FLAGS.values ?? []), "project", "session"],
   },
   backup: QUERY_FLAGS,
+  docs: { bools: [...(QUERY_FLAGS.bools ?? []), "known", "dry-run", "force"], values: [...(QUERY_FLAGS.values ?? []), "project", "pattern", "collection"] },
+  note: { bools: [...(QUERY_FLAGS.bools ?? [])], values: ["collection"] },
   install: {
     bools: [
       ...(QUERY_FLAGS.bools ?? []),
@@ -332,11 +353,319 @@ async function cmdSync(a: ParsedArgs): Promise<number> {
       lock.handle.release();
     }
 
+    // Only a full sync: `--tool` asks about one conversation store.
+    if (!only) errors += await refreshDocs(db);
+
     // A scheduled run learns about a broken source only from the exit code, so
     // this stays visible even under --quiet.
     if (errors > 0) log.fail(`${errors} error(s) during sync`);
     return errors > 0 ? EXIT_FAILED : EXIT_OK;
   });
+}
+
+/**
+ * Folders `cam docs add --known` leaves alone, with the reason: removed by the
+ * user, or found too large. Kept in the hub, because the hub is what knows the
+ * projects; the file index only knows what it was given.
+ */
+const DOCS_SKIPPED = "docs_skipped";
+
+function readSkipped(db: Db): Record<string, string> {
+  try {
+    const parsed = JSON.parse(getMeta(db, DOCS_SKIPPED) ?? "{}") as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSkipped(db: Db, skipped: Record<string, string>): void {
+  setMeta(db, DOCS_SKIPPED, JSON.stringify(skipped));
+}
+
+/** Every project with a learned folder, and when it was last worked on. */
+function knownProjects(db: Db): KnownProject[] {
+  return (
+    db
+      .prepare(
+        `select p.key, p.root_path root, max(coalesce(s.ended_ms, s.started_ms)) last_ms
+         from projects p join sessions s on s.project_id = p.id
+         group by p.id order by last_ms desc`,
+      )
+      .all() as Array<{ key: string; root: string | null; last_ms: number | null }>
+  ).map((r) => ({ key: r.key, root: r.root, lastMs: r.last_ms }));
+}
+
+/** Plan, and unless it is a dry run, add. Indexing the added ones is the caller's. */
+async function addKnown(db: Db, docs: DocsIndex | null, opts: Required<KnownOptions>, dryRun: boolean): Promise<KnownPlan> {
+  const skipped = readSkipped(db);
+  const plan = await planKnown(knownProjects(db), docs ? await docs.list() : [], skipped, opts);
+  if (dryRun || !docs) return plan;
+  for (const x of plan.add) await docs.add(x.root, { name: x.name });
+  if (Object.keys(plan.remember).length > 0) writeSkipped(db, { ...skipped, ...plan.remember });
+  return plan;
+}
+
+/**
+ * Keep the project file index current alongside the conversations, so an
+ * agent searching it through the MCP server — which never writes — sees the
+ * files as they are. Incremental by content hash: an unchanged project costs a
+ * directory walk. Skipped without a word when nothing was ever indexed, unless
+ * `docs.autoAdd` asks for the known projects to be added as they appear.
+ */
+async function refreshDocs(db: Db): Promise<number> {
+  const c = cfg();
+  if (c.docs.enabled === false) return 0;
+  const auto = knownOptions(c.docs);
+  const t0 = Date.now();
+  let docs: DocsIndex | null = null;
+  try {
+    docs = await openDocs(docsDbPath(c.dbPath, c.docs), { create: auto !== null, maxFileBytes: c.docs.maxFileBytes });
+    if (!docs) return 0;
+    let added = 0;
+    if (auto) {
+      const plan = await addKnown(db, docs, auto, false);
+      added = plan.add.length;
+      for (const x of plan.add) log.detail(`  + ${x.name.padEnd(28)} ${x.root}`);
+    }
+    const r = await docs.refresh();
+    if (r.collections === 0) return 0;
+    log.status(
+      `${"project files".padEnd(15)} collection:${String(r.collections).padStart(2)}${added ? ` (+${added})` : ""}` +
+        `  changed:${r.checked}  new:${r.indexed}  updated:${r.updated}  removed:${r.removed}  ${Date.now() - t0} ms`,
+    );
+    return 0;
+  } catch (err) {
+    log.fail(`${"project files".padEnd(15)} ERROR: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    await docs?.close();
+  }
+}
+
+/** Open the file index for a command, or say why it cannot be. */
+async function withDocs(fn: (docs: DocsIndex) => Promise<number>, create = true): Promise<number> {
+  const c = cfg();
+  if (c.docs.enabled === false) {
+    log.fail('Project file search is turned off in the config ("docs": { "enabled": false }).');
+    return EXIT_FAILED;
+  }
+  let docs: DocsIndex | null = null;
+  try {
+    docs = await openDocs(docsDbPath(c.dbPath, c.docs), { create, maxFileBytes: c.docs.maxFileBytes });
+    if (!docs) {
+      log.result("No file collections. Add one with: cam docs add [path]");
+      return EXIT_OK;
+    }
+    return await fn(docs);
+  } catch (err) {
+    if (!(err instanceof DocsError)) throw err;
+    log.fail(err.message);
+    return EXIT_FAILED;
+  } finally {
+    await docs?.close();
+  }
+}
+
+/**
+ * A project's own files, searched by keyword. `add` also indexes, because a
+ * collection nobody has indexed answers every question with silence.
+ */
+async function cmdDocs(a: ParsedArgs): Promise<number> {
+  const [sub = "list", ...rest] = a.positional;
+  const max = limit(a, 10, 50);
+  if (a.errors.length > 0) return reportErrors(a);
+  const json = has(a, "json");
+
+  switch (sub) {
+    case "add":
+      if (has(a, "known")) {
+        if (rest.length > 0) return usage("cam docs add --known [--dry-run]");
+        return cmdDocsKnown(has(a, "dry-run"), json);
+      }
+      if (rest.length > 1) return usage("cam docs add [path] [--project p] [--pattern glob] | --known");
+      return withDocs(async (docs) => {
+        const project = flag(a, "project");
+        const added = await docs.add(rest[0] ?? process.cwd(), {
+          name: project ? collectionName(project) : undefined,
+          pattern: flag(a, "pattern"),
+        });
+        // Added by hand overrides an earlier "removed" or "too large".
+        withHub((db) => {
+          const skipped = readSkipped(db);
+          if (delete skipped[rememberKey(added.root)]) writeSkipped(db, skipped);
+        });
+        const t0 = Date.now();
+        const r = await docs.refresh([added.name]);
+        if (json) {
+          log.result(JSON.stringify({ ...added, ...r }, null, 2));
+        } else {
+          log.status(`collection ${added.name} -> ${added.root}`);
+          log.result(`${r.indexed + r.updated + r.unchanged} file(s) indexed, ${Date.now() - t0} ms`);
+        }
+        return EXIT_OK;
+      });
+    case "list":
+      return withDocs(async (docs) => {
+        const rows = await docs.list();
+        log.result(json ? JSON.stringify(rows, null, 2) : formatCollections(rows));
+        return EXIT_OK;
+      }, false);
+    case "index":
+      return withDocs(async (docs) => {
+        const t0 = Date.now();
+        const r = await docs.refresh(rest, { force: has(a, "force") });
+        // Removed files leave their text behind until the index is compacted;
+        // this is the explicit command, so it pays for that here and not in
+        // every scheduled sync.
+        const compacted = r.removed > 0 ? await docs.compact() : null;
+        if (json) {
+          log.result(JSON.stringify({ ...r, compacted }, null, 2));
+        } else {
+          log.result(
+            `${r.collections} collection(s), ${r.checked} changed: new ${r.indexed}, updated ${r.updated}, ` +
+              `unchanged ${r.unchanged}, removed ${r.removed} — ${Date.now() - t0} ms`,
+          );
+          if (compacted) {
+            const mb = (n: number): string => (n / 2 ** 20).toFixed(1);
+            log.status(`compacted: ${mb(compacted.before)} MB -> ${mb(compacted.after)} MB`);
+          }
+        }
+        return EXIT_OK;
+      }, false);
+    case "query":
+    case "search": {
+      const query = rest.join(" ").trim();
+      if (!query) return usage('cam docs query "<words>" [--collection c] [--limit N]');
+      return withDocs(async (docs) => {
+        const hits = await docs.search(query, { collection: flag(a, "collection"), limit: max });
+        log.result(json ? JSON.stringify(hits, null, 2) : formatDocHits(hits, query));
+        return EXIT_OK;
+      }, false);
+    }
+    case "get": {
+      const target = rest[0];
+      if (!target || rest.length > 1) return usage("cam docs get <path|collection/path|#docid>");
+      return withDocs(async (docs) => {
+        const doc = await docs.read(target, { collection: flag(a, "collection") });
+        if (!doc) {
+          log.fail(`Not in any collection: ${target}`);
+          return EXIT_FAILED;
+        }
+        log.result(json ? JSON.stringify(doc, null, 2) : doc.text);
+        return EXIT_OK;
+      }, false);
+    }
+    case "remove":
+    case "rm": {
+      const name = rest[0];
+      if (!name || rest.length > 1) return usage("cam docs remove <collection>");
+      return withDocs(async (docs) => {
+        const root = (await docs.list()).find((c) => c.name === name)?.root;
+        if (root && (await docs.remove(name))) {
+          // Otherwise `--known` and `autoAdd` would put it straight back.
+          withHub((db) => writeSkipped(db, { ...readSkipped(db), [rememberKey(root)]: "removed by the user" }));
+          log.result(`removed ${name}`);
+          return EXIT_OK;
+        }
+        log.fail(`No such collection: ${name}`);
+        return EXIT_FAILED;
+      }, false);
+    }
+    default:
+      return usage("cam docs <add|list|index|query|get|remove>");
+  }
+}
+
+/**
+ * Index the projects the hub already knows, where their folder is still there
+ * and they were worked on recently. The rest are listed with the reason.
+ */
+async function cmdDocsKnown(dryRun: boolean, json: boolean): Promise<number> {
+  const c = cfg();
+  if (c.docs.enabled === false) {
+    log.fail('Project file search is turned off in the config ("docs": { "enabled": false }).');
+    return EXIT_FAILED;
+  }
+  const opts = knownOptions(c.docs) ?? { ...KNOWN_DEFAULTS };
+  return withHubAsync(async (db) => {
+    let docs: DocsIndex | null = null;
+    try {
+      // A dry run creates nothing, not even an empty index.
+      docs = await openDocs(docsDbPath(c.dbPath, c.docs), { create: !dryRun, maxFileBytes: c.docs.maxFileBytes });
+      const t0 = Date.now();
+      const plan = await addKnown(db, docs, opts, dryRun);
+      const r = !dryRun && docs && plan.add.length > 0 ? await docs.refresh(plan.add.map((x) => x.name)) : null;
+      if (json) {
+        log.result(JSON.stringify({ add: plan.add, skip: plan.skip, indexed: r }, null, 2));
+        return EXIT_OK;
+      }
+      for (const x of plan.add) {
+        log.result(`${dryRun ? "would add" : "added    "}  ${x.name.padEnd(30)} ${String(x.files).padStart(5)} file(s)  ${x.root}`);
+      }
+      // Inactive projects are the long tail; a count says enough about them.
+      const inactive = plan.skip.filter((x) => x.reason.startsWith("no session in"));
+      for (const x of plan.skip) {
+        if (inactive.includes(x)) continue;
+        log.status(`skipped    ${x.key.padEnd(30)} ${x.reason}${x.root ? `  ${x.root}` : ""}`);
+      }
+      if (inactive.length > 0) log.status(`skipped    ${inactive.length} project(s) with no session in ${opts.sinceDays} days`);
+      log.status(
+        dryRun
+          ? `${plan.add.length} project(s) would be added. Run without --dry-run to index them.`
+          : `${plan.add.length} project(s) added${r ? `, ${r.indexed} file(s) indexed` : ""}, ${Date.now() - t0} ms`,
+      );
+      return EXIT_OK;
+    } catch (err) {
+      if (!(err instanceof DocsError)) throw err;
+      log.fail(err.message);
+      return EXIT_FAILED;
+    } finally {
+      await docs?.close();
+    }
+  });
+}
+
+/** What a file or folder is for, kept next to the path it is about. */
+async function cmdNote(a: ParsedArgs): Promise<number> {
+  const [sub = "list", ...rest] = a.positional;
+  if (a.errors.length > 0) return reportErrors(a);
+  const collection = flag(a, "collection");
+
+  switch (sub) {
+    case "add":
+    case "set": {
+      const [target, ...words] = rest;
+      const text = words.join(" ").trim();
+      if (!target || !text) return usage('cam note add <path> "<what it is for>"');
+      return withDocs(async (docs) => {
+        const n = await docs.note(target, text, { collection });
+        log.result(has(a, "json") ? JSON.stringify(n, null, 2) : `${n.collection}/${n.path}\n  ${n.note}`);
+        return EXIT_OK;
+      }, false);
+    }
+    case "rm":
+    case "remove": {
+      const target = rest[0];
+      if (!target || rest.length > 1) return usage("cam note rm <path>");
+      return withDocs(async (docs) => {
+        if (await docs.unnote(target, { collection })) {
+          log.result(`removed the note on ${target}`);
+          return EXIT_OK;
+        }
+        log.fail(`No note on ${target}`);
+        return EXIT_FAILED;
+      }, false);
+    }
+    case "list":
+      return withDocs(async (docs) => {
+        const notes = await docs.notes(collection);
+        log.result(has(a, "json") ? JSON.stringify(notes, null, 2) : formatNotes(notes));
+        return EXIT_OK;
+      }, false);
+    default:
+      return usage("cam note <add|list|rm>");
+  }
 }
 
 function cmdProjects(a: ParsedArgs): number {
@@ -929,6 +1258,20 @@ function cmdDoctor(): number {
 
     const bytes = size(db);
     log.status(`database size     ${(bytes / 2 ** 20).toFixed(1)} MB`);
+
+    // Read from the filesystem only: doctor must not depend on qmd loading.
+    const docsPath = docsDbPath(c.dbPath, c.docs);
+    log.status(
+      `project files     ${
+        c.docs.enabled === false
+          ? "off in the config"
+          : !qmdInstalled()
+            ? "unavailable — qmd is not installed"
+            : fs.existsSync(docsPath)
+              ? docsPath
+              : "none indexed (cam docs add [path])"
+      }`,
+    );
 
     const lock = db.prepare("select value from meta where key = 'sync_lock'").get() as { value: string } | undefined;
     if (lock) log.status(`  ! sync lock is held: ${lock.value}`);
@@ -1607,6 +1950,7 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
   cam reattribute                        recompute without reading stores
   cam rebuild                            rebuild the text index from sources
   cam memory <subcommand>                long-term memory (see below)
+  cam docs <subcommand>                  search the project's own files (see below)
 
   cam status [--json]                    when the index last synced
   cam doctor                             health report
@@ -1620,6 +1964,13 @@ const USAGE = `cam — shared context from Claude Code / Desktop / Codex / Curso
   cam memory embed [--dry-run]           index vectors with a configured model (optional)
   cam memory topics                      recurring topics
   cam memory status                      how much trace gathered, what was promoted
+  cam docs add [path] [--project p]      index a project's files (code and prose)
+  cam docs add --known [--dry-run]       index the known, recently active projects
+  cam docs query "<words>"               keyword search in them, with the notes
+  cam docs get <path|collection/path>    one file's indexed text
+  cam docs index [--force] | list | remove <c>   re-read what changed (cam sync does too), list, drop
+  cam note add <path> "<text>"           what a file or folder is for
+  cam note list | rm <path>              the notes
 
   cam install [--dry-run] [--project]    wire into every agent tool found:
                                          MCP server, skill, dream model, schedule
@@ -1697,6 +2048,10 @@ export async function run(argv: ReadonlyArray<string>): Promise<number> {
         return cmdForget(a);
       case "backup":
         return await cmdBackup(a);
+      case "docs":
+        return await cmdDocs(a);
+      case "note":
+        return await cmdNote(a);
       case "install":
         return await cmdInstall(a, false);
       case "uninstall":

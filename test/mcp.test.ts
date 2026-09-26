@@ -95,9 +95,10 @@ describe("mcp server", () => {
     expect(instructions).toContain("Read-only");
   });
 
-  it("exposes exactly the seven read-only tools", async () => {
+  it("exposes exactly the eight read-only tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "cam_docs",
       "cam_dossier",
       "cam_get",
       "cam_memory",
@@ -291,6 +292,8 @@ describe("index age", () => {
     cam_projects: {},
     cam_memory: {},
     cam_status: {},
+    // No file index in the fixture: the "nothing indexed" answer is dated too.
+    cam_docs: { query: "anything" },
   };
 
   it("is on every tool's answer, whichever tool it is", async () => {

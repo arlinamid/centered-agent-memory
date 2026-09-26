@@ -35,8 +35,9 @@ A `stdout` a JSON-RPC csatorna, ezért minden emberi olvasásra szánt kimenet a
 | `cam_projects` | az indexelt projektek listája |
 | `cam_memory` | a hosszú távú memória: amit több kérdés, több nap alatt többször előhívtál — a promóció bizonyítékával |
 | `cam_status` | mikor szinkronizált utoljára az index, mit tartalmaz, megbízható-e |
+| `cam_docs` | kulcsszavas keresés a projekt saját fájljaiban (`cam docs add`), az útvonalakhoz csatolt jegyzetekkel; a `get` egy fájlt olvas, a `notes` a jegyzeteket listázza |
 
-Hét tool, szándékosan ennyi. Minden további tool minden bekötött kliensben, minden kérésnél kontextust
+Nyolc tool, szándékosan ennyi. Minden további tool minden bekötött kliensben, minden kérésnél kontextust
 fogyaszt.
 
 A `cam_memory` `id` nélkül a promotált emlékeket listázza (projektre szűrhető), `id`-vel egy emlék
@@ -61,7 +62,7 @@ hogy ilyenkor szóljon a felhasználónak, ne pedig idézze a régi adatot friss
 
 Ez nem az egyes handlerekben van, hanem a tool-regisztrációt burkoló függvényben: nincs mód olyan
 toolt regisztrálni, amiről lemarad — beleértve a hibaválaszokat is, ahol a hiánya a legkevésbé tűnne
-fel. Az `npm run smoke` valódi stdio-klienssel ellenőrzi mind a hét toolon, a valódi indexen.
+fel. Az `npm run smoke` valódi stdio-klienssel ellenőrzi mind a nyolc toolon, a valódi indexen.
 
 A hosszabb történet — ütemezés, megőrzés, mentés — az [`operations.md`](operations.hu.md)-ben van.
 

@@ -42,6 +42,13 @@ index knows about the **past**, not the current workspace.
 brought up more than once, across days and questions, with the promotion
 evidence. It is a trail, not a summary.
 
+`docs` is different again: a keyword search over the project's **own files**
+on disk, where the user has indexed them with `cam docs add`. Each hit carries
+the notes the user attached to that file or folder — what it is for, which the
+code does not say. It matches words, not meaning, so search with the names and
+terms the code would use. It does not replace reading the open workspace; it
+is for finding the file, and the note, when you do not know where to look.
+
 ## How to read the answers
 
 **Confidence.** Every hit carries a project-attribution strength: `strong`
