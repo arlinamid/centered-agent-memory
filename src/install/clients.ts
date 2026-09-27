@@ -51,18 +51,19 @@ export const SKILL_NAME = "agent-memory";
 
 const CLI_SURFACE = `## This surface
 
-The \`cam_*\` MCP tools are also available from the terminal if \`cam\` is on PATH:
-\`cam projects\`, \`cam dossier <project>\`, \`cam recall "<query>"\`, \`cam get <citation>\`,
-\`cam timeline <project>\`, \`cam memory list\`. Each accepts \`--json\`. Rendering is shared,
-so you get the same text as from the tools.
+Each \`cam_*\` tool is also a terminal command when \`cam\` is on PATH — \`cam dossier
+<project>\`, \`cam recall "<query>"\`, \`cam docs query "<words>"\` and the rest; \`cam\` alone
+lists them. The output is the same text as the tools', and \`--json\` gives it structured.
+\`cam projects --unattributed\` lists the sessions no project claimed.
 
-If the index is stale, \`cam sync\` refreshes it. That is the only write, and it writes
-only the index.`;
+If the index is \`STALE\`, run \`cam sync\`: it writes only the index. A note you proposed
+is added with \`cam note add <path> "<text>"\` once the user agrees.`;
 
 const MCP_ONLY_SURFACE = `## This surface
 
-Only the \`cam_*\` MCP tools are available; there is no terminal. If the index is stale,
-ask the user to run \`cam sync\` — you cannot refresh it yourself.`;
+Only the \`cam_*\` MCP tools are available; there is no terminal. If the index is
+\`STALE\`, ask the user to run \`cam sync\`, and give a proposed note as the command they
+can run: \`cam note add <path> "<text>"\`.`;
 
 /**
  * Claude Code keeps its user-level server map in `~/.claude.json`, not under

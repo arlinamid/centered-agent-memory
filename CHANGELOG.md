@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### A shorter skill that no longer contradicts the tools
+
+- **The `agent-memory` skill was audited against current Claude models** and went from 5.1k to 3.8k characters. What the MCP tool descriptions already state (search mechanics, citation form) is left to them; the numbered workflow and the list of prohibitions became prose with the reasons kept.
+- **It no longer says there is no write operation.** `cam sync`, `cam docs add` and `cam note add` write. The skill now says what stays read-only (the tools' own stores) and that a note is proposed to the user, not added by the agent, because later agents read it as the user's word.
+- **`cam_docs` is part of when to use the skill**, and the description routes to it for a file in a project that is not open.
+- **Each surface says who refreshes a `STALE` index**: the body no longer suggests `cam sync` on a client that has no terminal. `projects --unattributed` moved to the terminal surface, since the MCP tool has no such option.
+
 ## [0.10.3] — 2026-09-26
 
 ### Updates refresh the installed skills

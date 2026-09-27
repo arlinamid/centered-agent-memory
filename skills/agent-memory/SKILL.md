@@ -2,109 +2,78 @@
 name: agent-memory
 description: >-
   Recall earlier conversations from the user's other AI tools (Claude Code, Claude Desktop,
-  Codex, Cursor, Gemini CLI, Antigravity, Devin). Use before asking about or assuming a
-  project's history, and when the user refers to a prior decision, discussion or fix: "as we
-  discussed", "the earlier one", "what we did with Codex".
+  Codex, Cursor, Gemini CLI, Antigravity, Devin), and search the files of the projects they
+  indexed. Use before asking about or assuming a project's history, when the user refers to a
+  prior decision, discussion or fix ("as we discussed", "what we did with Codex"), and when
+  you need a file from a project that is not open here.
 ---
 # Recalling earlier conversations
 
-The `cam` index holds conversations the user had with their **other AI tools**:
-Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Antigravity
-and Devin. It is read-only and does not modify any of those stores.
-
-In this conversation you cannot see what the user did yesterday in another
-tool. The index can. That is the difference between "I don't know, let's ask"
-and "I'll look it up".
+The `cam` index holds the conversations the user had with their **other AI
+tools** — Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI,
+Antigravity and Devin — so it can answer what this conversation cannot see:
+what was decided, tried or fixed elsewhere. It only reads those tools' stores
+and never changes them.
 
 ## When to use it
 
-**Before** asking or assuming:
+Look before you ask or assume. When you start on a project you do not know,
+when the user refers to earlier work as if you had been there ("as we
+discussed", "what we did with Codex"), or when you need the reason for a
+decision the code does not explain, the answer may already be in the index. It
+knows the past, not the current workspace: what the open files or the
+repository say, read there.
 
-- Starting work in an unfamiliar project → `dossier` before claiming anything
-  about it.
-- The user refers to something as if you already know: "as we discussed",
-  "the earlier fix", "what we did with Codex" → `recall` their words.
-- You are about to ask "have we done this" or "why is it this way" → look first.
-- You need the reason for a decision and it is not in the code → `recall`,
-  then `get` the hit.
+For a project's history, start with `cam_dossier`: one call gives the tools,
+dates and topics, and a `cam_recall` aimed by it finds more than several blind
+ones. Project keys come from folder names and may differ from what the user
+calls the project; `cam_projects` lists them.
 
-Do not use it when the answer is in the open files or the repository. The
-index knows about the **past**, not the current workspace.
+`cam_memory` returns what earlier searches kept bringing up — a trail of what
+mattered repeatedly, not a summary of the project.
 
-## Workflow
+`cam_docs` searches the files of indexed projects, including ones that are not
+open here. Use it to find where something lives when you do not know where to
+look, not in place of reading the workspace. The notes on its hits are the
+user's own statements of what a project, folder or file is for. When you learn
+something a note should say, propose it with the path and the sentence, and
+let the user add it — every later agent will read a note as the user's word.
 
-1. **`projects`** — which project keys the index knows. The key comes from a
-   folder name and is not necessarily what you call the project.
-2. **`dossier <project>`** — per-tool counts, date range, largest sessions,
-   recent topics. One call, and you know what happened so far.
-3. **`recall "<query>"`** — full-text search. Accent-insensitive
-   (`arvizturo` finds `árvíztűrő`); words longer than 5 letters match as a
-   prefix, so inflection is not a barrier. Narrow with `project` when you
-   know which project it is.
-4. **`get <citation>`** — the full text of a hit. `recall` returns a
-   `tool:sessionId#seqN-M` citation; pass it back unchanged.
-5. **`timeline <project>`** — chronological order, when you care about when
-   something happened rather than what was said.
+## Reading the answers
 
-`memory` is a different thing: it returns what **your earlier searches**
-brought up more than once, across days and questions, with the promotion
-evidence. It is a trail, not a summary.
+Every hit carries a project-attribution confidence. `strong` comes from the
+session's working directory or the paths it mentions; `medium` and `weak` come
+from overlapping edit times and can be wrong, so when you cite one, say that it
+belongs to the project by time overlap. `weak` hits are left out unless asked
+for.
 
-`docs` is different again: a keyword search over the project's **own files**
-on disk, where the user has indexed them with `cam docs add`. Each hit carries
-the notes the user attached to that file or folder — what it is for, which the
-code does not say. It matches words, not meaning, so search with the names and
-terms the code would use. It does not replace reading the open workspace; it
-is for finding the file, and the note, when you do not know where to look.
+The index re-reads each source at query time. A hit marked `stale` (the source
+changed since) or `missing` (it is gone) is passed on with that marking.
 
-## How to read the answers
+The last line of every answer says when the index last synced. If it says
+`STALE`, nothing since then is in it — say so before relying on the answer.
 
-**Confidence.** Every hit carries a project-attribution strength: `strong`
-(from the session working directory or paths mentioned in the conversation),
-`medium` (from overlapping file-edit times), `weak` (the same, thin evidence,
-filtered by default), `none`. `medium` and `weak` can be wrong — if you cite
-one, say it belongs to the project by time overlap.
+A sentence tagged `[model-name]` after a memory was written by a model about
+the excerpt, not by the user; it is not a source.
 
-**Source state.** The index stores locators, not copies, and re-reads the text
-at query time. If the source has changed (`stale`) or vanished (`missing`),
-the answer says so. Do not pass it on as unchanged.
+## Citing
 
-**Index age.** The last line of every answer says when the index last synced.
-If it says `STALE`, conversations since then are **not in it**. Tell the user,
-and suggest `cam sync` — do not quote old data as current.
-
-**Generated sentence.** If a memory is followed by a sentence tagged
-`[model-name]`, a model wrote that about the excerpt; the user did not say it.
-Do not quote it as a source.
-
-## Citation
-
-Always include the citation the search returned, and say which tool and when
-it is from:
+Give the point in your own words, with the citation the search returned and
+which tool and when it is from:
 
 > You moved the Docker port from 3000 to 80 in the June Cursor conversation
 > (`cursor:9f2a…#seq12-18`, 2025-06-07).
 
-If there is no hit, say so. An empty index does not prove the thing never
-happened — it may live in a tool that is not indexed, or the session may have
-no project (`projects --unattributed`).
-
-## What not to do
-
-- **Do not write.** There is no write operation, and the source stores must
-  not be modified.
-- **Do not search at random.** One `dossier` says more than three blind
-  `recall`s.
-- **Do not dump old conversations into the reply.** Cite, and write the point.
-- **Do not assume the user remembers.** If you quote the past, say where
-  from.
+No hit does not prove something never happened: it may live in a tool that is
+not indexed, or in a session no project claimed. Say that you found nothing,
+and where you looked.
 
 ## This surface
 
-The `cam_*` MCP tools are also available from the terminal if `cam` is on PATH:
-`cam projects`, `cam dossier <project>`, `cam recall "<query>"`, `cam get <citation>`,
-`cam timeline <project>`, `cam memory list`. Each accepts `--json`. Rendering is shared,
-so you get the same text as from the tools.
+Each `cam_*` tool is also a terminal command when `cam` is on PATH — `cam dossier
+<project>`, `cam recall "<query>"`, `cam docs query "<words>"` and the rest; `cam` alone
+lists them. The output is the same text as the tools', and `--json` gives it structured.
+`cam projects --unattributed` lists the sessions no project claimed.
 
-If the index is stale, `cam sync` refreshes it. That is the only write, and it writes
-only the index.
+If the index is `STALE`, run `cam sync`: it writes only the index. A note you proposed
+is added with `cam note add <path> "<text>"` once the user agrees.
