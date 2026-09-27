@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.5-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.6-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory#install)
 
@@ -94,7 +94,7 @@ Claude Code (and Claude Code Desktop, same folder) can take the skill alone:
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-Claude Desktop's Chat and Cowork take the skill as a plugin: **Directory → Plugins → Personal → Add marketplace** → `arlinamid/centered-agent-memory`, then install **agent-memory**. Details: [`docs/install.md`](docs/install.md#skill).
+Claude Desktop's Chat and Cowork take the skill as a plugin: **Directory → Plugins → Personal → Add marketplace** → `arlinamid/centered-agent-memory`, then install **agent-memory**. The plugin lands in Claude Code too, and `cam install` then leaves out its own copy there. Details: [`docs/install.md`](docs/install.md#skill).
 
 > [!WARNING]
 > **Do not wire the server through `npx`.** The cache is collected later and the entry dies silently. The installer detects that, writes nothing, and points at `npm i -g`. `npx` is fine for a one-off query — the index lives in a user data directory.

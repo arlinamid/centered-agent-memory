@@ -59,4 +59,16 @@ No hit does not prove something never happened: it may live in a tool that is
 not indexed, or in a session no project claimed. Say that you found nothing,
 and where you looked.
 
-{{SURFACE}}
+## Terminal
+
+The `cam_*` MCP tools reach the index from every client. Where you have a shell
+with `cam` on PATH, each tool is also a command — `cam dossier <project>`,
+`cam recall "<query>"`, `cam docs query "<words>"` and the rest; `cam` alone
+lists them — with the same output, `--json` for structure, and
+`cam projects --unattributed` for the sessions no project claimed. Claude
+Desktop's Chat has no shell, and a Cowork shell has no `cam`.
+
+If the index is `STALE`, run `cam sync` where you can — it writes only the
+index — and otherwise ask the user to. A note you proposed is added with
+`cam note add <path> "<text>"` once the user agrees, by whichever of you can
+run it.

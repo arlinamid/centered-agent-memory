@@ -686,6 +686,7 @@ function refreshInstalledSkills(): void {
     // a test's repair sync would otherwise rewrite the developer's own skills.
     for (const r of refreshSkills({ home: process.env.CAM_HOME || undefined })) {
       if (r.change === "updated") log.status(`${"skill".padEnd(15)} ${r.client}: updated to this version`);
+      if (r.change === "removed") log.status(`${"skill".padEnd(15)} ${r.client}: removed, the plugin carries it`);
     }
   } catch (err) {
     log.warn(`skills not refreshed: ${(err as Error).message}`);
@@ -1723,7 +1724,8 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
       return EXIT_OK;
     }
     for (const r of refreshed) {
-      log.status(`${r.client.padEnd(24)} skill ${r.change === "updated" ? (dryRun ? "would be updated" : "updated") : "unchanged"}`);
+      const verb = { updated: dryRun ? "would be updated" : "updated", removed: dryRun ? "would be removed" : "removed", unchanged: "unchanged" }[r.change];
+      log.status(`${r.client.padEnd(24)} skill ${verb}`);
     }
     if (refreshed.length === 0) log.status("No installed skills to refresh. Install them with: cam install");
     return EXIT_OK;
@@ -1772,7 +1774,7 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
     const parts = [
       c.mcpChange ? `MCP ${c.mcpChange}` : null,
       c.skillChange
-        ? `skill ${c.skillChange}`
+        ? `skill ${c.skillChange}${c.skillVia ? ` (${c.skillVia.replace(/^skill: /, "")})` : ""}`
         : // A client with no skill directory is not a failure: the server's own
           // instructions reach it with every response.
           !has(a, "no-skills")

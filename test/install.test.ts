@@ -171,20 +171,17 @@ describe("mcp config", () => {
 });
 
 describe("skills", () => {
-  it("renders frontmatter and the client's own surface", () => {
-    const [claudeCode] = clientTargets("user", home, cwd);
-    const text = renderSkill(claudeCode!, "Törzs.\n\n{{SURFACE}}\n");
+  it("renders frontmatter above the body", () => {
+    const text = renderSkill("Törzs.\n");
 
     expect(text.startsWith("---\n")).toBe(true);
     expect(text).toContain(`name: ${SKILL_NAME}`);
-    expect(text).toContain("Törzs.");
-    expect(text).not.toContain("{{SURFACE}}");
+    expect(text.endsWith("---\nTörzs.\n")).toBe(true);
   });
 
   it("carries the spec's optional fields from package.json, the version as a string", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
-    const [claudeCode] = clientTargets("user", home, cwd);
-    const front = renderSkill(claudeCode!, "{{SURFACE}}").split("\n---\n")[0]!;
+    const front = renderSkill("").split("\n---\n")[0]!;
 
     expect(front).toContain(`license: ${pkg.license}`);
     expect(front).toMatch(/\ncompatibility: \S/);
@@ -202,18 +199,16 @@ describe("skills", () => {
     const text = fs.readFileSync(published, "utf8");
     expect(text).toMatch(/^---\nname: agent-memory\n/);
     expect(text).toContain("description:");
-    expect(text).not.toContain("{{SURFACE}}");
     // That it matches a fresh rendering is checked with the other published
     // files in plugin.test.ts.
   });
 
-  it("tells a terminal-less client not to promise a sync it cannot run", () => {
-    const targets = clientTargets("user", home, cwd);
-    const desktop = renderSkill(targets.find((t) => t.id === "claude_desktop")!, "{{SURFACE}}");
-    const code = renderSkill(targets.find((t) => t.id === "claude_code")!, "{{SURFACE}}");
-
-    expect(desktop).toContain("ask the user");
-    expect(code).toContain("cam sync");
+  it("says who runs cam sync with and without a shell, in one text for every client", () => {
+    // One copy reaches another client — the Desktop plugin lands in Claude
+    // Code — so the text cannot assume either.
+    const text = renderSkill();
+    expect(text).toContain("run `cam sync` where you can");
+    expect(text).toContain("ask the user to");
   });
 });
 
@@ -254,17 +249,20 @@ describe("gemini, antigravity and devin targets", () => {
     ).toContain(`name: ${SKILL_NAME}`);
   });
 
-  it("gives Devin the server but not a second copy of the skill", () => {
+  it("gives Devin the server and a skill in its own global skills folder", () => {
     const devinHome = mkDevin();
-    mk(".claude");
     install({ scope: "user", home, cwd, entry: ENTRY });
 
     expect(JSON.parse(read(path.join(devinHome, "mcp_config.json"))).mcpServers[SERVER_KEY]).toBeDefined();
-    // Devin scans `~/.claude/skills/`, which the Claude Code target already
-    // filled: a Devin-owned copy would list the same skill twice.
-    const targets = clientTargets("user", home, cwd);
-    expect(targets.find((t) => t.id === "devin")!.skillFile).toBeNull();
-    expect(read(path.join(home, ".claude", "skills", SKILL_NAME, "SKILL.md"))).toContain(`name: ${SKILL_NAME}`);
+    // Devin imports only a project's `.claude/skills/` from Claude Code, so
+    // `~/.claude/skills/` never reached it. Its own folder is the app data
+    // one, except on macOS, where it is `~/.config/devin/skills`.
+    const skillsRoot = process.platform === "darwin" ? path.join(home, ".config", "devin") : devinHome;
+    const file = path.join(skillsRoot, "skills", SKILL_NAME, "SKILL.md");
+    expect(clientTargets("user", home, cwd).find((t) => t.id === "devin")!.skillFile).toBe(file);
+    expect(read(file)).toContain(`name: ${SKILL_NAME}`);
+    // Not `~/.agents/skills/`: Codex, Cursor and Gemini CLI read it too.
+    expect(fs.existsSync(path.join(home, ".agents"))).toBe(false);
   });
 
   it("leaves all three alone when none of them is installed", () => {
@@ -290,8 +288,7 @@ describe("gemini, antigravity and devin targets", () => {
   });
 
   it("names every tool it indexes in the skill it hands out", () => {
-    const [claudeCode] = clientTargets("user", home, cwd);
-    const text = renderSkill(claudeCode!);
+    const text = renderSkill();
     for (const tool of ["Claude Code", "Codex", "Cursor", "Gemini CLI", "Antigravity", "Devin"]) {
       expect(text).toContain(tool);
     }
@@ -402,6 +399,68 @@ describe("refreshing installed skills", () => {
     fs.writeFileSync(skill(".codex"), "old\n");
     expect(refreshSkills({ home, cwd, dryRun: true })[0]!.change).toBe("updated");
     expect(read(skill(".codex"))).toBe("old\n");
+  });
+});
+
+describe("when the marketplace plugin carries the skill", () => {
+  const claudeSkill = (): string => path.join(home, ".claude", "skills", SKILL_NAME, "SKILL.md");
+  const enablePlugin = (on: unknown = true): void => {
+    fs.writeFileSync(
+      path.join(home, ".claude", "settings.json"),
+      JSON.stringify({ enabledPlugins: { "agent-memory@centered-agent-memory": on, "other@x": true } }),
+    );
+  };
+
+  it("does not write Claude Code a second copy, and says where the skill comes from", () => {
+    mk(".claude");
+    enablePlugin();
+    const report = install({ scope: "user", home, cwd, entry: ENTRY });
+
+    const code = report.clients.find((c) => c.id === "claude_code")!;
+    expect(fs.existsSync(claudeSkill())).toBe(false);
+    expect(code.skillChange).toBeNull();
+    expect(code.skillVia).toContain("agent-memory@centered-agent-memory");
+    // The server is still Claude Code's to have.
+    expect(code.mcpChange).toBe("added");
+  });
+
+  it("removes the copy an earlier install wrote, on install and on refresh", () => {
+    mk(".claude");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    expect(fs.existsSync(claudeSkill())).toBe(true);
+
+    enablePlugin();
+    expect(refreshSkills({ home, cwd, dryRun: true })).toEqual([
+      { client: "Claude Code", file: claudeSkill(), change: "removed" },
+    ]);
+    expect(fs.existsSync(claudeSkill())).toBe(true);
+    refreshSkills({ home, cwd });
+    expect(fs.existsSync(path.join(home, ".claude", "skills", SKILL_NAME))).toBe(false);
+
+    fs.mkdirSync(path.dirname(claudeSkill()), { recursive: true });
+    fs.writeFileSync(claudeSkill(), "old\n");
+    const again = install({ scope: "user", home, cwd, entry: ENTRY });
+    expect(again.clients.find((c) => c.id === "claude_code")!.skillChange).toBe("removed");
+    expect(fs.existsSync(claudeSkill())).toBe(false);
+  });
+
+  it("writes the copy as before when the plugin is off or the settings cannot be read", () => {
+    mk(".claude");
+    enablePlugin(false);
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    expect(fs.existsSync(claudeSkill())).toBe(true);
+
+    fs.rmSync(claudeSkill());
+    fs.writeFileSync(path.join(home, ".claude", "settings.json"), "{ not json");
+    install({ scope: "user", home, cwd, entry: ENTRY });
+    expect(fs.existsSync(claudeSkill())).toBe(true);
+  });
+
+  it("still writes a project copy, which is for everyone who opens the repository", () => {
+    mk(".claude");
+    enablePlugin();
+    install({ scope: "project", home, cwd, entry: ENTRY });
+    expect(fs.existsSync(path.join(cwd, ".claude", "skills", SKILL_NAME, "SKILL.md"))).toBe(true);
   });
 });
 

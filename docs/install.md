@@ -135,13 +135,16 @@ MCP wiring still does not make the agent use the index: it uses it because it
 knows when it is worth it. The skill describes that — when to reach for it, in
 what order, how to read the confidence signals, and what not to do.
 
-It is built from one body, rendered per client under
+It is one text, the same in every client, written to
 `~/.claude/skills/agent-memory/SKILL.md`, `~/.codex/skills/…`,
-`~/.cursor/skills/…`, `~/.gemini/skills/…`, and
-`~/.gemini/antigravity/skills/…`. Devin has no skill directory of its own:
-it reads the Claude Code copy under `~/.claude/skills/`, so a second file
-would show up twice in its skill menu. What differs per tool is a single
-section at the end: whether there is a terminal as well, or only the MCP tools.
+`~/.cursor/skills/…`, `~/.gemini/skills/…`, `~/.gemini/antigravity/skills/…` and
+Devin's own global folder — the app data one (`%APPDATA%devinskills` on
+Windows, `~/.config/devin/skills` on Linux) or `~/.config/devin/skills` on macOS.
+Devin imports only a project's `.claude/skills/` from Claude Code, not
+`~/.claude/skills/`. `~/.agents/skills/` is left alone: Codex, Cursor and Gemini
+CLI read it as well and would list the skill twice. The text says what holds
+with a shell and without one, because a copy meant for one client reaches
+another (see the plugin below).
 
 Claude Code Desktop reads the same `~/.claude/skills/` folder as the CLI. The
 skill gets there with `cam install`, or with the [skills](https://skills.sh)
@@ -157,16 +160,21 @@ Claude Desktop's Chat and Cowork have no skill folder: they take skills from the
 account or from a plugin, and a plugin marketplace is added only in the app. The
 repository is that marketplace. In the app, open **Directory → Plugins →
 Personal → Add marketplace**, enter `arlinamid/centered-agent-memory`, and
-install **agent-memory**. `cam install` says the same on the Desktop line; the
-server it registers in `claude_desktop_config.json` is the one the skill talks
-to, so the plugin carries no server of its own. Updates follow the plugin's
-`version`, which is the package version. Adding this marketplace to Claude Code
-as well would list the skill twice there — Claude Code already has it from
-`cam install`.
+install **agent-memory**. The server the skill talks to is the one `cam install`
+registers in `claude_desktop_config.json`, so the plugin carries none of its own.
+Updates follow the plugin's `version`, which is the package version.
+
+The app installs that plugin into `~/.claude/settings.json`, the settings Claude
+Code reads, so the plugin reaches Claude Code too. Once `enabledPlugins` there has
+`agent-memory@centered-agent-memory` on, `cam install` and every skill refresh
+leave out Claude Code's `~/.claude/skills/` copy, and remove one an earlier
+install wrote; the install report says the skill comes from the plugin. A
+project-scope copy (`--project`) is still written, since it is for everyone who
+opens the repository.
 
 The committed copies — `skills/agent-memory/SKILL.md` and everything under
-`plugins/agent-memory/` — are rendered from the same body with
-`npm run skills`; the test suite fails when one has drifted.
+`plugins/agent-memory/` — are rendered with `npm run skills`; the test suite
+fails when one has drifted.
 
 ## Dream model
 

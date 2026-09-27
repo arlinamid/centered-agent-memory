@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.6] — 2026-09-27
+
+### One skill per client, wherever it comes from
+
+- **The Desktop plugin reaches Claude Code, and cam now steps aside there.** Claude Desktop installs a Personal marketplace plugin into `~/.claude/settings.json`, the settings Claude Code reads, so with the plugin on, Claude Code listed the skill twice — cam's `agent-memory` and the plugin's `agent-memory:agent-memory`. When `enabledPlugins` has `agent-memory@centered-agent-memory` on, `cam install`, `cam install --refresh-skills` and the repair sync after an update leave out `~/.claude/skills/agent-memory` and remove the copy an earlier install wrote. The report says the skill comes from the plugin. A `--project` copy is still written: it is for everyone who opens the repository.
+- **The skill is one text in every client.** It used to end in a per-client section, and the Desktop one — "there is no terminal" — reached Claude Code through the plugin. The closing section now says what holds with a shell and without one, and every copy, installed, `npx skills add`'s and the plugin's, is byte-identical.
+- **Devin gets its own copy, in its own global skills folder**: the app data one (`%APPDATA%\devin\skills` on Windows, `~/.config/devin/skills` on Linux), and `~/.config/devin/skills` on macOS. It had none: from Claude Code, Devin imports only a project's `.claude/skills/`, not `~/.claude/skills/` as cam assumed. `~/.agents/skills/` stays untouched, since Codex, Cursor and Gemini CLI read it too. An update refreshes only skills that already exist, so run `cam install` once to add Devin's.
+
 ## [0.10.5] — 2026-09-27
 
 ### The skill reaches Claude Desktop through a marketplace

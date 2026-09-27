@@ -125,12 +125,14 @@ Az MCP-bekötés attól még nem használja az ágens az indexet: attól haszná
 érdemes. A skill ezt írja le — mikor nyúljon hozzá, milyen sorrendben, hogyan olvassa a
 megbízhatósági jelzéseket, és mit ne csináljon.
 
-Egy törzsből készül, kliensenként rendereltve `~/.claude/skills/agent-memory/SKILL.md`,
-`~/.codex/skills/…`, `~/.cursor/skills/…`, `~/.gemini/skills/…` és
-`~/.gemini/antigravity/skills/…` alá. A Devinnek nincs saját skill-mappája:
-a Claude Code másolatát olvassa a `~/.claude/skills/` alatt, ezért egy második
-fájl kétszer jelenne meg a skill-menüjében. Ami eszközönként eltér, az egyetlen
-szakasz a végén: van-e terminál is, vagy csak az MCP-toolok.
+Egyetlen szöveg, minden kliensben ugyanaz. Helyei: `~/.claude/skills/agent-memory/SKILL.md`,
+`~/.codex/skills/…`, `~/.cursor/skills/…`, `~/.gemini/skills/…`, `~/.gemini/antigravity/skills/…`
+és a Devin saját globális mappája — az app-adatkönyvtárbeli (`%APPDATA%devinskills` Windowson,
+`~/.config/devin/skills` Linuxon), macOS-en `~/.config/devin/skills`. A Devin a Claude Code-ból
+csak a projekt `.claude/skills/` mappáját importálja, a `~/.claude/skills/`-t nem. A
+`~/.agents/skills/`-hez a cam nem nyúl: azt a Codex, a Cursor és a Gemini CLI is olvassa, és
+kétszer jelenne meg a skill. A szöveg leírja, mi érvényes shellel és shell nélkül, mert az egyik
+kliensnek szánt példány eljut a másikhoz is (lásd lent a plugint).
 
 A Claude Code Desktop ugyanazt a `~/.claude/skills/` mappát olvassa, mint a CLI. A skill oda a
 `cam install`-lal, vagy a [skills](https://skills.sh) CLI-vel kerül:
@@ -144,14 +146,19 @@ Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban.
 A Claude Desktop Chat és Cowork felületének nincs skill-mappája: a skillt a fiókból vagy egy
 pluginból veszi, plugin-marketplace-t pedig csak az appban lehet felvenni. Ez a repó az a
 marketplace. Az appban: **Directory → Plugins → Personal → Add marketplace**, cím:
-`arlinamid/centered-agent-memory`, utána az **agent-memory** telepítése. A `cam install` a
-Desktop sorában ugyanezt írja ki. A skill azzal a szerverrel beszél, amit a `cam install` a
-`claude_desktop_config.json`-ba ír, ezért a pluginban nincs saját szerver. A frissítés a plugin
-`version` mezőjét követi, ami a csomag verziója. Ha ezt a marketplace-t a Claude Code-ban is
-felveszed, ott kétszer jelenik meg a skill — a Claude Code-ba a `cam install` már beteszi.
+`arlinamid/centered-agent-memory`, utána az **agent-memory** telepítése. A skill azzal a szerverrel
+beszél, amit a `cam install` a `claude_desktop_config.json`-ba ír, ezért a pluginban nincs saját
+szerver. A frissítés a plugin `version` mezőjét követi, ami a csomag verziója.
+
+Az app ezt a plugint a `~/.claude/settings.json`-ba telepíti, abba, amit a Claude Code is olvas,
+így a plugin a Claude Code-hoz is eljut. Ha ott az `enabledPlugins` alatt az
+`agent-memory@centered-agent-memory` be van kapcsolva, a `cam install` és minden skill-frissítés
+kihagyja a Claude Code `~/.claude/skills/` másolatát, és törli, ha egy korábbi telepítés már
+odaírta; a telepítési riport jelzi, hogy a skill a pluginból jön. A projektszintű másolat
+(`--project`) ettől függetlenül elkészül, mert az mindenkinek szól, aki megnyitja a repót.
 
 A commitolt példányokat — `skills/agent-memory/SKILL.md` és a `plugins/agent-memory/` tartalma —
-ugyanabból a törzsből az `npm run skills` rendereli; ha valamelyik elcsúszik, a tesztek elbuknak.
+az `npm run skills` rendereli; ha valamelyik elcsúszik, a tesztek elbuknak.
 
 ## Álom-modell
 

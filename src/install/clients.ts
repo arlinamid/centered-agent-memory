@@ -41,8 +41,11 @@ export interface ClientTarget {
   skillFile: string | null;
   /** Where the skill comes from when there is no file to write: what the user is told instead. */
   skillVia?: string;
-  /** How to reach the index from this client, appended to the shared skill body. */
-  surface: string;
+  /**
+   * A copy cam would write here, had another channel not taken over: it is
+   * removed on install and refresh, so the client does not list the skill twice.
+   */
+  supersededSkillFile?: string;
 }
 
 /** The repository whose `.claude-plugin/marketplace.json` carries the Desktop skill. */
@@ -54,21 +57,30 @@ export const SERVER_KEY = "cam";
 /** The skill's directory name, and its `name:` in the frontmatter. */
 export const SKILL_NAME = "agent-memory";
 
-const CLI_SURFACE = `## This surface
+/** The `name` in `.claude-plugin/marketplace.json`, and so the part after `@` in the install id. */
+export const MARKETPLACE_NAME = "centered-agent-memory";
 
-Each \`cam_*\` tool is also a terminal command when \`cam\` is on PATH — \`cam dossier
-<project>\`, \`cam recall "<query>"\`, \`cam docs query "<words>"\` and the rest; \`cam\` alone
-lists them. The output is the same text as the tools', and \`--json\` gives it structured.
-\`cam projects --unattributed\` lists the sessions no project claimed.
+/** The plugin's install id, the key Claude Code writes under `enabledPlugins`. */
+export const PLUGIN_ID = `${SKILL_NAME}@${MARKETPLACE_NAME}`;
 
-If the index is \`STALE\`, run \`cam sync\`: it writes only the index. A note you proposed
-is added with \`cam note add <path> "<text>"\` once the user agrees.`;
-
-const MCP_ONLY_SURFACE = `## This surface
-
-Only the \`cam_*\` MCP tools reach the index here; \`cam\` is not on this client's PATH,
-not even in a Cowork shell. If the index is \`STALE\`, ask the user to run \`cam sync\`, and
-give a proposed note as the command they can run: \`cam note add <path> "<text>"\`.`;
+/**
+ * Whether the marketplace plugin is on in Claude Code's user settings.
+ *
+ * Claude Desktop installs a Personal marketplace plugin into the same
+ * `~/.claude/settings.json` Claude Code reads, so once the user adds the
+ * marketplace in the app, Claude Code has the skill from the plugin as well.
+ * An unreadable file counts as off: cam then writes its copy, as before.
+ */
+export function pluginEnabled(claudeHome: string): boolean {
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(claudeHome, "settings.json"), "utf8")) as {
+      enabledPlugins?: Record<string, unknown>;
+    };
+    return settings.enabledPlugins?.[PLUGIN_ID] === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Claude Code keeps its user-level server map in `~/.claude.json`, not under
@@ -82,6 +94,8 @@ function userTargets(home: string): ClientTarget[] {
   const geminiHome = path.join(home, ".gemini");
   const antigravityHome = path.join(geminiHome, "antigravity");
   const devinHome = appSupportDir("devin", home);
+  const claudeSkill = path.join(claudeHome, "skills", SKILL_NAME, "SKILL.md");
+  const viaPlugin = pluginEnabled(claudeHome);
 
   return [
     {
@@ -92,8 +106,11 @@ function userTargets(home: string): ClientTarget[] {
       installed: fs.existsSync(claudeHome),
       mcpFile: path.join(home, ".claude.json"),
       mcpFormat: "json",
-      skillFile: path.join(claudeHome, "skills", SKILL_NAME, "SKILL.md"),
-      surface: CLI_SURFACE,
+      // With the marketplace plugin on, a copy here would be the same skill a
+      // second time, under a second name, in the same list.
+      ...(viaPlugin
+        ? { skillFile: null, supersededSkillFile: claudeSkill, skillVia: `skill: from the plugin ${PLUGIN_ID}` }
+        : { skillFile: claudeSkill }),
     },
     {
       id: "claude_desktop",
@@ -103,15 +120,15 @@ function userTargets(home: string): ClientTarget[] {
       installed: fs.existsSync(desktopHome),
       mcpFile: path.join(desktopHome, "claude_desktop_config.json"),
       mcpFormat: "json",
-      // Claude Code Desktop reads `~/.claude/skills/` — that is the
-      // `claude_code` target, installed by `npx skills add … --agent claude-code`.
-      // The original Desktop / Cowork app has no skill directory we can write:
-      // Chat and Cowork take skills only from the account or from a plugin, and
-      // a marketplace is added in the app's own UI. The repository is that
-      // marketplace; its plugin carries this client's rendering of the skill.
+      // Chat and Cowork have no skill directory we can write: they take skills
+      // only from the account or from a plugin, and a marketplace is added in
+      // the app's own UI. The repository is that marketplace. The app installs
+      // the plugin into Claude Code's settings, which is why the `claude_code`
+      // target steps aside once it is on.
       skillFile: null,
-      skillVia: `skill: add the marketplace ${MARKETPLACE_REPO} under Directory → Plugins → Personal`,
-      surface: MCP_ONLY_SURFACE,
+      skillVia: viaPlugin
+        ? `skill: from the plugin ${PLUGIN_ID}`
+        : `skill: add the marketplace ${MARKETPLACE_REPO} under Directory → Plugins → Personal`,
     },
     {
       id: "codex",
@@ -122,7 +139,6 @@ function userTargets(home: string): ClientTarget[] {
       mcpFile: path.join(codexHome, "config.toml"),
       mcpFormat: "toml",
       skillFile: path.join(codexHome, "skills", SKILL_NAME, "SKILL.md"),
-      surface: CLI_SURFACE,
     },
     {
       id: "cursor",
@@ -135,7 +151,6 @@ function userTargets(home: string): ClientTarget[] {
       // Never `skills-cursor/`: that directory is Cursor's own, and is
       // rewritten by the app.
       skillFile: path.join(cursorHome, "skills", SKILL_NAME, "SKILL.md"),
-      surface: CLI_SURFACE,
     },
     {
       id: "gemini_cli",
@@ -150,7 +165,6 @@ function userTargets(home: string): ClientTarget[] {
       mcpFile: path.join(geminiHome, "settings.json"),
       mcpFormat: "json",
       skillFile: path.join(geminiHome, "skills", SKILL_NAME, "SKILL.md"),
-      surface: CLI_SURFACE,
     },
     {
       id: "antigravity",
@@ -165,7 +179,6 @@ function userTargets(home: string): ClientTarget[] {
       mcpFile: path.join(geminiHome, "config", "mcp_config.json"),
       mcpFormat: "json",
       skillFile: path.join(antigravityHome, "skills", SKILL_NAME, "SKILL.md"),
-      surface: CLI_SURFACE,
     },
     {
       id: "devin",
@@ -175,13 +188,18 @@ function userTargets(home: string): ClientTarget[] {
       installed: fs.existsSync(devinHome),
       mcpFile: path.join(devinHome, "mcp_config.json"),
       mcpFormat: "json",
-      // Devin has no skill directory of its own: it scans `~/.claude/skills/`
-      // and `~/.agents/skills/`, and the Claude Code target already writes the
-      // first of those. Writing a second copy would list one skill twice in
-      // Devin's own skill menu, so the Claude Code target is the channel here.
-      skillFile: null,
-      skillVia: "skill: read from Claude Code's",
-      surface: CLI_SURFACE,
+      // Devin's global skills live in its own directory: the app data one on
+      // Windows and Linux, `~/.config/devin/skills` on macOS
+      // (docs.devin.ai/cli/extensibility/skills/overview). From Claude Code it
+      // imports only a project's `.claude/skills/`, not `~/.claude/skills/`.
+      // `~/.agents/skills/` would reach it too, but Codex, Cursor and Gemini
+      // CLI read that folder as well and would list the skill twice.
+      skillFile: path.join(
+        process.platform === "darwin" ? path.join(home, ".config", "devin") : devinHome,
+        "skills",
+        SKILL_NAME,
+        "SKILL.md",
+      ),
     },
   ];
 }
@@ -194,11 +212,15 @@ function userTargets(home: string): ClientTarget[] {
  */
 function projectTargets(home: string, cwd: string): ClientTarget[] {
   const user = new Map(userTargets(home).map((t) => [t.id, t]));
+  // A project copy is for everyone who opens the repository, most of whom do
+  // not have this user's plugin, so it is written whether or not the plugin is on.
   const of = (id: ClientId, mcpFile: string, skillFile: string): ClientTarget => ({
     ...user.get(id)!,
     scope: "project",
     mcpFile: path.join(cwd, mcpFile),
     skillFile: path.join(cwd, skillFile),
+    skillVia: undefined,
+    supersededSkillFile: undefined,
   });
 
   return [

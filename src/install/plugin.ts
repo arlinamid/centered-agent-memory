@@ -1,4 +1,4 @@
-import { clientTargets, SKILL_NAME } from "./clients.js";
+import { SKILL_NAME } from "./clients.js";
 import { packageMeta, renderSkill } from "./skills.js";
 
 /**
@@ -22,12 +22,11 @@ export const PLUGIN_ROOT = `plugins/${SKILL_NAME}`;
  * the plugin's files, and the skill `npx skills add` finds under `skills/`.
  */
 export function publishedFiles(): Record<string, string> {
-  const targets = clientTargets("user");
-  const of = (id: string) => targets.find((t) => t.id === id)!;
+  const skill = renderSkill();
   return {
-    [`skills/${SKILL_NAME}/SKILL.md`]: renderSkill(of("claude_code")),
+    [`skills/${SKILL_NAME}/SKILL.md`]: skill,
     [`${PLUGIN_ROOT}/.claude-plugin/plugin.json`]: renderPluginManifest(),
-    [`${PLUGIN_ROOT}/skills/${SKILL_NAME}/SKILL.md`]: renderSkill(of("claude_desktop")),
+    [`${PLUGIN_ROOT}/skills/${SKILL_NAME}/SKILL.md`]: skill,
   };
 }
 
@@ -41,9 +40,10 @@ export function renderPluginManifest(): string {
   const manifest = {
     name: SKILL_NAME,
     description:
-      "The agent-memory skill for Claude Desktop Chat and Cowork: when to look up the user's " +
-      "earlier conversations and project files through the cam MCP server. Needs cam " +
-      "installed; Claude Code and the other agents get the skill from `cam install` instead.",
+      "The agent-memory skill for Claude Desktop — Chat, Cowork and the Code tab — and Claude " +
+      "Code: when to look up the user's earlier conversations and project files through the " +
+      "cam MCP server. Needs cam installed; with this plugin on, `cam install` leaves out its " +
+      "own copy in ~/.claude/skills.",
     version: meta.version,
     author: { name: meta.author },
     homepage: meta.source,

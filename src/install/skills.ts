@@ -1,17 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SKILL_NAME, type ClientTarget } from "./clients.js";
+import { SKILL_NAME } from "./clients.js";
 
 /**
- * One skill body, rendered per client.
+ * One skill, the same text in every client.
  *
- * The instructions an agent needs are the same everywhere — what the index is,
- * when to consult it, how to read a confidence level — and only the last
- * section differs: whether the tool is reachable as MCP tools alone or from a
- * terminal too. Writing four skills by hand would guarantee that three of them
- * fall behind, which is the same reason the CLI and the MCP server share a
- * renderer.
+ * It used to end in a per-client section — terminal or MCP only — but one
+ * client's copy reaches another: Claude Desktop installs its marketplace
+ * plugin into the settings Claude Code reads, so the Desktop text showed up in
+ * a terminal client. The one text now says what holds where, and every copy —
+ * the installed ones, `npx skills add`'s and the plugin's — is byte-identical.
  */
 
 const DESCRIPTION =
@@ -47,7 +46,7 @@ export function packageMeta(): { version: string; author: string; license: strin
   return { version: String(pkg.version), author: String(pkg.author), license: String(pkg.license), source };
 }
 
-export function renderSkill(target: ClientTarget, body = skillBody()): string {
+export function renderSkill(body = skillBody()): string {
   const meta = packageMeta();
   const frontmatter = [
     "---",
@@ -63,7 +62,7 @@ export function renderSkill(target: ClientTarget, body = skillBody()): string {
     "---",
     "",
   ];
-  return `${frontmatter.join("\n")}${body.replace("{{SURFACE}}", target.surface).trimEnd()}\n`;
+  return `${frontmatter.join("\n")}${body.trimEnd()}\n`;
 }
 
 /** YAML block scalars need every line indented; long descriptions need wrapping. */

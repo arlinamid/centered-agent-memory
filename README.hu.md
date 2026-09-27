@@ -4,7 +4,7 @@
 
 # centered-agent-memory
 
-[![version](https://img.shields.io/badge/cam-v0.10.5-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/cam-v0.10.6-8B7355?style=flat&labelColor=2a2622)](CHANGELOG.md)
 [![CI](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/arlinamid/centered-agent-memory/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-%3E%3D24-8B7355?style=flat&labelColor=2a2622)](https://github.com/arlinamid/centered-agent-memory/blob/main/README.hu.md#telep%C3%ADt%C3%A9s)
 
@@ -96,7 +96,7 @@ A Claude Code (és a Claude Code Desktop, ugyanaz a mappa) skilljét külön is 
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-A Claude Desktop Chat és Cowork felülete pluginként kapja a skillt: **Directory → Plugins → Personal → Add marketplace** → `arlinamid/centered-agent-memory`, utána az **agent-memory** telepítése. Részletek: [`docs/install.hu.md`](docs/install.hu.md#skill).
+A Claude Desktop Chat és Cowork felülete pluginként kapja a skillt: **Directory → Plugins → Personal → Add marketplace** → `arlinamid/centered-agent-memory`, utána az **agent-memory** telepítése. A plugin a Claude Code-ba is bekerül, és a `cam install` ott elhagyja a saját másolatát. Részletek: [`docs/install.hu.md`](docs/install.hu.md#skill).
 
 > [!WARNING]
 > **A szervert ne `npx`-ből kösd be.** A gyorsítótárat később kitakarítják, a bekötés némán meghal. A telepítő ezt felismeri, nem ír semmit, és `npm i -g`-t javasol. Egyszeri lekérdezésre az `npx` jó — az index a felhasználói adatmappában van.

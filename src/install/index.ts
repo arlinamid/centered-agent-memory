@@ -135,10 +135,16 @@ function apply(opts: InstallOptions, remove: boolean): InstallReport {
               : "absent"
             : removeSkill(target.skillFile);
         } else {
-          const text = renderSkill(target, skillBody());
+          const text = renderSkill(skillBody());
           report.skillChange = skillState(target.skillFile, text);
           if (!dryRun && report.skillChange !== "unchanged") writeSkill(target.skillFile, text);
         }
+      }
+
+      // Install and uninstall alike: a copy another channel took over is one
+      // cam wrote, and leaving it would list the skill twice.
+      if (doSkills && target.supersededSkillFile && fs.existsSync(target.supersededSkillFile)) {
+        report.skillChange = dryRun ? "removed" : removeSkill(target.supersededSkillFile);
       }
     } catch (err) {
       report.error = err instanceof ConfigParseError ? err.message : (err as Error).message;
@@ -154,7 +160,8 @@ export const uninstall = (opts: InstallOptions = {}): InstallReport => apply(opt
 export interface SkillRefresh {
   client: string;
   file: string;
-  change: "updated" | "unchanged";
+  /** `removed`: another channel now carries the skill, so cam's copy went. */
+  change: "updated" | "unchanged" | "removed";
 }
 
 /**
@@ -172,8 +179,13 @@ export function refreshSkills(opts: { scope?: Scope; only?: ClientId[]; home?: s
   const out: SkillRefresh[] = [];
   for (const target of clientTargets(opts.scope ?? "user", opts.home, opts.cwd)) {
     if (opts.only?.length && !opts.only.includes(target.id)) continue;
+    if (target.supersededSkillFile && fs.existsSync(target.supersededSkillFile)) {
+      if (!opts.dryRun) removeSkill(target.supersededSkillFile);
+      out.push({ client: target.name, file: target.supersededSkillFile, change: "removed" });
+      continue;
+    }
     if (!target.skillFile || !fs.existsSync(target.skillFile)) continue;
-    const text = renderSkill(target, body);
+    const text = renderSkill(body);
     const change = skillState(target.skillFile, text) === "unchanged" ? "unchanged" : "updated";
     if (change === "updated" && !opts.dryRun) writeSkill(target.skillFile, text);
     out.push({ client: target.name, file: target.skillFile, change });
