@@ -76,10 +76,6 @@ and where you looked.
 
 ## This surface
 
-Each `cam_*` tool is also a terminal command when `cam` is on PATH — `cam dossier
-<project>`, `cam recall "<query>"`, `cam docs query "<words>"` and the rest; `cam` alone
-lists them. The output is the same text as the tools', and `--json` gives it structured.
-`cam projects --unattributed` lists the sessions no project claimed.
-
-If the index is `STALE`, run `cam sync`: it writes only the index. A note you proposed
-is added with `cam note add <path> "<text>"` once the user agrees.
+Only the `cam_*` MCP tools reach the index here; `cam` is not on this client's PATH,
+not even in a Cowork shell. If the index is `STALE`, ask the user to run `cam sync`, and
+give a proposed note as the command they can run: `cam note add <path> "<text>"`.

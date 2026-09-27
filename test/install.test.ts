@@ -181,6 +181,17 @@ describe("skills", () => {
     expect(text).not.toContain("{{SURFACE}}");
   });
 
+  it("carries the spec's optional fields from package.json, the version as a string", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    const [claudeCode] = clientTargets("user", home, cwd);
+    const front = renderSkill(claudeCode!, "{{SURFACE}}").split("\n---\n")[0]!;
+
+    expect(front).toContain(`license: ${pkg.license}`);
+    expect(front).toMatch(/\ncompatibility: \S/);
+    expect(front).toContain(`\nmetadata:\n  author: "${pkg.author}"\n  version: "${pkg.version}"`);
+    expect(front).toContain(`\n  source: "https://github.com/arlinamid/centered-agent-memory"`);
+  });
+
   it("ships a discoverable skill so `npx skills add` can find it", () => {
     // The skills CLI looks for `<name>/SKILL.md` with `name` and `description`
     // in the frontmatter. The installer template is `assets/skill-body.md`
@@ -192,8 +203,8 @@ describe("skills", () => {
     expect(text).toMatch(/^---\nname: agent-memory\n/);
     expect(text).toContain("description:");
     expect(text).not.toContain("{{SURFACE}}");
-    const [claudeCode] = clientTargets("user", home, cwd);
-    expect(text).toBe(renderSkill(claudeCode!));
+    // That it matches a fresh rendering is checked with the other published
+    // files in plugin.test.ts.
   });
 
   it("tells a terminal-less client not to promise a sync it cannot run", () => {

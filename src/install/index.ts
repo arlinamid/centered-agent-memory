@@ -48,6 +48,8 @@ export interface ClientReport {
   mcpChange: Change | null;
   skillFile: string | null;
   skillChange: SkillChange | null;
+  /** Where the skill comes from instead, for a client cam writes none for; install only. */
+  skillVia: string | null;
   error: string | null;
 }
 
@@ -104,6 +106,8 @@ function apply(opts: InstallOptions, remove: boolean): InstallReport {
       mcpChange: null,
       skillFile: doSkills ? target.skillFile : null,
       skillChange: null,
+      // Uninstalling does not remove a marketplace the user added in the app.
+      skillVia: doSkills && !remove ? (target.skillVia ?? null) : null,
       error: null,
     };
     clients.push(report);

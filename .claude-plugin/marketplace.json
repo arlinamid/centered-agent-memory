@@ -1,0 +1,15 @@
+{
+  "name": "centered-agent-memory",
+  "description": "The agent-memory skill for Claude Desktop Chat and Cowork, from centered-agent-memory (cam).",
+  "owner": {
+    "name": "Rózsavölgyi János",
+    "url": "https://github.com/arlinamid"
+  },
+  "plugins": [
+    {
+      "name": "agent-memory",
+      "source": "./plugins/agent-memory",
+      "description": "When to look up the user's earlier conversations and project files through the cam MCP server. Needs cam installed."
+    }
+  ]
+}

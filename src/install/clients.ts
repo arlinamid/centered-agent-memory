@@ -39,9 +39,14 @@ export interface ClientTarget {
   mcpFormat: ConfigFormat;
   /** Null when the client has no skill system. */
   skillFile: string | null;
+  /** Where the skill comes from when there is no file to write: what the user is told instead. */
+  skillVia?: string;
   /** How to reach the index from this client, appended to the shared skill body. */
   surface: string;
 }
+
+/** The repository whose `.claude-plugin/marketplace.json` carries the Desktop skill. */
+export const MARKETPLACE_REPO = "arlinamid/centered-agent-memory";
 
 /** The name the server is registered under, in every client. */
 export const SERVER_KEY = "cam";
@@ -61,9 +66,9 @@ is added with \`cam note add <path> "<text>"\` once the user agrees.`;
 
 const MCP_ONLY_SURFACE = `## This surface
 
-Only the \`cam_*\` MCP tools are available; there is no terminal. If the index is
-\`STALE\`, ask the user to run \`cam sync\`, and give a proposed note as the command they
-can run: \`cam note add <path> "<text>"\`.`;
+Only the \`cam_*\` MCP tools reach the index here; \`cam\` is not on this client's PATH,
+not even in a Cowork shell. If the index is \`STALE\`, ask the user to run \`cam sync\`, and
+give a proposed note as the command they can run: \`cam note add <path> "<text>"\`.`;
 
 /**
  * Claude Code keeps its user-level server map in `~/.claude.json`, not under
@@ -101,9 +106,11 @@ function userTargets(home: string): ClientTarget[] {
       // Claude Code Desktop reads `~/.claude/skills/` — that is the
       // `claude_code` target, installed by `npx skills add … --agent claude-code`.
       // The original Desktop / Cowork app has no skill directory we can write:
-      // Cowork only registers a skill through its Customize UI, not by scanning
-      // a folder. Its channel here is the server's own instructions.
+      // Chat and Cowork take skills only from the account or from a plugin, and
+      // a marketplace is added in the app's own UI. The repository is that
+      // marketplace; its plugin carries this client's rendering of the skill.
       skillFile: null,
+      skillVia: `skill: add the marketplace ${MARKETPLACE_REPO} under Directory → Plugins → Personal`,
       surface: MCP_ONLY_SURFACE,
     },
     {
@@ -173,6 +180,7 @@ function userTargets(home: string): ClientTarget[] {
       // first of those. Writing a second copy would list one skill twice in
       // Devin's own skill menu, so the Claude Code target is the channel here.
       skillFile: null,
+      skillVia: "skill: read from Claude Code's",
       surface: CLI_SURFACE,
     },
   ];

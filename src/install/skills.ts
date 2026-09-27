@@ -21,17 +21,48 @@ const DESCRIPTION =
   "a prior decision, discussion or fix (\"as we discussed\", \"what we did with Codex\"), and " +
   "when you need a file from a project that is not open here.";
 
+const COMPATIBILITY = "Requires the cam MCP server from centered-agent-memory.";
+
 /** Package root, from either `src/install/` or `dist/install/`. */
-function assetFile(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "skill-body.md");
+export function packageFile(...parts: string[]): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ...parts);
 }
 
 export function skillBody(): string {
-  return fs.readFileSync(assetFile(), "utf8");
+  return fs.readFileSync(packageFile("assets", "skill-body.md"), "utf8");
+}
+
+/**
+ * The optional frontmatter fields of the Agent Skills spec, taken from
+ * package.json so a release cannot leave them behind. `version` is how a
+ * reader tells which release wrote an installed copy.
+ */
+export function packageMeta(): { version: string; author: string; license: string; source: string } {
+  const pkg = JSON.parse(fs.readFileSync(packageFile("package.json"), "utf8")) as Record<string, unknown>;
+  const repo = pkg.repository as { url?: string } | string | undefined;
+  // `git+https://host/owner/name.git` → the page a person can open.
+  const source = String(typeof repo === "string" ? repo : repo?.url ?? "")
+    .replace(/^git\+/, "")
+    .replace(/\.git$/, "");
+  return { version: String(pkg.version), author: String(pkg.author), license: String(pkg.license), source };
 }
 
 export function renderSkill(target: ClientTarget, body = skillBody()): string {
-  const frontmatter = ["---", `name: ${SKILL_NAME}`, `description: >-`, ...wrap(DESCRIPTION, 92), "---", ""];
+  const meta = packageMeta();
+  const frontmatter = [
+    "---",
+    `name: ${SKILL_NAME}`,
+    `description: >-`,
+    ...wrap(DESCRIPTION, 92),
+    `license: ${meta.license}`,
+    `compatibility: ${COMPATIBILITY}`,
+    "metadata:",
+    `  author: ${JSON.stringify(meta.author)}`,
+    `  version: ${JSON.stringify(meta.version)}`,
+    `  source: ${JSON.stringify(meta.source)}`,
+    "---",
+    "",
+  ];
   return `${frontmatter.join("\n")}${body.replace("{{SURFACE}}", target.surface).trimEnd()}\n`;
 }
 

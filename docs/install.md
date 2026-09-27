@@ -151,10 +151,22 @@ CLI:
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-This command looks for `skills/agent-memory/SKILL.md` in the repo. The classic
-Claude Desktop / Cowork app has no such folder — Cowork only registers through
-the Customize → Skills uploader, not by file copy. There the server's own
-instructions arrive, with every response.
+This command looks for `skills/agent-memory/SKILL.md` in the repo.
+
+Claude Desktop's Chat and Cowork have no skill folder: they take skills from the
+account or from a plugin, and a plugin marketplace is added only in the app. The
+repository is that marketplace. In the app, open **Directory → Plugins →
+Personal → Add marketplace**, enter `arlinamid/centered-agent-memory`, and
+install **agent-memory**. `cam install` says the same on the Desktop line; the
+server it registers in `claude_desktop_config.json` is the one the skill talks
+to, so the plugin carries no server of its own. Updates follow the plugin's
+`version`, which is the package version. Adding this marketplace to Claude Code
+as well would list the skill twice there — Claude Code already has it from
+`cam install`.
+
+The committed copies — `skills/agent-memory/SKILL.md` and everything under
+`plugins/agent-memory/` — are rendered from the same body with
+`npm run skills`; the test suite fails when one has drifted.
 
 ## Dream model
 

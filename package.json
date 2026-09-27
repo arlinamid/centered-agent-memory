@@ -1,6 +1,6 @@
 {
   "name": "centered-agent-memory",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "private": true,
   "homepage": "https://github.com/arlinamid/centered-agent-memory#readme",
   "bugs": "https://github.com/arlinamid/centered-agent-memory/issues",
@@ -47,7 +47,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "mcp": "node dist/mcp/server.js",
-    "smoke": "tsx scripts/mcp-smoke.ts"
+    "smoke": "tsx scripts/mcp-smoke.ts",
+    "skills": "tsx scripts/render-skills.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",

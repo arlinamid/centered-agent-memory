@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.5] — 2026-09-27
+
+### The skill reaches Claude Desktop through a marketplace
+
+- **The repository is a plugin marketplace for Claude Desktop's Chat and Cowork**, which have no skill folder `cam install` could write. In the app: Directory → Plugins → Personal → Add marketplace → `arlinamid/centered-agent-memory`, then install **agent-memory**. The plugin carries Desktop's own rendering of the skill — the MCP-only surface, where the user runs `cam sync` — and no server: the one `cam install` registers in `claude_desktop_config.json` is the one it talks to, and a second from the plugin would start beside it.
+- **`cam install` names the marketplace on the Desktop line** instead of "skill: not supported", and says Devin reads Claude Code's copy.
+- **`npm run skills` renders every committed copy** — the skill `npx skills add` finds and the plugin's files — and the test suite fails when one has drifted. The plugin's `version` is the package version, which is what gives users a new copy.
+
+### The skill says where it came from
+
+- **The skill's frontmatter carries the Agent Skills spec's optional fields**: `license`, `compatibility` (the cam MCP server it needs) and `metadata` with `author`, `version` and `source`. They are read from package.json when the skill is rendered, so a release cannot leave them behind, and an installed copy now says which release wrote it. `skills-ref validate` accepts it.
+
 ## [0.10.4] — 2026-09-27
 
 ### A shorter skill that no longer contradicts the tools

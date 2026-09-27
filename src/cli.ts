@@ -1776,7 +1776,7 @@ async function cmdInstall(a: ParsedArgs, remove: boolean): Promise<number> {
         : // A client with no skill directory is not a failure: the server's own
           // instructions reach it with every response.
           !has(a, "no-skills")
-          ? "skill: not supported"
+          ? (c.skillVia ?? (remove ? null : "skill: not supported"))
           : null,
     ].filter((p): p is string => p !== null);
     log.status(`${c.name.padEnd(24)} ${parts.join("  ·  ") || "nothing to do"}`);

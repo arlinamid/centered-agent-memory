@@ -139,9 +139,19 @@ A Claude Code Desktop ugyanazt a `~/.claude/skills/` mappát olvassa, mint a CLI
 npx skills add arlinamid/centered-agent-memory --skill agent-memory --agent claude-code -g -y
 ```
 
-Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban. A klasszikus Claude Desktop /
-Cowork appnak nincs ilyen mappája — Cowork csak a Customize → Skills feltöltőn keresztül
-regisztrál, fájlmásolásra nem. Oda a szerver saját instrukciója jut el, minden válasszal.
+Ez a parancs a `skills/agent-memory/SKILL.md` fájlt keresi a repóban.
+
+A Claude Desktop Chat és Cowork felületének nincs skill-mappája: a skillt a fiókból vagy egy
+pluginból veszi, plugin-marketplace-t pedig csak az appban lehet felvenni. Ez a repó az a
+marketplace. Az appban: **Directory → Plugins → Personal → Add marketplace**, cím:
+`arlinamid/centered-agent-memory`, utána az **agent-memory** telepítése. A `cam install` a
+Desktop sorában ugyanezt írja ki. A skill azzal a szerverrel beszél, amit a `cam install` a
+`claude_desktop_config.json`-ba ír, ezért a pluginban nincs saját szerver. A frissítés a plugin
+`version` mezőjét követi, ami a csomag verziója. Ha ezt a marketplace-t a Claude Code-ban is
+felveszed, ott kétszer jelenik meg a skill — a Claude Code-ba a `cam install` már beteszi.
+
+A commitolt példányokat — `skills/agent-memory/SKILL.md` és a `plugins/agent-memory/` tartalma —
+ugyanabból a törzsből az `npm run skills` rendereli; ha valamelyik elcsúszik, a tesztek elbuknak.
 
 ## Álom-modell
 
