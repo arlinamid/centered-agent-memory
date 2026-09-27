@@ -235,10 +235,99 @@ export function indexChunks(db: Db, sessionId: number, turns: ReadonlyArray<Turn
     }
     insertFts.run(id, c.text);
   }
+
+  // Not Math.min(...): a long session is more turns than a call has arguments.
+  let from = Infinity;
+  let to = -Infinity;
+  for (const t of turns) {
+    if (t.seq < from) from = t.seq;
+    if (t.seq > to) to = t.seq;
+  }
+  restoreRecall(db, sessionId, from, to);
+}
+
+/**
+ * One hash over the text of a turn range, from what the index holds. Null when
+ * a turn of the range is missing: then the range is not complete yet, or no
+ * longer exists.
+ */
+function turnsSha(db: Db, sessionId: number, seqStart: number, seqEnd: number): string | null {
+  const rows = db
+    .prepare("select seq, text_sha256 from turns where session_id = ? and seq between ? and ? order by seq")
+    .all(sessionId, seqStart, seqEnd) as Array<{ seq: number; text_sha256: string }>;
+  if (rows.length !== seqEnd - seqStart + 1) return null;
+  return sha256(rows.map((r) => r.text_sha256).join("\n"));
+}
+
+/**
+ * Keep a session's recall trace through a read from the start.
+ *
+ * The memory layer promotes from `recall_events`, which point at chunks, and a
+ * full re-read deletes the session's chunks — the trace goes with them through
+ * the foreign key. That is every repair sync, which every update runs, every
+ * rotated file, and every change to a session of a tool that is always read
+ * whole. So the memory lost exactly the sessions in use. Before the chunks go,
+ * each event is set aside by the turns it covered and a hash of their text.
+ */
+function setAsideRecall(db: Db, sessionId: number): void {
+  const chunks = db
+    .prepare(
+      `select distinct c.seq_start, c.seq_end from chunks c join recall_events e on e.chunk_id = c.id
+       where c.session_id = ?`,
+    )
+    .all(sessionId) as Array<{ seq_start: number; seq_end: number }>;
+  const insert = db.prepare(
+    `insert into recall_carry(session_id, seq_start, seq_end, turns_sha, query_hash, score, ts_ms)
+     select c.session_id, c.seq_start, c.seq_end, ?, e.query_hash, e.score, e.ts_ms
+     from recall_events e join chunks c on c.id = e.chunk_id
+     where c.session_id = ? and c.seq_start = ? and c.seq_end = ?`,
+  );
+  for (const c of chunks) {
+    const hash = turnsSha(db, sessionId, c.seq_start, c.seq_end);
+    if (hash !== null) insert.run(hash, sessionId, c.seq_start, c.seq_end);
+  }
+}
+
+/**
+ * Put set-aside events back once their turns are indexed again, on the chunk
+ * that now holds the first of them — chunk boundaries of a read from the start
+ * need not match those of the incremental runs that came before. An event
+ * whose turns now read differently is dropped: it was about text that is gone.
+ * One whose range reaches past this batch waits for the next.
+ */
+function restoreRecall(db: Db, sessionId: number, fromSeq: number, toSeq: number): void {
+  const waiting = db
+    .prepare(
+      "select id, seq_start, seq_end, turns_sha, query_hash, score, ts_ms from recall_carry where session_id = ? and seq_start >= ? and seq_end <= ?",
+    )
+    .all(sessionId, fromSeq, toSeq) as Array<{
+    id: number;
+    seq_start: number;
+    seq_end: number;
+    turns_sha: string;
+    query_hash: string;
+    score: number | null;
+    ts_ms: number;
+  }>;
+  if (waiting.length === 0) return;
+
+  const holder = db.prepare(
+    "select id from chunks where session_id = ? and seq_start <= ? and seq_end >= ? order by seq_start desc limit 1",
+  );
+  const insert = db.prepare("insert into recall_events(chunk_id, query_hash, score, ts_ms) values (?,?,?,?)");
+  const done = db.prepare("delete from recall_carry where id = ?");
+  for (const w of waiting) {
+    const chunk = holder.get(sessionId, w.seq_start, w.seq_start) as { id: number } | undefined;
+    if (chunk && turnsSha(db, sessionId, w.seq_start, w.seq_end) === w.turns_sha) {
+      insert.run(chunk.id, w.query_hash, w.score, w.ts_ms);
+    }
+    done.run(w.id);
+  }
 }
 
 /** Drop everything derived from a session, for a rotated or repaired source. */
 export function clearSession(db: Db, sessionId: number): void {
+  setAsideRecall(db, sessionId);
   // The chunks_after_delete trigger removes the matching FTS rows.
   db.prepare("delete from chunks where session_id = ?").run(sessionId);
   db.prepare("delete from turns where session_id = ?").run(sessionId);

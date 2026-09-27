@@ -10,7 +10,7 @@ license: MIT
 compatibility: Requires the cam MCP server from centered-agent-memory.
 metadata:
   author: "Rózsavölgyi János"
-  version: "0.10.6"
+  version: "0.10.7"
   source: "https://github.com/arlinamid/centered-agent-memory"
 ---
 # Recalling earlier conversations

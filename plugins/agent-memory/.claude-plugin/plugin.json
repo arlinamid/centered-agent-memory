@@ -1,7 +1,7 @@
 {
   "name": "agent-memory",
   "description": "The agent-memory skill for Claude Desktop — Chat, Cowork and the Code tab — and Claude Code: when to look up the user's earlier conversations and project files through the cam MCP server. Needs cam installed; with this plugin on, `cam install` leaves out its own copy in ~/.claude/skills.",
-  "version": "0.10.6",
+  "version": "0.10.7",
   "author": {
     "name": "Rózsavölgyi János"
   },

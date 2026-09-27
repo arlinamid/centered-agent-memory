@@ -233,6 +233,22 @@ CREATE TABLE IF NOT EXISTS recall_events (
 );
 CREATE INDEX IF NOT EXISTS idx_recall_chunk ON recall_events(chunk_id);
 
+-- A session read again from the start loses its chunks, and with them its
+-- recall trace. The trace waits here, by the turn range it pointed at and a
+-- hash of those turns, until the re-index gives that range a chunk again
+-- (index/indexer.ts). Not a foreign key to chunks: the chunk is what is gone.
+CREATE TABLE IF NOT EXISTS recall_carry (
+  id         INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seq_start  INTEGER NOT NULL,
+  seq_end    INTEGER NOT NULL,
+  turns_sha  TEXT NOT NULL,
+  query_hash TEXT NOT NULL,
+  score      REAL,
+  ts_ms      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recall_carry_session ON recall_carry(session_id);
+
 -- The memory layer. Nothing here copies conversation text: a promoted fact is a
 -- reference to a chunk, rehydrated at read time like every other result. What
 -- IS stored verbatim is the user's own search text, because "which questions

@@ -117,7 +117,11 @@ function follow(file: string): Located | null {
   const wrapped = behindWrapper(real);
   if (wrapped) return { ...wrapped, via: file };
 
-  return { bin: real, prefix: [], kind: "native", via: file };
+  // A native program starts through a link as well as without one, and the
+  // link is what stays put: Codex's standalone build reaches its binary
+  // through `standalone/current`, and resolving that recorded a versioned
+  // release folder the next Codex update deleted.
+  return { bin: file, prefix: [], kind: "native", via: file };
 }
 
 /** Read the first bytes of a file without pulling a large binary into memory. */

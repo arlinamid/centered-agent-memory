@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.7] — 2026-09-27
+
+### Memory that survives a re-read, and a dream that survives a Codex update
+
+- **The recall trace is kept when a session is read again from the start.** Memory promotes from `recall_events`, which point at chunks, and a full re-read deletes a session's chunks — the trace went with them through the foreign key. That is every repair sync, which every `cam update` runs; every rotated file; and every change to a Cursor, Gemini CLI or Devin session, which are always read whole. So the memory forgot exactly the sessions in use: on the author's machine only Antigravity events had survived since 2026-09-20. Before the chunks go, each event is now set aside (`recall_carry`) by the turns it covered and a hash of their text, and the re-index puts it back on the chunk that holds those turns again. An event whose turns now read differently is dropped. Facts and traces are rebuilt from the kept events at the next consolidation.
+- **A dream command whose program is gone finds the same tool again by name.** The installer recorded Codex's versioned release folder (`…/standalone/releases/0.139.0-…/codex.exe`), which the next Codex update deleted, and every dream run failed from then on. The configured program is now looked up on PATH when its path no longer exists.
+- **The installer keeps a native program's path through its link** instead of resolving it: `…/standalone/current/bin/codex.exe` outlives every update, the release folder behind it does not. Scripts are still resolved, since they are run with an explicit node.
+
 ## [0.10.6] — 2026-09-27
 
 ### One skill per client, wherever it comes from

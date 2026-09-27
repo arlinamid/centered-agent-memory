@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addTurns, upsertSession } from "../src/index/indexer.js";
+import { addTurns, clearSession, upsertSession } from "../src/index/indexer.js";
 import { consolidate } from "../src/memory/consolidate.js";
 import { listFacts } from "../src/memory/facts.js";
 import { planDream, runDream } from "../src/memory/dream.js";
@@ -43,6 +43,38 @@ function embeddingConfig(body?: string): EmbeddingConfig {
   });`);
   return { provider: "command", model: "fixture-v1", command: [process.execPath, file] };
 }
+
+describe("the recall trace through a read from the start", () => {
+  const events = (): number => (h.hub.prepare("select count(*) n from recall_events").get() as { n: number }).n;
+  const reread = (s: number, text: string): void => {
+    // What a collector does on a repair sync or a rotated file.
+    clearSession(h.hub, s);
+    addTurns(h.hub, s, [{ seq: 0, role: "user", tsMs: NOW, text, locator: { kind: "inline" } }]);
+  };
+
+  it("keeps what searches surfaced, and memory still promotes from it", () => {
+    const text = "Database migration rollback requires a backup before deployment.";
+    const s = seed("decision", text);
+    promote();
+    expect(events()).toBe(3);
+    expect(listFacts(h.hub)).toHaveLength(1);
+
+    reread(s, text);
+    expect(events()).toBe(3);
+    expect(h.hub.prepare("select count(*) n from recall_carry").get()).toEqual({ n: 0 });
+    consolidate(h.hub, { nowMs: NOW + 3 * DAY });
+    expect(listFacts(h.hub)).toHaveLength(1);
+  });
+
+  it("drops the trace of text that reads differently now", () => {
+    const s = seed("decision", "Database migration rollback requires a backup before deployment.");
+    promote();
+
+    reread(s, "Something else entirely.");
+    expect(events()).toBe(0);
+    expect(h.hub.prepare("select count(*) n from recall_carry").get()).toEqual({ n: 0 });
+  });
+});
 
 describe("retrieval to long-term memory to dreaming", () => {
   it("promotes real search results on a small corpus without rewriting scores", async () => {

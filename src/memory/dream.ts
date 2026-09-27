@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Db } from "../db/open.js";
+import { knownDirs, locate } from "../install/locate.js";
 import { listFacts, type MemoryFact } from "./facts.js";
 
 /**
@@ -73,6 +74,21 @@ export class DreamNotConfiguredError extends Error {
 
 export const needsShell = (bin: string): boolean => process.platform === "win32" && /\.(cmd|bat)$/i.test(bin);
 
+/**
+ * The configured program, or the same tool found again when that path is gone.
+ *
+ * An absolute path in the config goes stale when the tool updates itself —
+ * Codex's standalone build deletes the versioned folder an older installer
+ * recorded — and every dream run then failed until the next `cam install`.
+ * The tool is looked up again by its name, the way the installer found it.
+ */
+export function currentBin(bin: string, env = process.env): { bin: string; prefix: string[] } {
+  if (!path.isAbsolute(bin) || fs.existsSync(bin)) return { bin, prefix: [] };
+  const name = path.basename(bin).replace(/\.(exe|cmd|bat)$/i, "");
+  const found = locate([name], knownDirs(os.homedir(), env), env);
+  return found ? { bin: found.bin, prefix: found.prefix } : { bin, prefix: [] };
+}
+
 /** Run an external command with the prompt on stdin (or substituted into argv). */
 export function commandProvider(cfg: DreamConfig): DreamProvider {
   const argv = cfg.command ?? [];
@@ -100,10 +116,10 @@ export function commandProvider(cfg: DreamConfig): DreamProvider {
         return a.replace("{model}", model).replace("{prompt}", prompt);
       });
       const useStdin = !argv.some((a) => a.includes("{prompt}") || a.includes("{promptFile}"));
-      const bin = argv[0]!.replace("{model}", model);
+      const { bin, prefix } = currentBin(argv[0]!.replace("{model}", model));
 
       return new Promise<string>((resolve, reject) => {
-        const child = spawn(bin, args, {
+        const child = spawn(bin, [...prefix, ...args], {
           stdio: ["pipe", "pipe", "pipe"],
           windowsHide: true,
           // Most agent CLIs are installed on Windows as a .cmd shim, and since

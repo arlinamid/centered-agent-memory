@@ -634,6 +634,20 @@ describe("finding the program behind the launcher", () => {
     expect(locate(["tool"], [hidden], { PATH: "" })?.bin).toBe(path.join(hidden, name));
   });
 
+  it("keeps a native program's path through a link, which outlives the folder behind it", () => {
+    // Codex's standalone layout: `current` points at a versioned release that
+    // the next update deletes.
+    const release = mk("releases", "0.139.0", "bin");
+    const name = process.platform === "win32" ? "tool.exe" : "tool";
+    fs.writeFileSync(path.join(release, name), "MZ");
+    const current = path.join(home, "current");
+    fs.symlinkSync(path.dirname(release), current, "junction");
+
+    const found = locate(["tool"], [], { PATH: path.join(current, "bin") });
+    expect(found?.bin).toBe(path.join(current, "bin", name));
+    expect(found?.kind).toBe("native");
+  });
+
   it("finds nothing when there is nothing", () => {
     expect(locate(["definitely-not-installed"], [], { PATH: home })).toBeNull();
   });

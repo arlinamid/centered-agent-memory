@@ -11,6 +11,7 @@ import {
   DreamNotConfiguredError,
   buildPrompt,
   commandProvider,
+  currentBin,
   forgetDreams,
   makeProvider,
   planDream,
@@ -108,6 +109,26 @@ describe("configuration", () => {
     const provider = commandProvider({ provider: "command", model: "teszt-modell", command: fakeModel("echo") });
     expect(provider.model).toBe("teszt-modell");
     expect(await provider.generate("--- excerpt ---\nvalami szöveg")).toContain("ÁLOM:");
+  });
+});
+
+describe("a configured program that is gone", () => {
+  it("is found again by its name, the way the installer found it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cam-bin-"));
+    try {
+      const name = process.platform === "win32" ? "codex.exe" : "codex";
+      fs.writeFileSync(path.join(dir, name), "MZ");
+      const stale = path.join(dir, "releases", "0.139.0", name);
+
+      expect(currentBin(stale, { PATH: dir })).toEqual({ bin: path.join(dir, name), prefix: [] });
+      // Present, or not a path at all: used as configured.
+      expect(currentBin(path.join(dir, name), { PATH: "" }).bin).toBe(path.join(dir, name));
+      expect(currentBin("codex", { PATH: "" }).bin).toBe("codex");
+      // Nowhere to be found: the configured path stays, and the run reports it.
+      expect(currentBin(stale, { PATH: "" }).bin).toBe(stale);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
