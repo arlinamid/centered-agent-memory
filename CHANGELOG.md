@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.10.4] — 2026-09-27
+
 ### A shorter skill that no longer contradicts the tools
 
 - **The `agent-memory` skill was audited against current Claude models** and went from 5.1k to 3.8k characters. What the MCP tool descriptions already state (search mechanics, citation form) is left to them; the numbered workflow and the list of prohibitions became prose with the reasons kept.
